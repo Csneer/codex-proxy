@@ -47,6 +47,7 @@ export interface StreamResponseOptions {
   usageHint?: UsageHint;
   onResponseMetadata?: (metadata: ResponseMetadata) => void;
   diagnostics?: StreamDiagnostics;
+  onChunkWritten?: (chunk: string) => void;
   /** Idle heartbeat cadence in ms. A SSE comment line is written whenever no
    *  real chunk has been forwarded for this long, keeping tunnels (ngrok /
    *  cloudflared) and clients from idle-closing the connection while the
@@ -72,7 +73,9 @@ const HEARTBEAT_CHUNK = ": ping\n\n";
  * Handles: client disconnect (stops reading upstream), stream errors
  * (sends error SSE event before closing).
  */
-export async function streamResponse(options: StreamResponseOptions): Promise<void> {
+export interface StreamResponseResult { completed: boolean }
+
+export async function streamResponse(options: StreamResponseOptions): Promise<StreamResponseResult> {
   const {
     writer,
     api,
@@ -148,6 +151,7 @@ export async function streamResponse(options: StreamResponseOptions): Promise<vo
       }
       try {
         await writer.write(chunk);
+        options.onChunkWritten?.(chunk);
         applyWrittenChunkTrace(written, chunkTrace);
         lastActivity = Date.now();
       } catch (writeErr) {
@@ -178,7 +182,7 @@ export async function streamResponse(options: StreamResponseOptions): Promise<vo
           detail: errMsg,
         });
         // Client disconnected mid-stream — stop reading upstream
-        return;
+        return { completed: false };
       }
     }
     if (debugDumpEnabled()) {
@@ -191,9 +195,10 @@ export async function streamResponse(options: StreamResponseOptions): Promise<vo
         lastEvent: written.lastEvent,
       });
     }
+    return { completed: true };
   } catch (err) {
     if (diagnostics?.abortSignal?.aborted) {
-      return;
+      return { completed: false };
     }
     const errMsg = err instanceof Error ? err.message : "Stream interrupted";
     const errStatus = err instanceof CodexApiError ? err.status : "?";
@@ -244,6 +249,7 @@ export async function streamResponse(options: StreamResponseOptions): Promise<vo
           `data: ${JSON.stringify({ error: { message: errMsg, type: "stream_error" } })}\n\n`,
       );
     } catch { /* client already gone */ }
+    return { completed: false };
   } finally {
     streamDone = true;
     if (heartbeatTimer) clearInterval(heartbeatTimer);

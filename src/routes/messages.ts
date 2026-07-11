@@ -25,10 +25,11 @@ import {
   handleProxyRequest,
 } from "./shared/proxy-handler.js";
 import { handleDirectRequest } from "./shared/direct-request-handler.js";
-import type { FormatAdapter } from "./shared/proxy-handler-types.js";
+import type { FormatAdapter, ProxyRequest } from "./shared/proxy-handler-types.js";
 import { extractAnthropicClientConversationId } from "./shared/anthropic-session-id.js";
 import type { UpstreamRouter } from "../proxy/upstream-router.js";
 import { summarizeRequestForLog } from "../logs/request-summary.js";
+import { beginCallRecord } from "../call-records/capture.js";
 
 function makeError(
   type: AnthropicErrorType,
@@ -186,7 +187,7 @@ export function createMessagesRoutes(
     }
     // Check after translation so suffix-parsed and config-default effort are included.
     const wantThinking = !!codexRequest.reasoning?.effort;
-    const proxyReq = {
+    const proxyReq: ProxyRequest = {
       codexRequest,
       model: buildDisplayModelName(parseModelName(req.model)),
       isStreaming: req.stream,
@@ -195,6 +196,11 @@ export function createMessagesRoutes(
     const fmt = makeAnthropicFormat(wantThinking);
 
     const requestId = c.get("requestId") ?? randomUUID().slice(0, 8);
+    proxyReq.callRecord = beginCallRecord({
+      requestId, route: c.req.path, protocol: "anthropic", request: req,
+      headers: c.req.raw.headers, model: req.model, stream: !!req.stream,
+      contextHints: { protocolSessionId: clientConversationId ?? undefined, source: "claude" },
+    });
     enqueueLogEntry({
       requestId,
       direction: "ingress",

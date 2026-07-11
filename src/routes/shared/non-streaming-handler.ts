@@ -23,6 +23,7 @@ import {
   containsInvalidEncryptedContentSignal,
   getReasoningReplayCache,
 } from "../../proxy/reasoning-replay-cache.js";
+import { completeCallRecord } from "../../call-records/capture.js";
 
 
 const MAX_EMPTY_RETRIES = 2;
@@ -127,6 +128,15 @@ export async function handleNonStreaming(options: HandleNonStreamingOptions): Pr
         usage: result.usage,
         expectsImageGen: req.expectsImageGen,
         released,
+      });
+      completeCallRecord(req.callRecord, {
+        response: result.response,
+        usage: result.usage,
+        provider: "codex",
+        accountId: currentEntryId,
+        upstreamModel: req.codexRequest.model,
+        responseId: result.responseId,
+        contextHints: conversationId ? { derivedConversationId: conversationId } : undefined,
       });
       return c.json(result.response);
     } catch (collectErr) {

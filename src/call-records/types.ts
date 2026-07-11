@@ -31,6 +31,7 @@ export interface PendingCallRecord {
   contextHints: CallContextHints;
   model: string;
   stream: boolean;
+  maxBodyBytes: number;
   finalized: boolean;
 }
 

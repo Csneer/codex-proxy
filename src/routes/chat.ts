@@ -27,6 +27,7 @@ import type { FormatAdapter, ProxyRequest } from "./shared/proxy-handler-types.j
 import type { UpstreamRouter } from "../proxy/upstream-router.js";
 import { summarizeRequestForLog } from "../logs/request-summary.js";
 import { apiKeyAuth } from "../middleware/api-key-auth.js";
+import { beginCallRecord } from "../call-records/capture.js";
 
 function makeOpenAIFormat(wantReasoning: boolean): FormatAdapter {
   return {
@@ -125,6 +126,11 @@ export function createChatRoutes(
     };
 
     const requestId = c.get("requestId") ?? randomUUID().slice(0, 8);
+    proxyReq.callRecord = beginCallRecord({
+      requestId, route: c.req.path, protocol: "openai", request: req,
+      headers: c.req.raw.headers, model: req.model, stream: !!req.stream,
+      contextHints: { protocolSessionId: req.user, source: "openai" },
+    });
     enqueueLogEntry({
       requestId,
       direction: "ingress",

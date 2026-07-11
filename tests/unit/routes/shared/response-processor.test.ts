@@ -70,6 +70,23 @@ function createMockCodexApi(): UpstreamAdapter {
 }
 
 describe("streamResponse", () => {
+  it("reports a failed result when the client rejects a translated chunk", async () => {
+    const writer = createMockStream();
+    writer.write.mockRejectedValueOnce(new Error("client gone"));
+    const adapter = createMockAdapter({ streamChunks: ["data: {\"ok\":true}\n\n"] });
+
+    const result = await streamResponse({
+      writer,
+      api: {} as never,
+      response: new Response(""),
+      model: "gpt-5.4",
+      adapter,
+      onUsage: () => {},
+      heartbeatMs: 0,
+    });
+
+    expect(result).toEqual({ completed: false });
+  });
   beforeEach(() => {
     vi.restoreAllMocks();
     recordedStreamCloseEvents.length = 0;

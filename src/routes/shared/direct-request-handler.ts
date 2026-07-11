@@ -15,6 +15,9 @@ import { streamResponse } from "./response-processor.js";
 import { toErrorStatus } from "./proxy-error-handler.js";
 import type { HandleDirectRequestOptions } from "./proxy-handler-types.js";
 import { canReturnStreamError, streamErrorResponse } from "./stream-error-response.js";
+import { completeCallRecord } from "../../call-records/capture.js";
+import { createStreamResponseCapture } from "../../call-records/stream-response.js";
+import type { UsageInfo } from "../../translation/codex-event-extractor.js";
 
 export async function handleDirectRequest(options: HandleDirectRequestOptions): Promise<Response> {
   const { c, upstream, req, fmt } = options;
@@ -94,6 +97,10 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
     c.header("X-Accel-Buffering", "no");
 
     return stream(c, async (s) => {
+      let usage: UsageInfo | undefined;
+      let responseId: string | null = null;
+      let responseCompleted = false;
+      const responseCapture = createStreamResponseCapture(req.callRecord?.maxBodyBytes ?? 1_048_576);
       s.onAbort(() => {
         console.warn(`[stream-client-abort] rid=${requestId.slice(0, 8)} tag=${fmt.tag} model=${req.model}`);
         recordStreamCloseEvent({
@@ -106,15 +113,20 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
         });
         abortController.abort();
       });
-      await streamResponse({
+      const result = await streamResponse({
         writer: s,
         api: upstream,
         response: rawResponse,
         model: req.model,
         adapter: fmt,
-        onUsage: () => {},
+        onUsage: (value) => { usage = value; },
         tupleSchema: req.tupleSchema,
-        onResponseId: () => {},
+        onResponseId: (value) => { responseId = value; },
+        onResponseCompleted: (value) => {
+          if (value) responseId = value;
+          responseCompleted = true;
+        },
+        onChunkWritten: (chunk) => responseCapture.appendWrittenChunk(chunk),
         diagnostics: {
           requestId: requestId.slice(0, 8),
           tag: fmt.tag,
@@ -123,6 +135,15 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
           abortSignal: abortController.signal,
         },
       });
+      if (result.completed && responseCompleted && usage) {
+        completeCallRecord(req.callRecord, {
+          response: responseCapture.finish(),
+          usage,
+          provider: upstream.tag,
+          upstreamModel: req.codexRequest.model,
+          responseId,
+        });
+      }
     });
   }
 
@@ -132,6 +153,13 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
       response: rawResponse,
       model: req.model,
       tupleSchema: req.tupleSchema,
+    });
+    completeCallRecord(req.callRecord, {
+      response: result.response,
+      usage: result.usage,
+      provider: upstream.tag,
+      upstreamModel: req.codexRequest.model,
+      responseId: result.responseId,
     });
     return c.json(result.response);
   } catch (err) {

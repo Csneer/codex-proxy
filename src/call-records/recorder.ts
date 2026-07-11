@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { resolveCallContext } from "./context.js";
 import { redactCallContent, serializeBounded } from "./redact.js";
+import { getStreamResponseCaptureMetadata } from "./stream-response.js";
 import type { CallRecordStore } from "./store.js";
 import type {
   CallContextHints,
@@ -47,6 +48,7 @@ export function createCallRecorder(options: CallRecorderOptions): CallRecorder {
         ...input,
         startedAt: new Date(startedAtMs).toISOString(),
         startedAtMs,
+        maxBodyBytes: options.maxBodyBytes(),
         finalized: false,
       };
     },
@@ -61,8 +63,9 @@ export function createCallRecorder(options: CallRecorderOptions): CallRecorder {
 
       try {
         const completedAtMs = now();
-        const maxBodyBytes = options.maxBodyBytes();
+        const maxBodyBytes = pending.maxBodyBytes;
         const request = serializeBounded(redactCallContent(pending.request), maxBodyBytes);
+        const streamResponseMetadata = getStreamResponseCaptureMetadata(result.response);
         const response = serializeBounded(redactCallContent(result.response), maxBodyBytes);
         const usage = result.usage ?? {};
         const completed: CompletedCallRecord = {
@@ -89,9 +92,9 @@ export function createCallRecorder(options: CallRecorderOptions): CallRecorder {
           requestJson: request.json,
           responseJson: response.json,
           requestBytes: request.originalBytes,
-          responseBytes: response.originalBytes,
+          responseBytes: streamResponseMetadata?.originalBytes ?? response.originalBytes,
           requestTruncated: request.truncated,
-          responseTruncated: response.truncated,
+          responseTruncated: response.truncated || streamResponseMetadata?.truncated === true,
         };
         return options.store.insert(completed);
       } catch (error) {

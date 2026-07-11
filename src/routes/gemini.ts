@@ -28,6 +28,8 @@ import {
 import { handleDirectRequest } from "./shared/direct-request-handler.js";
 import type { FormatAdapter, ProxyRequest } from "./shared/proxy-handler-types.js";
 import type { UpstreamRouter } from "../proxy/upstream-router.js";
+import { beginCallRecord } from "../call-records/capture.js";
+import { randomUUID } from "node:crypto";
 
 function makeError(
   code: number,
@@ -148,6 +150,12 @@ export function createGeminiRoutes(
       clientConversationId: c.req.header("x-conversation-id") || c.req.header("x-session-id"),
       tupleSchema,
     };
+    const requestId = c.get("requestId") ?? randomUUID().slice(0, 8);
+    proxyReq.callRecord = beginCallRecord({
+      requestId, route: c.req.path, protocol: "gemini", request: req,
+      headers: c.req.raw.headers, model: geminiModel, stream: isStreaming,
+      contextHints: { protocolSessionId: proxyReq.clientConversationId, source: "gemini" },
+    });
 
     if (routeMatch?.kind === "api-key" || routeMatch?.kind === "adapter") {
       const directModel = routeMatch.resolvedModel ?? geminiModel;

@@ -13,6 +13,8 @@ import { streamResponse } from "./response-processor.js";
 import { createResponseMetadataCollector } from "./response-metadata-collector.js";
 import { logProxyUsage } from "./proxy-usage-log.js";
 import { getReasoningReplayCache } from "../../proxy/reasoning-replay-cache.js";
+import { completeCallRecord } from "../../call-records/capture.js";
+import { createStreamResponseCapture } from "../../call-records/stream-response.js";
 
 export interface HandleStreamingOptions {
   c: Context;
@@ -66,6 +68,7 @@ export function handleStreaming(options: HandleStreamingOptions): Response {
   let streamCompletedWithoutError = false;
   const metadataCollector = createResponseMetadataCollector();
   const reasoningReplayCache = getReasoningReplayCache();
+  const responseCapture = createStreamResponseCapture(req.callRecord?.maxBodyBytes ?? 1_048_576);
 
   return stream(c, async (s) => {
     let clientAborted = false;
@@ -118,7 +121,7 @@ export function handleStreaming(options: HandleStreamingOptions): Response {
       });
     };
     try {
-      await streamResponse({
+      const streamResult = await streamResponse({
         writer: s,
         api: capturedApi,
         response,
@@ -146,6 +149,7 @@ export function handleStreaming(options: HandleStreamingOptions): Response {
           }
           recordStreamAffinity();
         },
+        onChunkWritten: (chunk) => responseCapture.appendWrittenChunk(chunk),
         diagnostics: {
           requestId: requestId.slice(0, 8),
           tag: fmt.tag,
@@ -156,8 +160,19 @@ export function handleStreaming(options: HandleStreamingOptions): Response {
           abortSignal: abortController.signal,
         },
       });
-      streamFailed = false;
-      streamCompletedWithoutError = true;
+      streamFailed = !streamResult.completed;
+      streamCompletedWithoutError = streamResult.completed;
+      if (streamResult.completed && responseCompleted && usageInfo) {
+        completeCallRecord(req.callRecord, {
+          response: responseCapture.finish(),
+          usage: usageInfo,
+          provider: "codex",
+          accountId: capturedEntryId,
+          upstreamModel: req.codexRequest.model,
+          responseId: capturedResponseId,
+          contextHints: { derivedConversationId: conversationId },
+        });
+      }
     } finally {
       if (streamFailed && !clientAborted && !abortController.signal.aborted) {
         abortController.abort();

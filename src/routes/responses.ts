@@ -32,6 +32,8 @@ import {
 } from "../proxy/openai-subagent.js";
 import { PASSTHROUGH_FORMAT } from "./responses-passthrough.js";
 import { handleCompact } from "./responses-compact.js";
+import { beginCallRecord } from "../call-records/capture.js";
+import type { ProxyRequest } from "./shared/proxy-handler-types.js";
 
 // Re-export for downstream consumers
 export { extractResponseUsage, extractImageGenUsage, streamPassthrough, collectPassthrough } from "./responses-passthrough.js";
@@ -237,7 +239,7 @@ export function createResponsesRoutes(
     }
 
     const clientWantsStream = body.stream !== false;
-    const proxyReq = {
+    const proxyReq: ProxyRequest = {
       codexRequest,
       model: displayModel,
       isStreaming: clientWantsStream,
@@ -246,6 +248,15 @@ export function createResponsesRoutes(
     };
 
     const requestId = c.get("requestId") ?? randomUUID().slice(0, 8);
+    proxyReq.callRecord = beginCallRecord({
+      requestId, route: c.req.path, protocol: "responses", request: body,
+      headers: c.req.raw.headers, model: rawModel, stream: clientWantsStream,
+      contextHints: {
+        protocolSessionId: clientMetadata.session_id,
+        protocolTaskId: codexRequest.parentThreadId,
+        source: "responses",
+      },
+    });
     enqueueLogEntry({
       requestId,
       direction: "ingress",

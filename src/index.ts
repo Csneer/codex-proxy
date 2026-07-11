@@ -50,6 +50,7 @@ import { createRuntimeUpstreamRouter } from "./proxy/upstream-router-bootstrap.j
 import { startOllamaBridge, stopOllamaBridge } from "./ollama/server.js";
 import { createOfficialAgentRoutes } from "./routes/official-agent.js";
 import { installUncaughtErrorHandlers } from "./logs/error-log.js";
+import { closeCallRecordService, initializeCallRecordService } from "./call-records/service.js";
 import { awaitServerListening } from "./utils/await-listening.js";
 
 export interface ServerHandle {
@@ -125,6 +126,7 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
 
   // Build upstream router from config
   const cfg = getConfig();
+  initializeCallRecordService(cfg);
 
   // Wire WS connection pool to user config (defaults to enabled). Without
   // this call `getWsPool()` would always use DEFAULT_WS_POOL_CONFIG and
@@ -283,6 +285,7 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
         proxyPool.destroy();
         cookieJar.destroy();
         accountPool.destroy();
+        closeCallRecordService();
         resolve();
       });
     });
