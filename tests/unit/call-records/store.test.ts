@@ -191,6 +191,16 @@ describe("CallRecordStore search", () => {
     }
   });
 
+  it("finds CJK substrings when FTS5 tokenization cannot", () => {
+    const { store } = createStore();
+    expect(store.insert(record({
+      requestId: "cjk",
+      requestJson: JSON.stringify({ prompt: "分析日常使用情况" }),
+    }))).toBe(true);
+
+    expect(store.list({ search: "使用" }).records.map((item) => item.requestId)).toEqual(["cjk"]);
+  });
+
   it("falls back to escaped parameterized LIKE search", () => {
     const { store } = createStore({ forceSearchMode: "like" });
     seed(store);

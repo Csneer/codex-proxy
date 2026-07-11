@@ -107,6 +107,10 @@ function toFtsQuery(value: string): string {
     .join(" AND ");
 }
 
+function containsCjk(value: string): boolean {
+  return /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u.test(value);
+}
+
 function preview(json: string): string {
   return json.length > PREVIEW_LENGTH ? `${json.slice(0, PREVIEW_LENGTH)}…` : json;
 }
@@ -499,7 +503,7 @@ export class CallRecordStore {
     }
     const search = query.search?.trim();
     if (search) {
-      if (this.searchMode === "fts5") {
+      if (this.searchMode === "fts5" && !containsCjk(search)) {
         filters.push("r.rowid IN (SELECT rowid FROM call_records_fts WHERE call_records_fts MATCH @search)");
         params.search = toFtsQuery(search);
       } else {

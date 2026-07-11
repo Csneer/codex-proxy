@@ -6,6 +6,10 @@ describe("redactCallContent", () => {
     const value = redactCallContent({
       authorization: "Bearer top-secret",
       headers: { cookie: "sid=secret", "x-api-key": "sk-header-secret" },
+      extraHeaders: {
+        "x-auth-token": "auth-secret",
+        "x_goog_api_key": "google-secret",
+      },
       nested: {
         api_key: "sk-api-secret",
         access_token: "access-secret",
@@ -16,6 +20,9 @@ describe("redactCallContent", () => {
         bearerInText: "Bearer abcdefghijklmnopqrstuvwxyz012345",
         jwtInText: "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.signaturevalue",
         apiKeyInText: "sk-proj-abcdefghijklmnopqrstuvwxyz012345",
+        github_token: "github-secret",
+        "private-key": "private-secret",
+        prose: "Contact person@example.com about ordinary token usage analysis.",
       },
       prompt: "Explain why token usage rose yesterday.",
     });
@@ -23,6 +30,10 @@ describe("redactCallContent", () => {
     expect(value).toEqual({
       authorization: "[REDACTED]",
       headers: { cookie: "[REDACTED]", "x-api-key": "[REDACTED]" },
+      extraHeaders: {
+        "x-auth-token": "[REDACTED]",
+        "x_goog_api_key": "[REDACTED]",
+      },
       nested: {
         api_key: "[REDACTED]",
         access_token: "[REDACTED]",
@@ -33,6 +44,9 @@ describe("redactCallContent", () => {
         bearerInText: "[REDACTED_TOKEN]",
         jwtInText: "[REDACTED_TOKEN]",
         apiKeyInText: "[REDACTED_TOKEN]",
+        github_token: "[REDACTED]",
+        "private-key": "[REDACTED]",
+        prose: "Contact [REDACTED_EMAIL] about ordinary token usage analysis.",
       },
       prompt: "Explain why token usage rose yesterday.",
     });

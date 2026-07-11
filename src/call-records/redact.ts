@@ -7,8 +7,8 @@ export interface BoundedJson {
 const REDACTED = "[REDACTED]";
 const REDACTED_EMAIL = "[REDACTED_EMAIL]";
 const REDACTED_TOKEN = "[REDACTED_TOKEN]";
-const SECRET_KEY_RE = /^(?:authorization|proxy-authorization|cookie|set-cookie|x-api-key|api[_-]?key|token|access[_-]?token|refresh[_-]?token|session[_-]?token|jwt|password|passwd|secret|client[_-]?secret|shared[_-]?secret|oauth[_-]?(?:token|secret)|credential|credentials)$/i;
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const SECRET_KEY_RE = /^(?:authorization|proxy[-_]?authorization|cookie|set[-_]?cookie|x[-_]api[-_]key|x[-_]auth[-_]token|x[-_]goog[-_]api[-_]key|api[-_]?key|token|access[-_]?token|refresh[-_]?token|session[-_]?token|github[-_]?token|private[-_]?key|jwt|password|passwd|secret|client[-_]?secret|shared[-_]?secret|oauth[-_]?(?:token|secret)|credential|credentials)$/i;
+const EMAIL_RE = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
 const BEARER_RE = /^Bearer\s+[A-Za-z0-9._~+/=-]{16,}$/i;
 const JWT_RE = /^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
 const API_KEY_RE = /^(?:sk|rk|pk)-(?:proj-)?[A-Za-z0-9_-]{20,}$/i;
@@ -40,9 +40,8 @@ function redactString(value: string): string | BinaryMarker {
     const marker = binaryMarker(dataUrl[1], dataUrl[2]);
     if (marker) return marker;
   }
-  if (EMAIL_RE.test(value)) return REDACTED_EMAIL;
   if (BEARER_RE.test(value) || JWT_RE.test(value) || API_KEY_RE.test(value)) return REDACTED_TOKEN;
-  return value;
+  return value.replace(EMAIL_RE, REDACTED_EMAIL);
 }
 
 function redact(value: unknown, parentMediaType?: string, key?: string, seen = new WeakSet<object>()): unknown {
