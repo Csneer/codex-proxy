@@ -317,6 +317,22 @@ context 或 max-token 开关可用。
 | GET | `/debug/diagnostics` | 系统诊断信息（仅 localhost） |
 | GET | `/debug/models` | 模型存储内部状态 |
 
+### 成功调用记录
+
+以下端点复用现有 Dashboard 鉴权。列表只返回短预览；完整脱敏正文仅由详情端点返回。
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/admin/call-records` | 按服务端筛选与分页列出成功调用 |
+| GET | `/admin/call-records/:id` | 获取一条记录及完整脱敏请求/响应 JSON |
+| GET | `/admin/call-contexts` | 按会话、任务和执行目录聚合 |
+| GET | `/admin/call-records/state` | 返回采集配置、SQLite 路径、数量、大小和搜索模式 |
+| POST | `/admin/call-records/clear` | 删除全部调用记录与上下文 |
+
+`GET /admin/call-records` 支持 `from`、`to`、`context_id`、`session_id`、`task_id`、`cwd`、`model`、`provider`、`account_id`、`protocol`、`stream`、`search`、`sort`、`order`、`limit`（最大 200）和 `offset`。`sort` 仅允许 `completed_at`、`latency_ms`、`input_tokens`、`output_tokens`，`order` 仅允许 `asc` 或 `desc`。
+
+采集通过 `call_records.enabled`（或 `/admin/general-settings` 的 `call_records_enabled`）显式开启，数据保存在 `data/call-records.sqlite`。只写入成功调用，正文会脱敏并限制大小；当前 MVP 不评分、不评估。显式分组请求头为 `x-codex-proxy-session-id`、`x-codex-proxy-task-id` 和 `x-codex-proxy-cwd`。
+
 ## 官方 Codex App Server Bridge
 
 可选桥接到本机官方 `codex app-server`。这条路径用于复用官方 Codex app

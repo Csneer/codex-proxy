@@ -22,6 +22,24 @@ export function getStreamResponseCaptureMetadata(value: unknown): CapturedStream
 export function createStreamResponseCapture(maxBytes: number): StreamResponseCapture {
   let buffer = "";
   const events: Array<{ event?: string; data: unknown }> = [];
+  let totalEvents = 0;
+  let originalBytes = 2;
+  let retainedBytes = 2;
+  let omittedEvents = 0;
+  let overflowed = false;
+
+  const observeEvent = (value: { event?: string; data: unknown }): void => {
+    const eventBytes = Buffer.byteLength(JSON.stringify(value));
+    originalBytes += eventBytes + (totalEvents > 0 ? 1 : 0);
+    totalEvents++;
+    if (overflowed || retainedBytes + eventBytes + (events.length > 0 ? 1 : 0) > maxBytes) {
+      overflowed = true;
+      omittedEvents++;
+      return;
+    }
+    events.push(value);
+    retainedBytes += eventBytes + (events.length > 1 ? 1 : 0);
+  };
 
   const drain = (): void => {
     for (;;) {
@@ -40,7 +58,7 @@ export function createStreamResponseCapture(maxBytes: number): StreamResponseCap
       if (!raw || raw === "[DONE]") continue;
       let data: unknown = raw;
       try { data = JSON.parse(raw); } catch { /* retain text */ }
-      events.push(event ? { event, data } : { data });
+      observeEvent(event ? { event, data } : { data });
     }
   };
 
@@ -51,12 +69,26 @@ export function createStreamResponseCapture(maxBytes: number): StreamResponseCap
     },
     finish() {
       drain();
-      const bounded = serializeBounded(events, maxBytes);
-      const value = bounded.truncated
-        ? { truncated: true, original_bytes: bounded.originalBytes, events: JSON.parse(bounded.json) }
-        : events;
+      let value: unknown = events;
+      let truncated = omittedEvents > 0;
+      if (truncated) {
+        let retainedEvents = events;
+        let wrapper = { truncated: true, original_bytes: originalBytes, omitted_events: omittedEvents, events: retainedEvents };
+        while (retainedEvents.length > 0 && Buffer.byteLength(JSON.stringify(wrapper)) > maxBytes) {
+          retainedEvents = retainedEvents.slice(0, -1);
+          omittedEvents++;
+          wrapper = { truncated: true, original_bytes: originalBytes, omitted_events: omittedEvents, events: retainedEvents };
+        }
+        value = wrapper;
+      } else {
+        const bounded = serializeBounded(events, maxBytes);
+        if (bounded.truncated) {
+          truncated = true;
+          value = { truncated: true, original_bytes: bounded.originalBytes, omitted_events: 0, events: JSON.parse(bounded.json) };
+        }
+      }
       Object.defineProperty(value, CAPTURE_METADATA, {
-        value: { originalBytes: bounded.originalBytes, truncated: bounded.truncated },
+        value: { originalBytes, truncated },
       });
       return value;
     },

@@ -12,6 +12,10 @@ const EMAIL_RE = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
 const BEARER_RE = /^Bearer\s+[A-Za-z0-9._~+/=-]{16,}$/i;
 const JWT_RE = /^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
 const API_KEY_RE = /^(?:sk|rk|pk)-(?:proj-)?[A-Za-z0-9_-]{20,}$/i;
+const EMBEDDED_BEARER_RE = /\bBearer\s+[A-Za-z0-9._~+/=-]{16,}/gi;
+const EMBEDDED_JWT_RE = /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g;
+const EMBEDDED_API_KEY_RE = /\b(?:sk|rk|pk)-(?:proj-)?[A-Za-z0-9_-]{20,}\b/gi;
+const QUERY_SECRET_RE = /([?&](?:api[-_]?key|access[-_]?token|refresh[-_]?token|token|secret|password)=)[^&#\s]+/gi;
 const DATA_URL_RE = /^data:([^;,]+);base64,([A-Za-z0-9+/=\s]+)$/;
 const BASE64_RE = /^[A-Za-z0-9+/]+={0,2}$/;
 const BINARY_MIN_BYTES = 1024;
@@ -41,7 +45,12 @@ function redactString(value: string): string | BinaryMarker {
     if (marker) return marker;
   }
   if (BEARER_RE.test(value) || JWT_RE.test(value) || API_KEY_RE.test(value)) return REDACTED_TOKEN;
-  return value.replace(EMAIL_RE, REDACTED_EMAIL);
+  return value
+    .replace(EMBEDDED_BEARER_RE, REDACTED_TOKEN)
+    .replace(EMBEDDED_JWT_RE, REDACTED_TOKEN)
+    .replace(EMBEDDED_API_KEY_RE, REDACTED_TOKEN)
+    .replace(QUERY_SECRET_RE, `$1${REDACTED}`)
+    .replace(EMAIL_RE, REDACTED_EMAIL);
 }
 
 function redact(value: unknown, parentMediaType?: string, key?: string, seen = new WeakSet<object>()): unknown {

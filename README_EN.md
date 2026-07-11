@@ -482,8 +482,27 @@ server:
 | `auth` | `rotation_strategy`, `rate_limit_backoff_seconds` | Rotation strategy and rate limit backoff |
 | `tls` | `proxy_url`, `force_http11` | TLS proxy and HTTP version |
 | `quota` | `refresh_interval_minutes`, `warning_thresholds`, `skip_exhausted` | Usage snapshots, threshold config, exhausted-account skipping |
+| `call_records` | `enabled`, `retention_days`, `max_body_bytes` | Local SQLite retention, lifetime, and per-body limit for successful calls |
 | `session` | `ttl_minutes`, `cleanup_interval_minutes` | Dashboard session management |
 | `ollama` | `enabled`, `host`, `port`, `version`, `disable_vision` | Ollama-compatible bridge |
+
+### Successful Call Records
+
+The Dashboard **Call Records** page searches day-to-day LLM calls, groups them by session/task/working directory, and shows tokens, latency, model, provider, plus redacted request and response bodies. The MVP stores and retrieves data only; it does not score call quality.
+
+Capture is disabled by default. Enable it in Dashboard → Settings or `data/local.yaml`:
+
+```yaml
+call_records:
+  enabled: true
+  retention_days: 30       # null keeps records indefinitely
+  max_body_bytes: 1048576  # applied separately to request and response
+```
+
+- Records live in `data/call-records.sqlite`. Only semantically completed calls whose output was written cleanly to the client are stored; upstream failures, cancellation, interruption, client write failures, and failed retries are excluded.
+- OpenAI, Anthropic, Gemini, Responses, and Official Agent paths are supported. Optional `x-codex-proxy-session-id`, `x-codex-proxy-task-id`, and `x-codex-proxy-cwd` headers provide explicit grouping and override protocol-derived identity.
+- Secret fields, Bearer/JWT/API-key shapes, email addresses, and large binary bodies are redacted or replaced; oversized bodies remain valid truncated JSON. Redaction reduces risk but does not make the database safe to publish as anonymous data.
+- Disabling capture preserves existing rows. Clear them from the Call Records page after confirmation. Retention cleanup runs at startup and daily.
 
 ### Model Aliases
 

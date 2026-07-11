@@ -18,4 +18,22 @@ describe("createStreamResponseCapture", () => {
     capture.appendWrittenChunk(`data: ${JSON.stringify({ text: "x".repeat(200) })}\n\n`);
     expect(capture.finish()).toEqual(expect.objectContaining({ truncated: true }));
   });
+
+  it("stops retaining events after the capture limit while counting the full stream", () => {
+    const capture = createStreamResponseCapture(1024);
+    for (let index = 0; index < 200; index++) {
+      capture.appendWrittenChunk(`data: ${JSON.stringify({ index, text: "x".repeat(200) })}\n\n`);
+    }
+
+    const result = capture.finish() as {
+      truncated: boolean;
+      original_bytes: number;
+      omitted_events: number;
+      events: unknown;
+    };
+    expect(result.truncated).toBe(true);
+    expect(result.original_bytes).toBeGreaterThan(40_000);
+    expect(result.omitted_events).toBeGreaterThan(0);
+    expect(Buffer.byteLength(JSON.stringify(result.events))).toBeLessThanOrEqual(1024);
+  });
 });

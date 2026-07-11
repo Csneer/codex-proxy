@@ -20,6 +20,8 @@
 
 ### Added
 
+- 新增默认关闭的本地成功调用记录 MVP：仅在 OpenAI / Anthropic / Gemini / Responses / Official Agent 调用语义完成且客户端输出成功后写入 `data/call-records.sqlite`，失败、取消、中断和客户端写失败不留存；请求/响应正文在递归脱敏、二进制替换和独立大小上限后保存，支持会话/任务/执行目录分组、FTS5/LIKE 检索、保留期清理和 Dashboard “调用记录”平铺/分组查询页。管理 API 复用 Dashboard 鉴权，列表只返回预览、详情按需加载完整脱敏正文；当前版本明确不评分、不评估调用质量。
+
 - Release Notes 改为 LLM 双语生成（替换并删除此前的逐词替换字典 `translate-notes.js`，机翻词盐根因）：新增 `summarize-release-notes.mjs` 调 OpenAI-compatible endpoint（secrets：`RELEASE_NOTES_BASE_URL/API_KEY/MODEL`）按 Electron 用户视角输出「✨ 本次更新」中文亮点 + 英文对照 + 折叠完整 commit 清单；输出强校验（JSON 契约、必须含 CJK、条数上限），LLM 不可用/校验失败时回退按 type 分组的纯英文列表，脚本永不非零退出（notes 问题不阻塞发版）；notes 过滤规则对齐 bump 的 `SKIP_RELEASE_PATTERN`（排除 chore/docs/ci/test/refactor/style）；已用真实 gateway 连调 3 次验证双语产出（`.github/scripts/summarize-release-notes.mjs`、`.github/scripts/generate-release-notes.sh`、`tests/unit/ci/summarize-release-notes.test.ts`、`tests/unit/ci/release-notes-script.test.ts`）
 - CI 发版通知 webhook：release 成功/失败、promote 成功/ff 前提破坏时 POST 纯文本到 `NOTIFY_WEBHOOK_URL` secret（ntfy 开箱可用）；secret 未配置时静默跳过、永不阻塞流水线（`.github/scripts/notify-webhook.sh`、`.github/workflows/release.yml`、`.github/workflows/promote-dev-to-master.yml`）
 - 自定义 API Key 的 Upstream protocol 新增 Anthropic Messages / Gemini generateContent 选项，并支持对应 base URL、模型列表获取与底层转发（`shared/hooks/use-api-keys.ts`、`src/auth/api-key-model-cache.ts`、`src/proxy/adapter-factory.ts`、`web/src/components/ApiKeyManager.tsx`）。

@@ -533,9 +533,28 @@ server:
 | `auth` | `rotation_strategy`, `rate_limit_backoff_seconds` | 轮换策略与限流退避 |
 | `tls` | `proxy_url`, `force_http11` | TLS 代理与 HTTP 版本 |
 | `quota` | `refresh_interval_minutes`, `warning_thresholds`, `skip_exhausted` | 用量快照、阈值配置与耗尽账号跳过 |
+| `call_records` | `enabled`, `retention_days`, `max_body_bytes` | 成功调用正文的本地 SQLite 留存、保留期和单正文大小上限 |
 | `session` | `ttl_minutes`, `cleanup_interval_minutes` | Dashboard session 管理 |
 | `ollama` | `enabled`, `host`, `port`, `version`, `disable_vision` | Ollama 兼容桥接 |
 | `official_agent` | `enabled`, `api_key`, `app_server_url`, `auth` | 官方 Codex app-server 桥接，用于复用 Chrome/browser 插件 |
+
+### 成功调用记录
+
+Dashboard 的 **调用记录** 页面可以检索日常 LLM 调用，按会话、任务或执行目录分组，并查看 token、耗时、模型、提供方及脱敏后的请求/响应正文。MVP 仅负责存储与检索，不进行调用质量评分。
+
+该功能默认关闭。可在 Dashboard → Settings 中开启，或写入 `data/local.yaml`：
+
+```yaml
+call_records:
+  enabled: true
+  retention_days: 30       # null 表示永久保留
+  max_body_bytes: 1048576  # 请求、响应分别计算
+```
+
+- 数据保存在 `data/call-records.sqlite`，仅语义成功且完整写给客户端的调用入库；上游失败、取消、中断、客户端写失败和重试失败均不保存。
+- 支持 OpenAI、Anthropic、Gemini、Responses 和 Official Agent 路径。可选请求头 `x-codex-proxy-session-id`、`x-codex-proxy-task-id`、`x-codex-proxy-cwd` 用于显式分组，并优先于协议内身份。
+- 密钥字段、Bearer/JWT/API key 形态、邮箱和大体积二进制内容会被脱敏或替换，超限正文以有效 JSON 截断。脱敏是降低风险的防护，不应将数据库视为可公开分享的匿名数据。
+- 关闭采集只阻止新记录，不删除已有数据；可在调用记录页面确认后清空。保留期清理在启动时和每日执行。
 
 ### 模型映射
 

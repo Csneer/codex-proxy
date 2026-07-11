@@ -21,6 +21,9 @@ export function GeneralSettings() {
   const [draftMaxConcurrent, setDraftMaxConcurrent] = useState<string | null>(null);
   const [draftRequestInterval, setDraftRequestInterval] = useState<string | null>(null);
   const [draftUsageHistoryRetention, setDraftUsageHistoryRetention] = useState<string | null>(null);
+  const [draftCallRecordsEnabled, setDraftCallRecordsEnabled] = useState<boolean | null>(null);
+  const [draftCallRecordsRetention, setDraftCallRecordsRetention] = useState<string | null>(null);
+  const [draftCallRecordsMaxBytes, setDraftCallRecordsMaxBytes] = useState<string | null>(null);
   const [draftAutoUpdate, setDraftAutoUpdate] = useState<boolean | null>(null);
   const [draftAutoDownload, setDraftAutoDownload] = useState<boolean | null>(null);
   const [draftShowUpdateDialog, setDraftShowUpdateDialog] = useState<boolean | null>(null);
@@ -39,6 +42,9 @@ export function GeneralSettings() {
   const currentMaxConcurrent = gs.data?.max_concurrent_per_account ?? 3;
   const currentRequestInterval = gs.data?.request_interval_ms ?? 50;
   const currentUsageHistoryRetention = gs.data?.usage_history_retention_days ?? null;
+  const currentCallRecordsEnabled = gs.data?.call_records_enabled ?? false;
+  const currentCallRecordsRetention = gs.data?.call_records_retention_days ?? null;
+  const currentCallRecordsMaxBytes = gs.data?.call_records_max_body_bytes ?? 1_048_576;
   const currentAutoUpdate = gs.data?.auto_update ?? true;
   const currentAutoDownload = gs.data?.auto_download ?? false;
   const currentShowUpdateDialog = gs.data?.show_update_dialog ?? false;
@@ -56,6 +62,9 @@ export function GeneralSettings() {
   const displayMaxConcurrent = draftMaxConcurrent ?? String(currentMaxConcurrent);
   const displayRequestInterval = draftRequestInterval ?? String(currentRequestInterval);
   const displayUsageHistoryRetention = draftUsageHistoryRetention ?? (currentUsageHistoryRetention === null ? "" : String(currentUsageHistoryRetention));
+  const displayCallRecordsEnabled = draftCallRecordsEnabled ?? currentCallRecordsEnabled;
+  const displayCallRecordsRetention = draftCallRecordsRetention ?? (currentCallRecordsRetention === null ? "" : String(currentCallRecordsRetention));
+  const displayCallRecordsMaxBytes = draftCallRecordsMaxBytes ?? String(currentCallRecordsMaxBytes);
   const displayAutoUpdate = draftAutoUpdate ?? currentAutoUpdate;
   const displayAutoDownload = draftAutoDownload ?? currentAutoDownload;
   const displayShowUpdateDialog = draftShowUpdateDialog ?? currentShowUpdateDialog;
@@ -74,6 +83,9 @@ export function GeneralSettings() {
     draftMaxConcurrent !== null ||
     draftRequestInterval !== null ||
     draftUsageHistoryRetention !== null ||
+    draftCallRecordsEnabled !== null ||
+    draftCallRecordsRetention !== null ||
+    draftCallRecordsMaxBytes !== null ||
     draftAutoUpdate !== null ||
     draftAutoDownload !== null ||
     draftShowUpdateDialog !== null;
@@ -150,6 +162,27 @@ export function GeneralSettings() {
       }
     }
 
+    if (draftCallRecordsEnabled !== null) {
+      patch.call_records_enabled = draftCallRecordsEnabled;
+    }
+
+    if (draftCallRecordsRetention !== null) {
+      const trimmed = draftCallRecordsRetention.trim();
+      if (trimmed === "") {
+        patch.call_records_retention_days = null;
+      } else {
+        const val = Number(trimmed);
+        if (!Number.isInteger(val) || val < 1) return;
+        patch.call_records_retention_days = val;
+      }
+    }
+
+    if (draftCallRecordsMaxBytes !== null) {
+      const val = Number(draftCallRecordsMaxBytes);
+      if (!Number.isInteger(val) || val < 1024) return;
+      patch.call_records_max_body_bytes = val;
+    }
+
     if (draftAutoUpdate !== null) {
       patch.auto_update = draftAutoUpdate;
     }
@@ -176,10 +209,13 @@ export function GeneralSettings() {
     setDraftMaxConcurrent(null);
     setDraftRequestInterval(null);
     setDraftUsageHistoryRetention(null);
+    setDraftCallRecordsEnabled(null);
+    setDraftCallRecordsRetention(null);
+    setDraftCallRecordsMaxBytes(null);
     setDraftAutoUpdate(null);
     setDraftAutoDownload(null);
     setDraftShowUpdateDialog(null);
-  }, [draftPort, draftProxyUrl, draftForceHttp11, draftInjectContext, draftSuppressDirectives, draftDefaultModel, draftReasoningEffort, draftRefreshEnabled, draftRefreshMargin, draftRefreshConcurrency, draftMaxConcurrent, draftRequestInterval, draftUsageHistoryRetention, draftAutoUpdate, draftAutoDownload, draftShowUpdateDialog, gs]);
+  }, [draftPort, draftProxyUrl, draftForceHttp11, draftInjectContext, draftSuppressDirectives, draftDefaultModel, draftReasoningEffort, draftRefreshEnabled, draftRefreshMargin, draftRefreshConcurrency, draftMaxConcurrent, draftRequestInterval, draftUsageHistoryRetention, draftCallRecordsEnabled, draftCallRecordsRetention, draftCallRecordsMaxBytes, draftAutoUpdate, draftAutoDownload, draftShowUpdateDialog, gs]);
 
   const inputCls =
     "w-full px-3 py-2 bg-white dark:bg-bg-dark border border-gray-200 dark:border-border-dark rounded-lg text-[0.78rem] font-mono text-slate-700 dark:text-text-main outline-none focus:ring-1 focus:ring-primary";
@@ -487,6 +523,55 @@ export function GeneralSettings() {
                 placeholder={t("unlimited")}
               />
               <span class="text-xs text-slate-500 dark:text-text-dim">{t("days")}</span>
+            </div>
+          </div>
+
+          <div class="rounded-lg border border-amber-200 bg-amber-50/70 dark:border-amber-800 dark:bg-amber-900/10 p-3 space-y-3">
+            <div class="space-y-1">
+              <div class="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="call-records-enabled"
+                  checked={displayCallRecordsEnabled}
+                  onChange={(e) => setDraftCallRecordsEnabled((e.target as HTMLInputElement).checked)}
+                  class="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
+                />
+                <label for="call-records-enabled" class="text-xs font-semibold text-slate-700 dark:text-text-main cursor-pointer">
+                  {t("generalSettingsCallRecordsEnabled")}
+                </label>
+              </div>
+              <p class="text-xs text-amber-700 dark:text-amber-300">{t("generalSettingsCallRecordsPrivacy")}</p>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div class="space-y-1">
+                <label for="call-records-retention" class="text-xs font-semibold text-slate-700 dark:text-text-main">
+                  {t("generalSettingsCallRecordsRetention")}
+                </label>
+                <input
+                  id="call-records-retention"
+                  aria-label={t("generalSettingsCallRecordsRetention")}
+                  type="number"
+                  min="1"
+                  value={displayCallRecordsRetention}
+                  onInput={(e) => setDraftCallRecordsRetention((e.target as HTMLInputElement).value)}
+                  placeholder={t("unlimited")}
+                  class={inputCls}
+                />
+              </div>
+              <div class="space-y-1">
+                <label for="call-records-max-bytes" class="text-xs font-semibold text-slate-700 dark:text-text-main">
+                  {t("generalSettingsCallRecordsMaxBytes")}
+                </label>
+                <input
+                  id="call-records-max-bytes"
+                  aria-label={t("generalSettingsCallRecordsMaxBytes")}
+                  type="number"
+                  min="1024"
+                  value={displayCallRecordsMaxBytes}
+                  onInput={(e) => setDraftCallRecordsMaxBytes((e.target as HTMLInputElement).value)}
+                  class={inputCls}
+                />
+              </div>
             </div>
           </div>
 

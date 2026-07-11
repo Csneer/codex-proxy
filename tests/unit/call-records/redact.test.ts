@@ -67,6 +67,18 @@ describe("redactCallContent", () => {
       b64_json: { redacted_binary: true, media_type: "application/octet-stream", bytes: 4096 },
     });
   });
+
+  it("redacts credentials embedded in prose and URLs", () => {
+    const value = redactCallContent({
+      prompt: "Use Authorization: Bearer abcdefghijklmnopqrstuvwxyz012345 then call https://example.test?q=1&api_key=plain-secret-value",
+      output: "JWT eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.signaturevalue and key sk-proj-abcdefghijklmnopqrstuvwxyz012345",
+    });
+
+    expect(value).toEqual({
+      prompt: "Use Authorization: [REDACTED_TOKEN] then call https://example.test?q=1&api_key=[REDACTED]",
+      output: "JWT [REDACTED_TOKEN] and key [REDACTED_TOKEN]",
+    });
+  });
 });
 
 describe("serializeBounded", () => {

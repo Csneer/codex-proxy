@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import { describe, it, expect, beforeAll, afterEach } from "vitest";
-import { render, cleanup } from "@testing-library/preact";
+import { render, cleanup, screen } from "@testing-library/preact";
 import { I18nProvider } from "../../shared/i18n/context";
 
 let TabBarComponent: typeof import("./App").TabBar;
@@ -38,5 +38,6 @@ describe("TabBar", () => {
 
     const tabBar = container.firstElementChild;
     expect(tabBar?.className).toContain("flex-wrap");
+    expect(screen.getByText("Call Records").getAttribute("href")).toBe("#/call-records");
   });
 });

@@ -370,6 +370,22 @@ supported.
 | GET | `/debug/diagnostics` | System diagnostics (localhost only) |
 | GET | `/debug/models` | Model store internals |
 
+### Successful Call Records
+
+These endpoints use the existing Dashboard authentication boundary. List responses include only short previews; full redacted bodies are returned by the detail endpoint.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/admin/call-records` | List successful calls with server-side filters and pagination |
+| GET | `/admin/call-records/:id` | Get one record with full redacted request/response JSON |
+| GET | `/admin/call-contexts` | Group calls by session, task, and working directory |
+| GET | `/admin/call-records/state` | Capture configuration, SQLite path, counts, bytes, and search mode |
+| POST | `/admin/call-records/clear` | Delete every call record and context |
+
+`GET /admin/call-records` accepts `from`, `to`, `context_id`, `session_id`, `task_id`, `cwd`, `model`, `provider`, `account_id`, `protocol`, `stream`, `search`, `sort`, `order`, `limit` (maximum 200), and `offset`. `sort` is limited to `completed_at`, `latency_ms`, `input_tokens`, or `output_tokens`; `order` is `asc` or `desc`.
+
+Capture is opt-in through `call_records.enabled` (or `call_records_enabled` in `/admin/general-settings`). Data is stored in `data/call-records.sqlite`. Only successful calls are written, bodies are redacted and bounded, and this MVP does not score or evaluate calls. Explicit grouping headers are `x-codex-proxy-session-id`, `x-codex-proxy-task-id`, and `x-codex-proxy-cwd`.
+
 ## Official Codex App Server Bridge
 
 Optional bridge to a local official `codex app-server` instance. This is the
