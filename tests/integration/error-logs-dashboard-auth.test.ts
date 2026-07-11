@@ -64,6 +64,7 @@ import {
 } from "@src/routes/dashboard-login.js";
 import { createSettingsRoutes } from "@src/routes/admin/settings.js";
 import { createErrorLogRoutes } from "@src/routes/admin/error-logs.js";
+import { createCallRecordRoutes } from "@src/routes/admin/call-records.js";
 import { _resetForTest } from "@src/auth/dashboard-session.js";
 import { appendErrorLog } from "@src/logs/error-log.js";
 
@@ -73,6 +74,7 @@ function createProductionOrderedApp(): Hono {
   app.route("/", createDashboardAuthRoutes());
   app.route("/", createSettingsRoutes());
   app.route("/", createErrorLogRoutes());
+  app.route("/", createCallRecordRoutes());
   return app;
 }
 
@@ -191,5 +193,24 @@ describe("dashboard-authenticated error-log admin actions", () => {
 
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ success: true, proxy_api_key: "secret-key" });
+  });
+
+  it("protects every call record retrieval and deletion endpoint", async () => {
+    const app = createProductionOrderedApp();
+    mockGetConnInfo.mockReturnValue({ remote: { address: "8.8.8.8" } });
+
+    for (const [method, path] of [
+      ["GET", "/admin/call-records"],
+      ["GET", "/admin/call-records/record-1"],
+      ["GET", "/admin/call-contexts"],
+      ["GET", "/admin/call-records/state"],
+      ["POST", "/admin/call-records/clear"],
+    ] as const) {
+      const response = await app.request(path, {
+        method,
+        headers: { "X-Forwarded-For": "8.8.8.8" },
+      });
+      expect(response.status, `${method} ${path}`).toBe(401);
+    }
   });
 });

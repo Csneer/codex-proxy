@@ -4,6 +4,7 @@ import { getConfig, getLocalConfigPath, reloadAllConfigs, ROTATION_STRATEGIES } 
 import { logStore } from "../../logs/store.js";
 import { mutateYaml } from "../../utils/yaml-mutate.js";
 import { isLocalhostRequest } from "../../utils/is-localhost.js";
+import { updateCallRecordServiceConfig } from "../../call-records/service.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -133,6 +134,9 @@ export function createSettingsRoutes(): Hono {
       logs_llm_only: config.logs.llm_only,
       usage_history_retention_days: config.usage_stats.history_retention_days,
       credits_per_usd: config.usage_stats.credits_per_usd,
+      call_records_enabled: config.call_records.enabled,
+      call_records_retention_days: config.call_records.retention_days,
+      call_records_max_body_bytes: config.call_records.max_body_bytes,
     });
   });
 
@@ -161,6 +165,9 @@ export function createSettingsRoutes(): Hono {
       logs_llm_only?: boolean;
       usage_history_retention_days?: number | null;
       credits_per_usd?: number;
+      call_records_enabled?: boolean;
+      call_records_retention_days?: number | null;
+      call_records_max_body_bytes?: number;
     };
 
     // --- validation ---
@@ -247,6 +254,25 @@ export function createSettingsRoutes(): Hono {
       if (!Number.isFinite(body.credits_per_usd) || body.credits_per_usd < 0) {
         c.status(400);
         return c.json({ error: "credits_per_usd must be a number >= 0" });
+      }
+    }
+
+    if (body.call_records_enabled !== undefined && typeof body.call_records_enabled !== "boolean") {
+      c.status(400);
+      return c.json({ error: "call_records_enabled must be a boolean" });
+    }
+
+    if (body.call_records_retention_days !== undefined && body.call_records_retention_days !== null) {
+      if (!Number.isInteger(body.call_records_retention_days) || body.call_records_retention_days < 1) {
+        c.status(400);
+        return c.json({ error: "call_records_retention_days must be an integer >= 1 or null" });
+      }
+    }
+
+    if (body.call_records_max_body_bytes !== undefined) {
+      if (!Number.isInteger(body.call_records_max_body_bytes) || body.call_records_max_body_bytes < 1024) {
+        c.status(400);
+        return c.json({ error: "call_records_max_body_bytes must be an integer >= 1024" });
       }
     }
 
@@ -342,6 +368,17 @@ export function createSettingsRoutes(): Hono {
         if (!data.usage_stats) data.usage_stats = {};
         (data.usage_stats as Record<string, unknown>).credits_per_usd = body.credits_per_usd;
       }
+      if (
+        body.call_records_enabled !== undefined ||
+        body.call_records_retention_days !== undefined ||
+        body.call_records_max_body_bytes !== undefined
+      ) {
+        if (!data.call_records) data.call_records = {};
+        const callRecords = data.call_records as Record<string, unknown>;
+        if (body.call_records_enabled !== undefined) callRecords.enabled = body.call_records_enabled;
+        if (body.call_records_retention_days !== undefined) callRecords.retention_days = body.call_records_retention_days;
+        if (body.call_records_max_body_bytes !== undefined) callRecords.max_body_bytes = body.call_records_max_body_bytes;
+      }
     });
     reloadAllConfigs();
 
@@ -353,6 +390,7 @@ export function createSettingsRoutes(): Hono {
     }
 
     const updated = getConfig();
+    updateCallRecordServiceConfig(updated);
     const restartRequired =
       (body.port !== undefined && body.port !== oldPort) ||
       (body.default_model !== undefined && body.default_model !== oldDefaultModel);
@@ -380,6 +418,9 @@ export function createSettingsRoutes(): Hono {
       logs_llm_only: updated.logs?.llm_only ?? true,
       usage_history_retention_days: updated.usage_stats.history_retention_days,
       credits_per_usd: updated.usage_stats.credits_per_usd,
+      call_records_enabled: updated.call_records.enabled,
+      call_records_retention_days: updated.call_records.retention_days,
+      call_records_max_body_bytes: updated.call_records.max_body_bytes,
       restart_required: restartRequired,
     });
   });

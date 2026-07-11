@@ -33,6 +33,11 @@ const mockConfig = {
     history_retention_days: null as number | null,
     credits_per_usd: 25,
   },
+  call_records: {
+    enabled: false,
+    retention_days: null as number | null,
+    max_body_bytes: 1_048_576,
+  },
 };
 
 vi.mock("@src/config.js", () => ({
@@ -118,6 +123,9 @@ describe("GET /admin/general-settings", () => {
     mockConfig.logs.llm_only = true;
     mockConfig.usage_stats.history_retention_days = null;
     mockConfig.usage_stats.credits_per_usd = 25;
+    mockConfig.call_records.enabled = false;
+    mockConfig.call_records.retention_days = null;
+    mockConfig.call_records.max_body_bytes = 1_048_576;
   });
 
   it("returns current values including logs_llm_only and credits_per_usd", async () => {
@@ -142,6 +150,9 @@ describe("GET /admin/general-settings", () => {
       logs_llm_only: true,
       usage_history_retention_days: null,
       credits_per_usd: 40,
+      call_records_enabled: false,
+      call_records_retention_days: null,
+      call_records_max_body_bytes: 1_048_576,
     });
   });
 });
@@ -152,6 +163,9 @@ describe("POST /admin/general-settings", () => {
     mockConfig.logs.llm_only = true;
     mockConfig.usage_stats.history_retention_days = null;
     mockConfig.usage_stats.credits_per_usd = 25;
+    mockConfig.call_records.enabled = false;
+    mockConfig.call_records.retention_days = null;
+    mockConfig.call_records.max_body_bytes = 1_048_576;
   });
 
   it("persists logs_llm_only without requiring restart", async () => {
@@ -333,5 +347,63 @@ describe("POST /admin/general-settings", () => {
 
     expect(res.status).toBe(200);
     expect(mockLogStore.setState).toHaveBeenCalledWith({ enabled: true });
+  });
+
+  it("persists call record settings without touching other sections", async () => {
+    const app = makeApp();
+    const res = await app.request("/admin/general-settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        call_records_enabled: true,
+        call_records_retention_days: 30,
+        call_records_max_body_bytes: 262_144,
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(mutateYaml).toHaveBeenCalledOnce();
+    const mutate = vi.mocked(mutateYaml).mock.calls[0]?.[1];
+    const localConfig: Record<string, unknown> = {};
+    mutate?.(localConfig);
+    expect(localConfig).toEqual({
+      call_records: {
+        enabled: true,
+        retention_days: 30,
+        max_body_bytes: 262_144,
+      },
+    });
+  });
+
+  it("accepts unlimited call record retention", async () => {
+    const app = makeApp();
+    const res = await app.request("/admin/general-settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ call_records_retention_days: null }),
+    });
+
+    expect(res.status).toBe(200);
+    const mutate = vi.mocked(mutateYaml).mock.calls[0]?.[1];
+    const localConfig: Record<string, unknown> = {};
+    mutate?.(localConfig);
+    expect(localConfig).toEqual({ call_records: { retention_days: null } });
+  });
+
+  it("rejects invalid call record settings", async () => {
+    const invalidBodies = [
+      { call_records_enabled: "yes" },
+      { call_records_retention_days: 0 },
+      { call_records_max_body_bytes: 1023 },
+    ];
+
+    for (const body of invalidBodies) {
+      const res = await makeApp().request("/admin/general-settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      expect(res.status, JSON.stringify(body)).toBe(400);
+    }
   });
 });

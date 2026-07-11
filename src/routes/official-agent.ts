@@ -1,14 +1,20 @@
-import { timingSafeEqual } from "crypto";
+import { randomUUID, timingSafeEqual } from "crypto";
 import { Hono } from "hono";
 import { getConfig } from "../config.js";
 import { CodexAppServerClient } from "../codex-app-server/client.js";
+import { beginCallRecord, completeCallRecord } from "../call-records/capture.js";
+import { createStreamResponseCapture } from "../call-records/stream-response.js";
 import type {
+  CodexAppNotification,
   CodexAppServerBridge,
+  CodexAppTurnStreamEvent,
   OfficialAgentApprovalPolicy,
   StartThreadParams,
   StartTurnAppMention,
   StartTurnParams,
 } from "../codex-app-server/types.js";
+import type { UsageInfo } from "../translation/codex-event-extractor.js";
+import { isRecord } from "../translation/shared-utils.js";
 
 type BridgeFactory = () => CodexAppServerBridge;
 
@@ -46,8 +52,6 @@ function isAuthorized(authHeader: string | undefined, expectedKey: string | null
   const expected = Buffer.from(expectedKey);
   return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
-
-import { isRecord } from "../translation/shared-utils.js";
 
 function parseStartThread(body: unknown): StartThreadParams {
   if (!isRecord(body)) return {};
@@ -98,17 +102,35 @@ function encodeSse(event: string, data: unknown): string {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 }
 
-async function* turnEventStream(
-  bridge: CodexAppServerBridge,
-  params: StartTurnParams,
-): AsyncGenerator<string> {
-  for await (const event of bridge.runTurn(params)) {
-    if (event.type === "result") {
-      yield encodeSse("official_agent.result", event.result);
-    } else {
-      yield encodeSse(event.notification.method, event.notification);
-    }
+function encodeTurnEvent(event: CodexAppTurnStreamEvent): string {
+  return event.type === "result"
+    ? encodeSse("official_agent.result", event.result)
+    : encodeSse(event.notification.method, event.notification);
+}
+
+function completedTurn(notification: CodexAppNotification): Record<string, unknown> | null {
+  if (notification.method !== "turn/completed" || !isRecord(notification.params)) return null;
+  return isRecord(notification.params.turn) ? notification.params.turn : notification.params;
+}
+
+function usageValue(usage: Record<string, unknown>, ...keys: string[]): number | undefined {
+  for (const key of keys) {
+    const value = usage[key];
+    if (typeof value === "number" && Number.isFinite(value) && value >= 0) return value;
   }
+  return undefined;
+}
+
+function extractTurnUsage(turn: Record<string, unknown>): Partial<UsageInfo> | undefined {
+  const usage = isRecord(turn.usage) ? turn.usage : null;
+  if (!usage) return undefined;
+  const result: Partial<UsageInfo> = {
+    input_tokens: usageValue(usage, "input_tokens", "inputTokens"),
+    output_tokens: usageValue(usage, "output_tokens", "outputTokens"),
+    cached_tokens: usageValue(usage, "cached_tokens", "cachedTokens"),
+    reasoning_tokens: usageValue(usage, "reasoning_tokens", "reasoningTokens"),
+  };
+  return Object.values(result).some((value) => value !== undefined) ? result : undefined;
 }
 
 export function createOfficialAgentRoutes(bridgeFactory: BridgeFactory = getSharedBridge): Hono {
@@ -169,12 +191,46 @@ export function createOfficialAgentRoutes(bridgeFactory: BridgeFactory = getShar
       return c.json(errorBody("invalid_request", parsed.message));
     }
 
+    const config = getConfig();
+    const requestId = c.get("requestId") ?? randomUUID();
+    const pending = beginCallRecord({
+      requestId,
+      route: c.req.path,
+      protocol: "official-agent",
+      request: body,
+      headers: c.req.raw.headers,
+      model: config.model.default,
+      stream: true,
+      contextHints: {
+        protocolSessionId: parsed.params.threadId,
+        protocolTaskId: parsed.params.threadId,
+        protocolCwd: parsed.params.cwd,
+        source: "official-agent",
+      },
+    });
+
     const stream = new ReadableStream<Uint8Array>({
       async start(controller) {
         const encoder = new TextEncoder();
+        const responseCapture = createStreamResponseCapture(pending?.maxBodyBytes ?? 1_048_576);
+        let terminalTurn: Record<string, unknown> | null = null;
         try {
-          for await (const chunk of turnEventStream(bridgeFactory(), parsed.params)) {
+          for await (const event of bridgeFactory().runTurn(parsed.params)) {
+            const chunk = encodeTurnEvent(event);
             controller.enqueue(encoder.encode(chunk));
+            responseCapture.appendWrittenChunk(chunk);
+            if (event.type === "notification") {
+              terminalTurn = completedTurn(event.notification) ?? terminalTurn;
+            }
+          }
+          if (terminalTurn) {
+            completeCallRecord(pending, {
+              response: responseCapture.finish(),
+              usage: extractTurnUsage(terminalTurn),
+              provider: "official-agent",
+              upstreamModel: config.model.default,
+              responseId: typeof terminalTurn.id === "string" ? terminalTurn.id : null,
+            });
           }
           controller.close();
         } catch (err) {
