@@ -95,7 +95,11 @@ export function createCallRecorder(options: CallRecorderOptions): CallRecorder {
         };
         return options.store.insert(completed);
       } catch (error) {
-        options.onError?.(error, pending.requestId);
+        try {
+          options.onError?.(error, pending.requestId);
+        } catch {
+          // Diagnostics must never alter an already successful proxy response.
+        }
         return false;
       } finally {
         pending.request = null;

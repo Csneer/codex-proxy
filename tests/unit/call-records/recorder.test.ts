@@ -139,4 +139,29 @@ describe("createCallRecorder", () => {
     expect(onError).toHaveBeenCalledWith(error, "request-failed-write");
     expect(recorder.finalizeSuccessfulCall(pending, { response: {}, provider: "codex" })).toBe(false);
   });
+
+  it("swallows diagnostic callback failures and clears the pending request", () => {
+    const recorder = createCallRecorder({
+      store: fakeStore(vi.fn(() => { throw new Error("disk full"); })) as never,
+      isEnabled: () => true,
+      maxBodyBytes: () => 1024,
+      onError: () => { throw new Error("diagnostic sink failed"); },
+    });
+    const pending = recorder.createPendingCall({
+      requestId: "request-double-failure",
+      route: "/v1/responses",
+      protocol: "responses",
+      request: { prompt: "must be released" },
+      contextHints: { source: "responses" },
+      model: "gpt-5.4",
+      stream: false,
+    })!;
+
+    expect(() => recorder.finalizeSuccessfulCall(pending, {
+      response: {},
+      provider: "codex",
+    })).not.toThrow();
+    expect(pending.request).toBeNull();
+    expect(recorder.finalizeSuccessfulCall(pending, { response: {}, provider: "codex" })).toBe(false);
+  });
 });
