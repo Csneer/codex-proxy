@@ -39,6 +39,10 @@ logs:
 usage_stats:
   snapshot_interval_minutes: 5
   history_retention_days: null
+call_records:
+  enabled: false
+  retention_days: null
+  max_body_bytes: 1048576
 session:
   ttl_minutes: 60
   cleanup_interval_minutes: 5

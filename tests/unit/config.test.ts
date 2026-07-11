@@ -95,6 +95,11 @@ describe("config", () => {
     expect(config.model.default).toBe("gpt-5.4");
     expect(config.usage_stats.snapshot_interval_minutes).toBe(5);
     expect(config.usage_stats.history_retention_days).toBeNull();
+    expect(config.call_records).toEqual({
+      enabled: false,
+      retention_days: null,
+      max_body_bytes: 1_048_576,
+    });
   });
 
   it("loads fingerprint config", async () => {

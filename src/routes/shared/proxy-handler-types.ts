@@ -8,6 +8,7 @@ import type { UpstreamAdapter } from "../../proxy/upstream-adapter.js";
 import type { UsageInfo } from "../../translation/codex-event-extractor.js";
 import type { StreamCloseContextBase } from "../../logs/stream-close-event.js";
 import type { ReasoningReplayItem } from "../../proxy/reasoning-replay-cache.js";
+import type { PendingCallRecord } from "../../call-records/types.js";
 
 export interface StreamTranslatorContext extends StreamCloseContextBase {
   /** Request abort signal so format-specific translators can distinguish a
@@ -30,6 +31,8 @@ export interface ProxyRequest {
    *  Used to attribute success/failure to the image_generation request counters
    *  even when the upstream call fails before the first SSE event arrives. */
   expectsImageGen?: boolean;
+  /** Optional pending successful-call capture, finalized only at semantic completion. */
+  callRecord?: PendingCallRecord;
 }
 
 export interface UsageHint {

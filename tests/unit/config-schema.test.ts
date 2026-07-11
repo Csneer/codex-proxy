@@ -45,6 +45,11 @@ describe("ConfigSchema", () => {
     expect(result.usage_stats.snapshot_interval_minutes).toBe(5);
     expect(result.usage_stats.history_retention_days).toBeNull();
     expect(result.usage_stats.credits_per_usd).toBe(25);
+    expect(result.call_records).toEqual({
+      enabled: false,
+      retention_days: null,
+      max_body_bytes: 1_048_576,
+    });
     expect(result.quota.refresh_interval_minutes).toBe(5);
     expect(result.quota.warning_thresholds.primary).toEqual([80, 90]);
     expect(result.quota.skip_exhausted).toBe(true);
@@ -256,6 +261,18 @@ describe("ConfigSchema", () => {
       api: {}, client: {}, model: {}, auth: { refresh_concurrency: 0 }, server: {}, session: {},
     });
     expect(result.success).toBe(false);
+  });
+
+  it("validates call record retention and body bounds", () => {
+    const base = { api: {}, client: {}, model: {}, auth: {}, server: {}, session: {} };
+
+    expect(ConfigSchema.safeParse({ ...base, call_records: { retention_days: 0 } }).success).toBe(false);
+    expect(ConfigSchema.safeParse({ ...base, call_records: { retention_days: -1 } }).success).toBe(false);
+    expect(ConfigSchema.safeParse({ ...base, call_records: { max_body_bytes: 1023 } }).success).toBe(false);
+    expect(ConfigSchema.parse({
+      ...base,
+      call_records: { enabled: true, retention_days: 30, max_body_bytes: 2048 },
+    }).call_records).toEqual({ enabled: true, retention_days: 30, max_body_bytes: 2048 });
   });
 
   it("accepts tls/quota/update as optional (uses defaults)", () => {

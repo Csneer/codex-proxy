@@ -142,6 +142,11 @@ export const ConfigSchema = z.object({
      *  Set to 0 to suppress USD rendering and only show raw credit numbers. */
     credits_per_usd: z.number().min(0).default(25),
   }).default({}),
+  call_records: z.object({
+    enabled: z.boolean().default(false),
+    retention_days: z.number().int().positive().nullable().default(null),
+    max_body_bytes: z.number().int().min(1024).default(1_048_576),
+  }).default({}),
   session: z.object({
     ttl_minutes: z.number().min(1).default(1440),
     cleanup_interval_minutes: z.number().min(1).default(5),
