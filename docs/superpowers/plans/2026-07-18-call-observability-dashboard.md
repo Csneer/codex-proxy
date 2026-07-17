@@ -263,7 +263,7 @@ it("does not let an older call detail overwrite the latest selection", async () 
 
 - [ ] **Step 2: Run and verify failure**
 
-Run: `cd web && npx vitest run ../shared/hooks/use-call-observability.test.ts src/hooks/use-call-records.test.tsx`
+Run: `npx vitest run shared/hooks/use-call-observability.test.ts && cd web && npx vitest run src/hooks/use-call-records.test.tsx`
 
 Expected: FAIL on missing hooks.
 
@@ -273,7 +273,7 @@ Export `useCallOverview`, `useCallContext`, `useCallDetail`, and `useCallSearch`
 
 - [ ] **Step 4: Verify and commit**
 
-Run: `cd web && npx vitest run ../shared/hooks/use-call-observability.test.ts src/hooks/use-call-records.test.tsx`
+Run: `npx vitest run shared/hooks/use-call-observability.test.ts && cd web && npx vitest run src/hooks/use-call-records.test.tsx`
 
 Expected: PASS.
 
@@ -483,7 +483,7 @@ it("renders snippets as text even when they contain markup", () => {
 
 - [ ] **Step 2: Run and verify failure**
 
-Run: `cd web && npx vitest run src/components/call-observability/CallSearchDialog.test.tsx ../shared/hooks/use-call-observability.test.ts`
+Run: `cd web && npx vitest run src/components/call-observability/CallSearchDialog.test.tsx && cd .. && npx vitest run shared/hooks/use-call-observability.test.ts`
 
 Expected: FAIL on missing dialog and hook behavior.
 
@@ -495,7 +495,7 @@ The range field starts with Today/24h/7d. “Custom range” appears only inside
 
 - [ ] **Step 4: Verify and commit**
 
-Run: `cd web && npx vitest run src/components/call-observability/CallSearchDialog.test.tsx ../shared/hooks/use-call-observability.test.ts`
+Run: `cd web && npx vitest run src/components/call-observability/CallSearchDialog.test.tsx && cd .. && npx vitest run shared/hooks/use-call-observability.test.ts`
 
 Expected: PASS.
 

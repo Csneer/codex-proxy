@@ -58,7 +58,7 @@ it("uses terracotta as accent and green only as success", () => {
 
 - [ ] **Step 2: Run and verify failure**
 
-Run: `cd web && npx vitest run src/design-tokens.test.ts ../shared/theme/context.test.ts`
+Run: `cd web && npx vitest run src/design-tokens.test.ts && cd .. && npx vitest run shared/theme/context.test.ts`
 
 Expected: FAIL because the current tokens are emerald-first and have no approved type scale.
 
@@ -88,7 +88,7 @@ Add `.text-meta`, `.text-control`, `.text-reading`, `.text-section`, `.text-page
 
 - [ ] **Step 5: Verify and commit**
 
-Run: `cd web && npx vitest run src/design-tokens.test.ts ../shared/theme/context.test.ts`
+Run: `cd web && npx vitest run src/design-tokens.test.ts && cd .. && npx vitest run shared/theme/context.test.ts`
 
 Expected: PASS.
 
@@ -383,7 +383,7 @@ it("allows blur zero and restores approved defaults", async () => {
 
 - [ ] **Step 2: Run and verify failure**
 
-Run: `cd web && npx vitest run ../shared/hooks/use-ui-appearance.test.ts src/components/app-shell/AppearanceDrawer.test.tsx ../shared/theme/context.test.ts`
+Run: `npx vitest run shared/hooks/use-ui-appearance.test.ts && cd web && npx vitest run src/components/app-shell/AppearanceDrawer.test.tsx && cd .. && npx vitest run shared/theme/context.test.ts`
 
 Expected: FAIL on missing hook/drawer.
 
@@ -397,7 +397,7 @@ Render current image preview/metadata, upload/replace/delete, cover/contain, X/Y
 
 - [ ] **Step 5: Verify and commit**
 
-Run: `cd web && npx vitest run ../shared/hooks/use-ui-appearance.test.ts src/components/app-shell/AppearanceDrawer.test.tsx ../shared/theme/context.test.ts`
+Run: `npx vitest run shared/hooks/use-ui-appearance.test.ts && cd web && npx vitest run src/components/app-shell/AppearanceDrawer.test.tsx && cd .. && npx vitest run shared/theme/context.test.ts`
 
 Expected: PASS.
 
