@@ -105,6 +105,37 @@ function createApp(req: ProxyRequest, fmt: FormatAdapter): Hono {
 }
 
 describe("successful call persistence", () => {
+  it("writes exactly one current success and no row for a terminal failure", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    initialize();
+
+    const successfulRequest = createRequest("request-success", false, { prompt: "succeed" });
+    const success = await createApp(successfulRequest, createFormat()).request("/v1/responses", {
+      method: "POST",
+    });
+    expect(success.status).toBe(200);
+
+    const failedRequest = createRequest("request-terminal-failure", true, { prompt: "fail" });
+    const failedFormat = createFormat({
+      streamTranslator: vi.fn(async function* (options: FormatStreamTranslatorOptions) {
+        options.onUsage({ input_tokens: 8, output_tokens: 1 });
+        options.onResponseCompleted?.("response-failed");
+        yield "event: response.output_text.delta\ndata: {\"delta\":\"partial\"}\n\n";
+        throw new Error("upstream interrupted");
+      }),
+    });
+    const failure = await createApp(failedRequest, failedFormat).request("/v1/responses", {
+      method: "POST",
+    });
+    await failure.text();
+
+    const page = getCallRecordStore()!.list();
+    expect(page.total).toBe(1);
+    expect(page.records).toEqual([
+      expect.objectContaining({ requestId: "request-success" }),
+    ]);
+  });
+
   it("persists one redacted non-streaming success with its context", async () => {
     initialize();
     const req = createRequest("request-json", false, {

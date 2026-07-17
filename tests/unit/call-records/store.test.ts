@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { CallRecordStore } from "@src/call-records/store.js";
 import type { CompletedCallRecord } from "@src/call-records/types.js";
+import { createSchemaV1Database } from "@fixtures/call-records/schema-v1.js";
 
 const tempDirs: string[] = [];
 const stores: CallRecordStore[] = [];
@@ -76,6 +77,21 @@ afterEach(() => {
 });
 
 describe("CallRecordStore schema and insert", () => {
+  it("opens a schema-v1 database without losing stable metadata", () => {
+    const dir = mkdtempSync(join(tmpdir(), "call-records-v1-"));
+    tempDirs.push(dir);
+    const path = join(dir, "records.sqlite");
+    createSchemaV1Database(path);
+
+    const store = new CallRecordStore({ path });
+    stores.push(store);
+
+    expect(store.get("call-1")).toMatchObject({
+      requestId: "request-1",
+      inputTokens: 100,
+    });
+  });
+
   it("initializes SQLite pragmas, schema, indexes, and version", () => {
     const { store, path } = createStore();
     expect(store.getState()).toMatchObject({ path, rowCount: 0, contextCount: 0 });
