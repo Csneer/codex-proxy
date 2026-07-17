@@ -116,7 +116,23 @@ function Dashboard() {
   const hash = useHash();
   const errorCount = useErrorLogsCount();
   const appearance = useUiAppearance();
-  useEffect(() => { if (!appearance.data?.hasBackground) return; document.body.style.backgroundImage = `linear-gradient(rgb(var(--bg-page) / .52), rgb(var(--bg-page) / .52)), url(${appearance.data.backgroundUrl})`; document.body.style.backgroundSize = "cover"; document.body.style.backgroundPosition = "center"; document.body.style.backgroundAttachment = "fixed"; }, [appearance.data]);
+  useEffect(() => {
+    const value = appearance.data;
+    if (!value) return;
+    const root = document.documentElement;
+    root.style.setProperty("--workbench-alpha", String(value.panelOpacity));
+    root.style.setProperty("--card-alpha", String(value.cardOpacity));
+    root.style.setProperty("--background-blur", `${value.blurPx}px`);
+    root.style.setProperty("--background-brightness", String(value.brightness));
+    if (value.hasBackground && value.enabled) {
+      document.body.style.backgroundImage = `linear-gradient(rgb(0 0 0 / ${Math.max(0, 1 - value.brightness)}), rgb(0 0 0 / ${Math.max(0, 1 - value.brightness)})), url(${value.backgroundUrl})`;
+      document.body.style.backgroundSize = "cover";
+      document.body.style.backgroundPosition = "center";
+      document.body.style.backgroundAttachment = "fixed";
+    } else {
+      document.body.style.backgroundImage = "";
+    }
+  }, [appearance.data]);
 
   useEffect(() => {
     if (shouldAutoOpenUpdateModal({
@@ -267,9 +283,9 @@ function Dashboard() {
 // ── Utilities ────────────────────────────────────────────────────────
 
 function useHash(): string {
-  const [hash, setHash] = useState(location.hash);
+  const [hash, setHash] = useState(() => location.hash.split("?")[0]);
   useEffect(() => {
-    const handler = () => setHash(location.hash);
+    const handler = () => setHash(location.hash.split("?")[0]);
     window.addEventListener("hashchange", handler);
     return () => window.removeEventListener("hashchange", handler);
   }, []);

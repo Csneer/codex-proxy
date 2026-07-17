@@ -167,6 +167,11 @@ export function useCallRecords(pageSize = 50) {
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
+    const context = new URLSearchParams(location.hash.split("?")[1] ?? "").get("context");
+    if (context) setFilters((previous) => ({ ...previous, contextId: context }));
+  }, []);
+
+  useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(filters.search), 250);
     return () => clearTimeout(timer);
   }, [filters.search]);
