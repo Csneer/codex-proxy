@@ -17,6 +17,22 @@ function forbidden(c: Context, error: string): Response {
   return c.json({ error });
 }
 
+function expectedOrigin(c: Context, trustProxy: boolean): string | null {
+  const fallback = new URL(c.req.url).origin;
+  if (!trustProxy) return fallback;
+  const protoHeader = c.req.header("x-forwarded-proto");
+  const hostHeader = c.req.header("x-forwarded-host");
+  if (!protoHeader || !hostHeader) return fallback;
+  const proto = protoHeader.split(",", 1)[0]?.trim().toLowerCase();
+  const host = hostHeader.split(",", 1)[0]?.trim();
+  if ((proto !== "http" && proto !== "https") || !host) return null;
+  try {
+    return new URL(`${proto}://${host}`).origin;
+  } catch {
+    return null;
+  }
+}
+
 export async function adminMutationGuard(c: Context, next: Next): Promise<Response | void> {
   const path = c.req.path;
   if (SAFE_METHODS.has(c.req.method) || (path !== "/admin" && !path.startsWith("/admin/"))) {
@@ -52,7 +68,8 @@ export async function adminMutationGuard(c: Context, next: Next): Promise<Respon
   }
 
   const origin = c.req.header("origin");
-  if (!origin || origin !== new URL(c.req.url).origin) {
+  const requestOrigin = expectedOrigin(c, config.server.trust_proxy);
+  if (!requestOrigin || !origin || origin !== requestOrigin) {
     return forbidden(c, "Request origin does not match dashboard origin");
   }
 

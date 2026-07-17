@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createDashboardCsrfStore } from "@src/auth/dashboard-csrf.js";
 
 describe("dashboard CSRF store", () => {
-  it("issues a fresh 32-byte base64url token and keeps one token per principal", () => {
+  it("reuses a still-valid token and keeps one token per principal", () => {
     const store = createDashboardCsrfStore({ now: () => 10_000 });
 
     const first = store.issue("session:first");
@@ -10,13 +10,34 @@ describe("dashboard CSRF store", () => {
     const other = store.issue("session:other");
 
     expect(first).toMatchObject({ token: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/), expiresAt: 910_000 });
-    expect(replacement.token).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(replacement.token).toBe(first.token);
     expect(other.token).toMatch(/^[A-Za-z0-9_-]{43}$/);
-    expect(replacement.token).not.toBe(first.token);
     expect(other.token).not.toBe(replacement.token);
-    expect(store.verify("session:first", first.token)).toBe(false);
-    expect(store.verify("session:first", replacement.token)).toBe(true);
+    expect(store.verify("session:first", first.token)).toBe(true);
     expect(store.verify("session:other", replacement.token)).toBe(false);
+  });
+
+  it("issues a new token after expiry or revoke", () => {
+    let now = 10_000;
+    const store = createDashboardCsrfStore({ now: () => now, ttlMs: 25 });
+    const first = store.issue("session:first");
+    now = first.expiresAt;
+    const expired = store.issue("session:first");
+    expect(expired.token).not.toBe(first.token);
+    store.revoke("session:first");
+    const revoked = store.issue("session:first");
+    expect(revoked.token).not.toBe(expired.token);
+  });
+
+  it("prunes expired records opportunistically", () => {
+    let now = 10_000;
+    const store = createDashboardCsrfStore({ now: () => now, ttlMs: 25 });
+    store.issue("session:first");
+    store.issue("session:second");
+    expect(store.getSizeForTest()).toBe(2);
+    now = 10_025;
+    store.issue("session:third");
+    expect(store.getSizeForTest()).toBe(1);
   });
 
   it("expires tokens using injectable time and the default fifteen-minute TTL", () => {
@@ -26,7 +47,7 @@ describe("dashboard CSRF store", () => {
 
     now += 15 * 60_000;
     expect(token.expiresAt).toBe(910_000);
-    expect(store.verify("local:127.0.0.1", token.token)).toBe(true);
+    expect(store.verify("local:127.0.0.1", token.token)).toBe(false);
     now += 1;
     expect(store.verify("local:127.0.0.1", token.token)).toBe(false);
   });

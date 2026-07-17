@@ -9,6 +9,7 @@
 
 import { randomUUID } from "crypto";
 import { getConfig } from "../config.js";
+import { dashboardCsrf, sessionDashboardPrincipal } from "./dashboard-csrf.js";
 
 export interface DashboardSession {
   id: string;
@@ -36,8 +37,8 @@ export function validateSession(id: string): boolean {
   const session = sessions.get(id);
   if (!session) return false;
   const now = Date.now();
-  if (now > session.expiresAt) {
-    sessions.delete(id);
+  if (now >= session.expiresAt) {
+    removeSession(id);
     return false;
   }
   // Sliding window: extend expiry on each valid access
@@ -47,7 +48,12 @@ export function validateSession(id: string): boolean {
 }
 
 export function deleteSession(id: string): void {
+  removeSession(id);
+}
+
+export function removeSession(id: string): void {
   sessions.delete(id);
+  dashboardCsrf.revoke(sessionDashboardPrincipal(id));
 }
 
 export function getSessionCount(): number {
@@ -57,8 +63,8 @@ export function getSessionCount(): number {
 function cleanupExpired(): void {
   const now = Date.now();
   for (const [id, session] of sessions) {
-    if (now > session.expiresAt) {
-      sessions.delete(id);
+    if (now >= session.expiresAt) {
+      removeSession(id);
     }
   }
 }
@@ -80,6 +86,7 @@ export function stopSessionCleanup(): void {
 
 /** Reset all sessions — for tests only. */
 export function _resetForTest(): void {
-  sessions.clear();
+  for (const id of sessions.keys()) removeSession(id);
   stopSessionCleanup();
+  dashboardCsrf.clear();
 }

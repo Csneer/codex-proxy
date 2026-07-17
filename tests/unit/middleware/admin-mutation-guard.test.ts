@@ -157,4 +157,54 @@ describe("admin mutation guard", () => {
     });
     expect(res.status).toBe(403);
   });
+
+  it("ignores spoofed forwarded origin headers when trust_proxy is disabled", async () => {
+    const session = createSession();
+    const { token } = dashboardCsrf.issue(`session:${session.id}`);
+    const res = await createApp().request("http://internal.local/admin/settings", {
+      method: "POST",
+      headers: csrfHeaders(token, {
+        Cookie: `_codex_session=${session.id}`,
+        Origin: "https://public.example",
+        "X-Forwarded-Proto": "https",
+        "X-Forwarded-Host": "public.example",
+      }),
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it("accepts exact public forwarded origin from first comma token when trusted", async () => {
+    mockConfig.server.trust_proxy = true;
+    const session = createSession();
+    const { token } = dashboardCsrf.issue(`session:${session.id}`);
+    const res = await createApp().request("http://internal.local/admin/settings", {
+      method: "POST",
+      headers: csrfHeaders(token, {
+        Cookie: `_codex_session=${session.id}`,
+        Origin: "https://public.example",
+        "X-Forwarded-Proto": "https, http",
+        "X-Forwarded-Host": "public.example, internal.local",
+      }),
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it.each([
+    ["ftp", "public.example"],
+    ["https", "not a host"],
+  ])("rejects invalid forwarded origin components (%s, %s)", async (proto, host) => {
+    mockConfig.server.trust_proxy = true;
+    const session = createSession();
+    const { token } = dashboardCsrf.issue(`session:${session.id}`);
+    const res = await createApp().request("http://internal.local/admin/settings", {
+      method: "POST",
+      headers: csrfHeaders(token, {
+        Cookie: `_codex_session=${session.id}`,
+        Origin: "https://public.example",
+        "X-Forwarded-Proto": proto,
+        "X-Forwarded-Host": host,
+      }),
+    });
+    expect(res.status).toBe(403);
+  });
 });

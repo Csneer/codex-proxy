@@ -11,9 +11,13 @@ type CsrfResult =
   | { ok: false; response: Response };
 
 let cachedToken: AdminCsrfToken | null = null;
+let tokenRequest: Promise<CsrfResult> | null = null;
+let cacheGeneration = 0;
 
 export function clearAdminCsrfCache(): void {
   cachedToken = null;
+  cacheGeneration += 1;
+  tokenRequest = null;
 }
 
 function requestPath(input: RequestInfo | URL): string {
@@ -49,19 +53,30 @@ async function getCsrfToken(): Promise<CsrfResult> {
     return { ok: true, value: cachedToken };
   }
 
-  const response = await fetch("/admin/csrf");
-  if (!response.ok) return { ok: false, response };
-  let payload: unknown;
-  try {
-    payload = await response.json();
-  } catch {
-    return { ok: false, response: invalidCsrfResponse() };
-  }
-  if (!isAdminCsrfToken(payload)) {
-    return { ok: false, response: invalidCsrfResponse() };
-  }
-  cachedToken = payload;
-  return { ok: true, value: cachedToken };
+  if (tokenRequest) return tokenRequest;
+
+  const requestGeneration = cacheGeneration;
+  const request = (async (): Promise<CsrfResult> => {
+    const response = await fetch("/admin/csrf");
+    if (!response.ok) return { ok: false, response };
+    let payload: unknown;
+    try {
+      payload = await response.json();
+    } catch {
+      return { ok: false, response: invalidCsrfResponse() };
+    }
+    if (!isAdminCsrfToken(payload)) {
+      return { ok: false, response: invalidCsrfResponse() };
+    }
+    if (requestGeneration === cacheGeneration) cachedToken = payload;
+    return { ok: true, value: payload };
+  })();
+  tokenRequest = request;
+  void request.then(
+    () => { if (tokenRequest === request) tokenRequest = null; },
+    () => { if (tokenRequest === request) tokenRequest = null; },
+  );
+  return request;
 }
 
 export async function adminFetch(
@@ -76,9 +91,13 @@ export async function adminFetch(
   const csrf = await getCsrfToken();
   if (!csrf.ok) return csrf.response;
 
-  const headers = new Headers(init?.headers);
+  const headers = new Headers(input instanceof Request ? input.headers : undefined);
+  new Headers(init?.headers).forEach((value, key) => headers.set(key, value));
   headers.set("X-Codex-Proxy-CSRF", csrf.value.token);
-  const response = await fetch(input, { ...init, headers });
+  const outgoing = input instanceof Request
+    ? new Request(input.clone(), { ...init, headers })
+    : { ...init, headers };
+  const response = await fetch(input instanceof Request ? outgoing : input, input instanceof Request ? undefined : outgoing);
   if (response.status === 403) clearAdminCsrfCache();
   return response;
 }

@@ -63,6 +63,91 @@ describe("adminFetch", () => {
     expect(sentInit.signal).toBe(init.signal);
   });
 
+  it("preserves a Request body's method and headers while merging init headers", async () => {
+    const expiresAt = Date.now() + 60_000;
+    const original = new Request("http://localhost/admin/settings", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer request-token",
+        "Content-Type": "application/json",
+        "X-Custom": "from-request",
+      },
+      body: JSON.stringify({ enabled: true }),
+    });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ token: "csrf-token", expiresAt }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(adminFetch(original, {
+      headers: {
+        "X-Custom": "from-init",
+        "X-Init": "kept",
+      },
+    })).resolves.toMatchObject({ status: 200 });
+
+    const [outgoingInput, outgoingInit] = fetchMock.mock.calls[1] as [RequestInfo, RequestInit | undefined];
+    expect(outgoingInput).toBeInstanceOf(Request);
+    const outgoing = outgoingInput as Request;
+    expect(outgoingInit).toBeUndefined();
+    expect(outgoing.method).toBe("POST");
+    expect(outgoing.headers.get("Authorization")).toBe("Bearer request-token");
+    expect(outgoing.headers.get("Content-Type")).toBe("application/json");
+    expect(outgoing.headers.get("X-Custom")).toBe("from-init");
+    expect(outgoing.headers.get("X-Init")).toBe("kept");
+    expect(outgoing.headers.get("X-Codex-Proxy-CSRF")).toBe("csrf-token");
+    await expect(outgoing.json()).resolves.toEqual({ enabled: true });
+    expect(original.bodyUsed).toBe(false);
+  });
+
+  it("deduplicates concurrent token fetches and shares the token across mutations", async () => {
+    const expiresAt = Date.now() + 60_000;
+    let resolveToken!: (response: Response) => void;
+    const tokenResponse = new Promise<Response>((resolve) => { resolveToken = resolve; });
+    const fetchMock = vi.fn()
+      .mockReturnValueOnce(tokenResponse)
+      .mockResolvedValue(jsonResponse({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const first = adminFetch("/admin/one", { method: "POST" });
+    const second = adminFetch("/admin/two", { method: "POST" });
+    resolveToken(jsonResponse({ token: "shared-token", expiresAt }));
+    await expect(Promise.all([first, second])).resolves.toHaveLength(2);
+
+    expect(fetchMock.mock.calls.filter(([input]) => input === "/admin/csrf")).toHaveLength(1);
+    for (const call of fetchMock.mock.calls.slice(1)) {
+      const headers = (call[1] as RequestInit).headers as Headers;
+      expect(headers.get("X-Codex-Proxy-CSRF")).toBe("shared-token");
+    }
+  });
+
+  it("does not let a cleared in-flight token repopulate the cache", async () => {
+    const expiresAt = Date.now() + 60_000;
+    let resolveFirst!: (response: Response) => void;
+    let resolveSecond!: (response: Response) => void;
+    const firstToken = new Promise<Response>((resolve) => { resolveFirst = resolve; });
+    const secondToken = new Promise<Response>((resolve) => { resolveSecond = resolve; });
+    const fetchMock = vi.fn()
+      .mockReturnValueOnce(firstToken)
+      .mockResolvedValueOnce(jsonResponse({ ok: true }))
+      .mockReturnValueOnce(secondToken)
+      .mockResolvedValueOnce(jsonResponse({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const pending = adminFetch("/admin/one", { method: "POST" });
+    clearAdminCsrfCache();
+    resolveFirst(jsonResponse({ token: "stale-token", expiresAt }));
+    await pending;
+
+    const next = adminFetch("/admin/two", { method: "POST" });
+    resolveSecond(jsonResponse({ token: "fresh-token", expiresAt }));
+    await next;
+
+    expect(fetchMock.mock.calls.filter(([input]) => input === "/admin/csrf")).toHaveLength(2);
+    const nextHeaders = fetchMock.mock.calls[3][1]!.headers as Headers;
+    expect(nextHeaders.get("X-Codex-Proxy-CSRF")).toBe("fresh-token");
+  });
+
   it("reuses the cached token at the five-second refresh boundary", async () => {
     const expiresAt = Date.now() + 10_000;
     const fetchMock = vi.fn()

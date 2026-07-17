@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createMockConfig } from "@helpers/config.js";
 import { setConfigForTesting, resetConfigForTesting } from "@src/config.js";
+import { dashboardCsrf } from "@src/auth/dashboard-csrf.js";
 import {
   createSession,
   validateSession,
@@ -44,17 +45,21 @@ describe("dashboard-session", () => {
 
   it("validateSession returns false for expired session", () => {
     const session = createSession();
+    const token = dashboardCsrf.issue(`session:${session.id}`);
     // Manually expire it
-    vi.spyOn(Date, "now").mockReturnValue(session.expiresAt + 1);
+    vi.spyOn(Date, "now").mockReturnValue(session.expiresAt);
     expect(validateSession(session.id)).toBe(false);
+    expect(dashboardCsrf.verify(`session:${session.id}`, token.token)).toBe(false);
     vi.restoreAllMocks();
   });
 
   it("deleteSession invalidates the session", () => {
     const session = createSession();
+    const token = dashboardCsrf.issue(`session:${session.id}`);
     expect(validateSession(session.id)).toBe(true);
     deleteSession(session.id);
     expect(validateSession(session.id)).toBe(false);
+    expect(dashboardCsrf.verify(`session:${session.id}`, token.token)).toBe(false);
   });
 
   it("getSessionCount tracks correctly", () => {
@@ -90,6 +95,8 @@ describe("dashboard-session", () => {
 
     const s1 = createSession();
     const s2 = createSession();
+    const t1 = dashboardCsrf.issue(`session:${s1.id}`);
+    const t2 = dashboardCsrf.issue(`session:${s2.id}`);
     expect(getSessionCount()).toBe(2);
 
     // Expire both sessions (ttl_minutes=1 → 60_000ms)
@@ -101,6 +108,8 @@ describe("dashboard-session", () => {
 
     expect(validateSession(s1.id)).toBe(false);
     expect(validateSession(s2.id)).toBe(false);
+    expect(dashboardCsrf.verify(`session:${s1.id}`, t1.token)).toBe(false);
+    expect(dashboardCsrf.verify(`session:${s2.id}`, t2.token)).toBe(false);
 
     vi.useRealTimers();
   });

@@ -14,6 +14,7 @@ export interface DashboardCsrfStore {
   revoke(principal: string): void;
   clear(): void;
   setNowForTest(now: () => number): void;
+  getSizeForTest(): number;
 }
 
 export interface DashboardCsrfStoreOptions {
@@ -43,8 +44,18 @@ export function createDashboardCsrfStore(
   const ttlMs = options.ttlMs ?? DEFAULT_TTL_MS;
   let now = initialNow;
 
+  function pruneExpired(): void {
+    const current = now();
+    for (const [principal, record] of tokens) {
+      if (current >= record.expiresAt) tokens.delete(principal);
+    }
+  }
+
   return {
     issue(principal) {
+      pruneExpired();
+      const existing = tokens.get(principal);
+      if (existing && now() < existing.expiresAt) return existing;
       const token = randomBytes(32).toString("base64url");
       const record = { token, expiresAt: now() + ttlMs };
       tokens.set(principal, record);
@@ -52,12 +63,9 @@ export function createDashboardCsrfStore(
     },
 
     verify(principal, candidate) {
+      pruneExpired();
       const record = tokens.get(principal);
       if (!record) return false;
-      if (now() > record.expiresAt) {
-        tokens.delete(principal);
-        return false;
-      }
       return constantTimeEqual(record.token, candidate);
     },
 
@@ -72,6 +80,11 @@ export function createDashboardCsrfStore(
 
     setNowForTest(testNow) {
       now = testNow;
+    },
+
+    getSizeForTest() {
+      pruneExpired();
+      return tokens.size;
     },
   };
 }

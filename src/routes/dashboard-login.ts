@@ -117,7 +117,6 @@ export function createDashboardAuthRoutes(): Hono {
     const sessionId = parseSessionCookie(c.req.header("cookie"));
     if (sessionId) {
       deleteSession(sessionId);
-      dashboardCsrf.revoke(sessionDashboardPrincipal(sessionId));
     }
     const secure = isHttps(c);
     c.header("Set-Cookie", buildCookieString("_codex_session", "", 0, secure));
