@@ -95,6 +95,17 @@ function createFormat(overrides: Partial<FormatAdapter> = {}): FormatAdapter {
   };
 }
 
+function createTerminallyFailingFormat(): FormatAdapter {
+  return createFormat({
+    streamTranslator: vi.fn(async function* (options: FormatStreamTranslatorOptions) {
+      options.onUsage({ input_tokens: 8, output_tokens: 1 });
+      options.onResponseCompleted?.("response-failed");
+      yield "event: response.output_text.delta\ndata: {\"delta\":\"partial\"}\n\n";
+      throw new Error("upstream interrupted");
+    }),
+  });
+}
+
 function createApp(req: ProxyRequest, fmt: FormatAdapter): Hono {
   const app = new Hono();
   app.post("/v1/responses", (c) => {
@@ -116,15 +127,7 @@ describe("successful call persistence", () => {
     expect(success.status).toBe(200);
 
     const failedRequest = createRequest("request-terminal-failure", true, { prompt: "fail" });
-    const failedFormat = createFormat({
-      streamTranslator: vi.fn(async function* (options: FormatStreamTranslatorOptions) {
-        options.onUsage({ input_tokens: 8, output_tokens: 1 });
-        options.onResponseCompleted?.("response-failed");
-        yield "event: response.output_text.delta\ndata: {\"delta\":\"partial\"}\n\n";
-        throw new Error("upstream interrupted");
-      }),
-    });
-    const failure = await createApp(failedRequest, failedFormat).request("/v1/responses", {
+    const failure = await createApp(failedRequest, createTerminallyFailingFormat()).request("/v1/responses", {
       method: "POST",
     });
     await failure.text();
@@ -195,16 +198,8 @@ describe("successful call persistence", () => {
     vi.spyOn(console, "warn").mockImplementation(() => undefined);
     initialize();
     const req = createRequest("request-failed-stream", true, { prompt: "fail" });
-    const fmt = createFormat({
-      streamTranslator: vi.fn(async function* (options: FormatStreamTranslatorOptions) {
-        options.onUsage({ input_tokens: 8, output_tokens: 1 });
-        options.onResponseCompleted?.("response-failed");
-        yield "event: response.output_text.delta\ndata: {\"delta\":\"partial\"}\n\n";
-        throw new Error("upstream interrupted");
-      }),
-    });
 
-    const response = await createApp(req, fmt).request("/v1/responses", { method: "POST" });
+    const response = await createApp(req, createTerminallyFailingFormat()).request("/v1/responses", { method: "POST" });
     await response.text();
 
     expect(getCallRecordStore()!.list().total).toBe(0);

@@ -83,13 +83,114 @@ describe("CallRecordStore schema and insert", () => {
     const path = join(dir, "records.sqlite");
     createSchemaV1Database(path);
 
+    const legacyDb = new Database(path);
+    expect(legacyDb.pragma("journal_mode", { simple: true })).toBe("wal");
+    expect(legacyDb.pragma("busy_timeout", { simple: true })).toBe(5000);
+    expect(legacyDb.pragma("user_version", { simple: true })).toBe(1);
+    const objects = legacyDb.prepare(`
+      SELECT name FROM sqlite_master
+      WHERE type IN ('table', 'index', 'trigger')
+    `).all() as Array<{ name: string }>;
+    const objectNames = objects.map(({ name }) => name);
+    expect(objectNames).toEqual(expect.arrayContaining([
+      "call_contexts",
+      "call_records",
+      "idx_call_records_completed_at",
+      "idx_call_records_context_id",
+      "idx_call_records_model",
+      "idx_call_records_provider",
+      "idx_call_records_account_id",
+      "idx_call_records_protocol",
+      "idx_call_records_completed_model",
+      "call_records_fts",
+      "call_records_fts_insert",
+      "call_records_fts_delete",
+      "call_records_fts_update",
+    ]));
+    const contextTable = legacyDb.prepare(`
+      SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'call_contexts'
+    `).get() as { sql: string };
+    expect(contextTable.sql).toContain("CHECK (session_id IS NOT NULL OR task_id IS NOT NULL OR cwd IS NOT NULL)");
+    expect(legacyDb.prepare("SELECT * FROM call_contexts WHERE id = ?").get("ctx-1")).toEqual({
+      id: "ctx-1",
+      context_key: "hash-1",
+      session_id: "session-1",
+      task_id: "task-1",
+      cwd: "/repo",
+      source: "proxy_headers",
+      created_at: "2026-07-18T00:00:00.000Z",
+      updated_at: "2026-07-18T00:01:00.000Z",
+    });
+    expect(legacyDb.prepare(`
+      SELECT rowid FROM call_records_fts WHERE call_records_fts MATCH ?
+    `).get("legacy")).toEqual({ rowid: 1 });
+    expect(legacyDb.pragma("foreign_key_list(call_records)")).toEqual([
+      expect.objectContaining({
+        table: "call_contexts",
+        from: "context_id",
+        to: "id",
+        on_delete: "SET NULL",
+      }),
+    ]);
+    legacyDb.pragma("foreign_keys = ON");
+    legacyDb.exec("BEGIN");
+    legacyDb.prepare("DELETE FROM call_contexts WHERE id = ?").run("ctx-1");
+    expect(legacyDb.prepare("SELECT context_id FROM call_records WHERE id = ?").get("call-1"))
+      .toEqual({ context_id: null });
+    legacyDb.exec("ROLLBACK");
+    legacyDb.close();
+
     const store = new CallRecordStore({ path });
     stores.push(store);
 
-    expect(store.get("call-1")).toMatchObject({
+    const detail = store.get("call-1");
+    expect(detail).toMatchObject({
+      id: "call-1",
       requestId: "request-1",
+      contextId: "ctx-1",
+      sessionId: "session-1",
+      taskId: "task-1",
+      cwd: "/repo",
+      contextSource: "proxy_headers",
+      startedAt: "2026-07-18T00:00:00.000Z",
+      completedAt: "2026-07-18T00:01:00.000Z",
+      latencyMs: 60_000,
+      route: "/v1/responses",
+      protocol: "responses",
+      provider: "codex",
+      accountId: "account-1",
+      model: "gpt-5.6-sol",
+      upstreamModel: "gpt-5.6-sol",
+      stream: true,
+      responseId: "resp-1",
       inputTokens: 100,
+      outputTokens: 20,
+      cachedTokens: 80,
+      reasoningTokens: 5,
+      imageInputTokens: 0,
+      imageOutputTokens: 0,
+      requestBytes: 80,
+      responseBytes: 96,
+      requestTruncated: false,
+      responseTruncated: false,
     });
+    expect(JSON.parse(detail!.requestJson)).toEqual({
+      input: [{ role: "user", content: "legacy question" }],
+    });
+    expect(JSON.parse(detail!.responseJson)).toEqual([
+      { event: "response.completed", data: { output_text: "legacy answer" } },
+    ]);
+    expect(store.listContexts().contexts).toEqual([
+      expect.objectContaining({
+        id: "ctx-1",
+        sessionId: "session-1",
+        taskId: "task-1",
+        cwd: "/repo",
+        source: "proxy_headers",
+        createdAt: "2026-07-18T00:00:00.000Z",
+        updatedAt: "2026-07-18T00:01:00.000Z",
+      }),
+    ]);
   });
 
   it("initializes SQLite pragmas, schema, indexes, and version", () => {
