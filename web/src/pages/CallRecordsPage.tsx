@@ -37,21 +37,38 @@ function DetailPanel({ selected }: { selected: CallRecordDetail | null }) {
     return <div class="p-3 text-xs text-slate-500">{t("callRecordsSelectHint")}</div>;
   }
   const truncated = selected.requestTruncated || selected.responseTruncated;
+  let requestValue: any = null;
+  let responseValue: any = null;
+  try { requestValue = JSON.parse(selected.requestJson); } catch { requestValue = selected.requestJson; }
+  try { responseValue = JSON.parse(selected.responseJson); } catch { responseValue = selected.responseJson; }
+  const semanticText = (value: any): string => {
+    if (typeof value === "string") return value;
+    if (Array.isArray(value)) return value.map(semanticText).filter(Boolean).join("\n");
+    if (value && typeof value === "object") return String(value.output_text ?? value.text ?? value.content ?? value.message ?? "");
+    return "";
+  };
   return (
-    <div class="p-3 space-y-3 text-xs max-h-[620px] overflow-auto">
+    <div class="p-3 space-y-3 text-reading max-h-[620px] overflow-auto">
       {truncated && (
         <div class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-700 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
           {t("callRecordsTruncated")}
         </div>
       )}
       <div>
-        <div class="font-semibold mb-1">{t("callRecordsRequest")}</div>
-        <pre class="whitespace-pre-wrap break-all rounded-md bg-slate-50 dark:bg-[#11161d] p-2">{prettyJson(selected.requestJson)}</pre>
+        <div class="text-section font-semibold mb-1">用户输入</div>
+        <div class="whitespace-pre-wrap break-words rounded-xl bg-primary-container/40 p-3">{semanticText(requestValue) || "未提取到文本内容"}</div>
       </div>
       <div>
-        <div class="font-semibold mb-1">{t("callRecordsResponse")}</div>
-        <pre class="whitespace-pre-wrap break-all rounded-md bg-slate-50 dark:bg-[#11161d] p-2">{prettyJson(selected.responseJson)}</pre>
+        <div class="text-section font-semibold mb-1">模型输出</div>
+        <div class="whitespace-pre-wrap break-words rounded-xl bg-white/50 dark:bg-black/20 p-3">{semanticText(responseValue) || "未提取到最终文本"}</div>
       </div>
+      <details class="rounded-xl border border-slate-200/70 dark:border-border-dark p-3">
+        <summary class="cursor-pointer text-control font-semibold">查看原始证据</summary>
+        <div class="mt-3 space-y-3">
+          <pre class="whitespace-pre-wrap break-all rounded-md bg-slate-50 dark:bg-[#11161d] p-2 text-control">{prettyJson(selected.requestJson)}</pre>
+          <pre class="whitespace-pre-wrap break-all rounded-md bg-slate-50 dark:bg-[#11161d] p-2 text-control">{prettyJson(selected.responseJson)}</pre>
+        </div>
+      </details>
     </div>
   );
 }
