@@ -559,7 +559,7 @@ The skip condition is currently `rate_limit.limit_reached === true`, `secondary_
 ```yaml
 ollama:
   enabled: false          # true = start the built-in Ollama-compatible listener
-  host: 127.0.0.1         # localhost-only by default
+  host: 127.0.0.1         # Ollama remains localhost-only by default
   port: 11434             # Ollama default port
   version: "0.18.3"       # value returned by /api/version
   disable_vision: false   # true = do not advertise vision in /api/show
@@ -585,14 +585,9 @@ Browser CORS access is limited to loopback origins such as `localhost`, `127.x.x
 
 ### Listen Address
 
-The source/Docker default config listens on `::` (IPv6 unspecified, usually still reachable from localhost). Electron passes `127.0.0.1` at startup unless `data/local.yaml` explicitly overrides `server.host`. To force localhost-only binding:
+The source and Docker Compose defaults listen on `0.0.0.0`, so trusted devices on the same LAN can reach the dashboard/API. Static resources (`public/` and `config/`) are resolved from the installation root rather than the process working directory, so starting the service from another directory does not produce `UI files not found`. Dashboard mutations still require login and API calls still require an API key.
 
-```yaml
-server:
-  host: "127.0.0.1"
-```
-
-To allow LAN access, set `server.host: "0.0.0.0"` in `data/local.yaml` and use a strong proxy API key.
+To force localhost-only binding, set `server.host: "127.0.0.1"` in `data/local.yaml` and restart. When using `0.0.0.0`, use a strong proxy API key and restrict the host firewall to trusted networks.
 
 ### API Key
 

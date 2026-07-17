@@ -6,9 +6,10 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
-      # Loopback-only on the host by default; change to "${PORT:-8080}:8080"
-      # if you intentionally want LAN access.
-      - "127.0.0.1:${PORT:-8080}:8080"
+      # Publish the authenticated dashboard/API on all host interfaces for
+      # trusted LAN devices. Restrict this to 127.0.0.1 when LAN access is not
+      # needed.
+      - "${PORT:-8080}:8080"
       - "1455:1455"
       # Optional Ollama-compatible bridge. Enable ollama.enabled and use
       # ollama.host=0.0.0.0 inside the container before uncommenting.

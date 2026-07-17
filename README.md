@@ -608,20 +608,13 @@ model:
 
 ### 局域网访问
 
-源码默认配置仅监听 `127.0.0.1`；Electron 也会传入 `127.0.0.1`，除非 `data/local.yaml` 显式覆盖。Docker 镜像会通过 `CODEX_PROXY_HOST=0.0.0.0` 在容器内监听所有接口，`docker-compose.yml` 默认仍只把宿主机端口绑定到 `127.0.0.1`。
+源码和 Docker Compose 默认监听 `0.0.0.0`，因此同一局域网内的其它设备可以访问 Dashboard/API。Electron 仍会使用应用自身的资源目录；所有启动方式都会读取安装目录中的 `public/` 和 `config/`，不受启动命令当前工作目录影响。Dashboard 管理路由仍需要登录，API 调用仍需要密钥。
 
-需要仅本机访问时写入：
+如需恢复仅本机访问，在 `data/local.yaml` 中添加：
 
 ```yaml
 server:
   host: "127.0.0.1"
-```
-
-如需局域网内其他设备访问，在 `data/local.yaml` 中添加，并把 `docker-compose.yml` 的端口映射从 `127.0.0.1:${PORT:-8080}:8080` 改成 `${PORT:-8080}:8080`：
-
-```yaml
-server:
-  host: "0.0.0.0"
 ```
 
 Electron 桌面版的 `data/local.yaml` 路径：
@@ -632,7 +625,7 @@ Electron 桌面版的 `data/local.yaml` 路径：
 | Windows | `%APPDATA%/Codex Proxy/data/local.yaml` |
 | Linux | `~/.config/Codex Proxy/data/local.yaml` |
 
-> ⚠️ 绑定 `0.0.0.0` 会将服务暴露到局域网，务必在 Dashboard → 密钥设置中配置强密钥。
+> ⚠️ 绑定 `0.0.0.0` 会将服务暴露到局域网，务必在 Dashboard → 密钥设置中配置强密钥，并在防火墙中限制可信网络。
 
 ### TLS 配置
 
@@ -659,7 +652,7 @@ server:
 ```yaml
 ollama:
   enabled: false          # true = 启动内置 Ollama 兼容监听器
-  host: 127.0.0.1         # 默认仅本机可访问
+  host: 127.0.0.1         # Ollama 默认仅本机可访问
   port: 11434             # Ollama 默认端口
   version: "0.18.3"       # /api/version 返回值
   disable_vision: false   # true = /api/show 不声明 vision 能力

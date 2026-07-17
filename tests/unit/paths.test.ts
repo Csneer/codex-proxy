@@ -6,6 +6,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { resolve } from "path";
 
+const packageRoot = resolve(import.meta.dirname, "../..");
+
 // Each test re-imports the module to get a fresh _paths = null state
 async function importPaths() {
   const mod = await import("@src/paths.js");
@@ -17,29 +19,39 @@ describe("paths — CLI mode (default)", () => {
     vi.resetModules();
   });
 
-  it("getRootDir returns process.cwd() by default", async () => {
+  it("uses the package root even when launched from a different working directory", async () => {
+    const cwd = vi.spyOn(process, "cwd").mockReturnValue("/tmp/migrated-working-directory");
     const { getRootDir } = await importPaths();
-    expect(getRootDir()).toBe(process.cwd());
+    expect(getRootDir()).toBe(packageRoot);
+    cwd.mockRestore();
   });
 
-  it("getConfigDir returns cwd/config by default", async () => {
+  it("getConfigDir returns package-root/config by default", async () => {
+    const cwd = vi.spyOn(process, "cwd").mockReturnValue("/tmp/migrated-working-directory");
     const { getConfigDir } = await importPaths();
-    expect(getConfigDir()).toBe(resolve(process.cwd(), "config"));
+    expect(getConfigDir()).toBe(resolve(packageRoot, "config"));
+    cwd.mockRestore();
   });
 
-  it("getDataDir returns cwd/data by default", async () => {
+  it("getDataDir returns package-root/data by default", async () => {
+    const cwd = vi.spyOn(process, "cwd").mockReturnValue("/tmp/migrated-working-directory");
     const { getDataDir } = await importPaths();
-    expect(getDataDir()).toBe(resolve(process.cwd(), "data"));
+    expect(getDataDir()).toBe(resolve(packageRoot, "data"));
+    cwd.mockRestore();
   });
 
-  it("getBinDir returns cwd/bin by default", async () => {
+  it("getBinDir returns package-root/bin by default", async () => {
+    const cwd = vi.spyOn(process, "cwd").mockReturnValue("/tmp/migrated-working-directory");
     const { getBinDir } = await importPaths();
-    expect(getBinDir()).toBe(resolve(process.cwd(), "bin"));
+    expect(getBinDir()).toBe(resolve(packageRoot, "bin"));
+    cwd.mockRestore();
   });
 
-  it("getPublicDir returns cwd/public by default", async () => {
+  it("getPublicDir returns package-root/public by default", async () => {
+    const cwd = vi.spyOn(process, "cwd").mockReturnValue("/tmp/migrated-working-directory");
     const { getPublicDir } = await importPaths();
-    expect(getPublicDir()).toBe(resolve(process.cwd(), "public"));
+    expect(getPublicDir()).toBe(resolve(packageRoot, "public"));
+    cwd.mockRestore();
   });
 
   it("isEmbedded returns false by default", async () => {
