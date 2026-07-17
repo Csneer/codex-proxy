@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "preact/hooks";
 import { extractErrorMessage } from "../utils/extract-error";
+import { adminFetch } from "../http/admin-fetch.js";
 
 export interface OllamaBridgeStatus {
   enabled: boolean;
@@ -52,7 +53,7 @@ export function useOllamaSettings(apiKey: string | null) {
     try {
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
-      const resp = await fetch("/admin/ollama-settings", {
+      const resp = await adminFetch("/admin/ollama-settings", {
         method: "POST",
         headers,
         body: JSON.stringify(patch),

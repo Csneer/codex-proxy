@@ -77,6 +77,7 @@ import {
 } from "@src/routes/dashboard-login.js";
 import { createSettingsRoutes } from "@src/routes/admin/settings.js";
 import { _resetForTest } from "@src/auth/dashboard-session.js";
+import { dashboardCsrf } from "@src/auth/dashboard-csrf.js";
 
 function createApp(): Hono {
   const app = new Hono();
@@ -93,6 +94,7 @@ describe("dashboard auth endpoints", () => {
     mockGetConnInfo.mockReturnValue({ remote: { address: "192.168.1.100" } });
     _resetForTest();
     _resetRateLimitForTest();
+    dashboardCsrf.clear();
   });
 
   describe("POST /auth/dashboard-login", () => {
@@ -205,6 +207,71 @@ describe("dashboard auth endpoints", () => {
 
       const clearCookie = logoutRes.headers.get("set-cookie");
       expect(clearCookie).toContain("Max-Age=0");
+    });
+
+    it("revokes the logged-out session's CSRF token", async () => {
+      const app = createApp();
+      const loginRes = await app.request("/auth/dashboard-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: "secret-key" }),
+      });
+      const sessionId = loginRes.headers.get("set-cookie")!.match(/_codex_session=([^;]+)/)![1];
+      const csrfRes = await app.request("/admin/csrf", {
+        headers: { Cookie: `_codex_session=${sessionId}` },
+      });
+      const { token } = await csrfRes.json();
+      expect(dashboardCsrf.verify(`session:${sessionId}`, token)).toBe(true);
+
+      const logoutRes = await app.request("/auth/dashboard-logout", {
+        method: "POST",
+        headers: { Cookie: `_codex_session=${sessionId}` },
+      });
+
+      expect(logoutRes.status).toBe(200);
+      expect(dashboardCsrf.verify(`session:${sessionId}`, token)).toBe(false);
+    });
+  });
+
+  describe("GET /admin/csrf", () => {
+    it("issues a token bound to a valid session", async () => {
+      const app = createApp();
+      const loginRes = await app.request("/auth/dashboard-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: "secret-key" }),
+      });
+      const sessionId = loginRes.headers.get("set-cookie")!.match(/_codex_session=([^;]+)/)![1];
+
+      const res = await app.request("/admin/csrf", {
+        headers: { Cookie: `_codex_session=${sessionId}` },
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.token).toMatch(/^[A-Za-z0-9_-]{43}$/);
+      expect(body.expiresAt).toBeGreaterThan(Date.now());
+      expect(dashboardCsrf.verify(`session:${sessionId}`, body.token)).toBe(true);
+    });
+
+    it("issues a token bound to the stable localhost principal", async () => {
+      mockGetConnInfo.mockReturnValue({ remote: { address: "127.0.0.1" } });
+      const res = await createApp().request("/admin/csrf");
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.expiresAt).toBeGreaterThan(Date.now());
+      expect(dashboardCsrf.verify("local:127.0.0.1", body.token)).toBe(true);
+    });
+
+    it("does not mint a token for a remote bearer-only request", async () => {
+      const issue = vi.spyOn(dashboardCsrf, "issue");
+      const res = await createApp().request("/admin/csrf", {
+        headers: { Authorization: "Bearer secret-key" },
+      });
+
+      expect(res.status).toBe(403);
+      expect(issue).not.toHaveBeenCalled();
     });
   });
 

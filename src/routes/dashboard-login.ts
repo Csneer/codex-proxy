@@ -17,6 +17,11 @@ import {
   validateSession,
   deleteSession,
 } from "../auth/dashboard-session.js";
+import {
+  dashboardCsrf,
+  localDashboardPrincipal,
+  sessionDashboardPrincipal,
+} from "../auth/dashboard-csrf.js";
 
 /** Per-IP brute-force tracking: IP → { count, resetAt } */
 const failedAttempts = new Map<string, { count: number; resetAt: number }>();
@@ -112,10 +117,39 @@ export function createDashboardAuthRoutes(): Hono {
     const sessionId = parseSessionCookie(c.req.header("cookie"));
     if (sessionId) {
       deleteSession(sessionId);
+      dashboardCsrf.revoke(sessionDashboardPrincipal(sessionId));
     }
     const secure = isHttps(c);
     c.header("Set-Cookie", buildCookieString("_codex_session", "", 0, secure));
     return c.json({ success: true });
+  });
+
+  // GET /admin/csrf — mint a token for a browser session or local dashboard.
+  app.get("/admin/csrf", (c) => {
+    const config = getConfig();
+    const cookieHeader = c.req.header("cookie");
+    let principal: string | undefined;
+
+    if (cookieHeader !== undefined) {
+      const sessionId = parseSessionCookie(cookieHeader);
+      if (!sessionId || !validateSession(sessionId)) {
+        c.status(403);
+        return c.json({ error: "Valid dashboard session required" });
+      }
+      principal = sessionDashboardPrincipal(sessionId);
+    } else {
+      const remoteAddr = getRealClientIp(c, config.server.trust_proxy);
+      if (isLocalhostRequest(remoteAddr)) {
+        principal = localDashboardPrincipal(remoteAddr);
+      }
+    }
+
+    if (!principal) {
+      c.status(403);
+      return c.json({ error: "CSRF token is only available to dashboard browser principals" });
+    }
+
+    return c.json(dashboardCsrf.issue(principal));
   });
 
   // GET /auth/dashboard-status — check if login is required and current auth state

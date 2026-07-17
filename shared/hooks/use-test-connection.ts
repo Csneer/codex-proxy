@@ -1,5 +1,6 @@
 import { useState, useCallback } from "preact/hooks";
 import type { TestConnectionResult } from "../types.js";
+import { adminFetch } from "../http/admin-fetch.js";
 
 export function useTestConnection() {
   const [testing, setTesting] = useState(false);
@@ -11,7 +12,7 @@ export function useTestConnection() {
     setError(null);
     setResult(null);
     try {
-      const resp = await fetch("/admin/test-connection", { method: "POST" });
+      const resp = await adminFetch("/admin/test-connection", { method: "POST" });
       if (!resp.ok) {
         setError(`HTTP ${resp.status}`);
         return;

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "preact/hooks";
 import { extractErrorMessage } from "../utils/extract-error";
+import { adminFetch } from "../http/admin-fetch.js";
 
 export type RotationStrategy = "least_used" | "round_robin" | "sticky";
 
@@ -34,7 +35,7 @@ export function useRotationSettings(apiKey: string | null) {
       if (apiKey) {
         headers["Authorization"] = `Bearer ${apiKey}`;
       }
-      const resp = await fetch("/admin/rotation-settings", {
+      const resp = await adminFetch("/admin/rotation-settings", {
         method: "POST",
         headers,
         body: JSON.stringify(patch),

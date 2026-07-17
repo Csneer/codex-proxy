@@ -58,6 +58,7 @@ vi.mock("@src/utils/yaml-mutate.js", () => ({
 }));
 
 import { dashboardAuth } from "@src/middleware/dashboard-auth.js";
+import { adminMutationGuard } from "@src/middleware/admin-mutation-guard.js";
 import {
   createDashboardAuthRoutes,
   _resetRateLimitForTest,
@@ -71,6 +72,7 @@ import { appendErrorLog } from "@src/logs/error-log.js";
 function createProductionOrderedApp(): Hono {
   const app = new Hono();
   app.use("*", dashboardAuth);
+  app.use("*", adminMutationGuard);
   app.route("/", createDashboardAuthRoutes());
   app.route("/", createSettingsRoutes());
   app.route("/", createErrorLogRoutes());
@@ -100,6 +102,29 @@ async function loginDashboard(app: Hono): Promise<string> {
   });
   expect(res.status).toBe(200);
   return extractSessionCookie(res.headers.get("set-cookie"));
+}
+
+async function getCsrfToken(app: Hono, cookie: string): Promise<string> {
+  const res = await app.request("/admin/csrf", {
+    headers: {
+      Cookie: cookie,
+      Origin: "http://localhost",
+      "X-Forwarded-For": "8.8.8.8",
+    },
+  });
+  expect(res.status).toBe(200);
+  const body = await res.json() as { token: string; expiresAt: number };
+  expect(body.expiresAt).toBeGreaterThan(Date.now());
+  return body.token;
+}
+
+function mutationHeaders(cookie: string, token: string): Record<string, string> {
+  return {
+    Cookie: cookie,
+    Origin: "http://localhost",
+    "X-Codex-Proxy-CSRF": token,
+    "X-Forwarded-For": "8.8.8.8",
+  };
 }
 
 function appendFewErrors(): void {
@@ -150,16 +175,14 @@ describe("dashboard-authenticated error-log admin actions", () => {
   it("allows cookie-only dashboard sessions to mark all error logs read and delete them", async () => {
     const app = createProductionOrderedApp();
     const cookie = await loginDashboard(app);
+    const token = await getCsrfToken(app, cookie);
     appendFewErrors();
 
     expect(await readCount(app, cookie)).toEqual({ total: 2, unread: 2 });
 
     const seenRes = await app.request("/admin/error-logs/seen", {
       method: "POST",
-      headers: {
-        Cookie: cookie,
-        "X-Forwarded-For": "8.8.8.8",
-      },
+      headers: mutationHeaders(cookie, token),
     });
     expect(seenRes.status).toBe(200);
     expect(await seenRes.json()).toMatchObject({ ok: true });
@@ -167,10 +190,7 @@ describe("dashboard-authenticated error-log admin actions", () => {
 
     const deleteRes = await app.request("/admin/error-logs", {
       method: "DELETE",
-      headers: {
-        Cookie: cookie,
-        "X-Forwarded-For": "8.8.8.8",
-      },
+      headers: mutationHeaders(cookie, token),
     });
     expect(deleteRes.status).toBe(200);
     expect(await deleteRes.json()).toEqual({ ok: true });
@@ -180,13 +200,13 @@ describe("dashboard-authenticated error-log admin actions", () => {
   it("allows cookie-only dashboard sessions to mutate admin settings routes", async () => {
     const app = createProductionOrderedApp();
     const cookie = await loginDashboard(app);
+    const token = await getCsrfToken(app, cookie);
 
     const res = await app.request("/admin/settings", {
       method: "POST",
       headers: {
+        ...mutationHeaders(cookie, token),
         "Content-Type": "application/json",
-        Cookie: cookie,
-        "X-Forwarded-For": "8.8.8.8",
       },
       body: JSON.stringify({ proxy_api_key: "secret-key" }),
     });

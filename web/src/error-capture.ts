@@ -1,3 +1,5 @@
+import { adminFetch } from "../../shared/http/admin-fetch.js";
+
 /**
  * Renderer-side uncaught error capture.
  *
@@ -6,10 +8,10 @@
  * The backend redacts secrets, rotates the JSONL file, and exposes
  * the result through the Errors tab.
  *
- * Why fetch (not Electron IPC):
+ * Why adminFetch/HTTP (not Electron IPC):
  * - The renderer already runs same-origin against the local HTTP
  *   server, so a fetch costs nothing extra and matches every other
- *   admin call in the dashboard.
+ *   admin call in the dashboard while attaching the required CSRF proof.
  * - IPC would require a contextBridge preload + new ipcMain handler,
  *   adding two surfaces to maintain. Fetch is one round trip.
  *
@@ -97,12 +99,10 @@ export function buildRendererRejectionReport(event: {
 
 async function postReport(payload: ReportPayload): Promise<void> {
   try {
-    await fetch("/admin/error-logs/report", {
+    await adminFetch("/admin/error-logs/report", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
-      // Same-origin localhost — no credential plumbing required, the
-      // existing dashboardAuth middleware allows local requests.
     });
   } catch {
     // Drop — see file header.

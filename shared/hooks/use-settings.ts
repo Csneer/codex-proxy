@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "preact/hooks";
 import { extractErrorMessage } from "../utils/extract-error";
+import { adminFetch } from "../http/admin-fetch.js";
 
 export function useSettings() {
   const [apiKey, setApiKey] = useState<string | null>(null);
@@ -31,7 +32,7 @@ export function useSettings() {
       if (apiKey) {
         headers["Authorization"] = `Bearer ${apiKey}`;
       }
-      const resp = await fetch("/admin/settings", {
+      const resp = await adminFetch("/admin/settings", {
         method: "POST",
         headers,
         body: JSON.stringify({ proxy_api_key: newKey }),

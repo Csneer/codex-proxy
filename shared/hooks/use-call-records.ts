@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
 import { extractErrorMessage } from "../utils/extract-error";
+import { adminFetch } from "../http/admin-fetch.js";
 
 export type CallRecordsView = "calls" | "contexts";
 export type CallRecordProtocol = "" | "openai" | "anthropic" | "gemini" | "responses" | "official-agent";
@@ -282,7 +283,7 @@ export function useCallRecords(pageSize = 50) {
     setClearing(true);
     setError(null);
     try {
-      const response = await fetch("/admin/call-records/clear", { method: "POST" });
+      const response = await adminFetch("/admin/call-records/clear", { method: "POST" });
       if (!response.ok) throw new Error(await responseError(response));
       setSelected(null);
       setPage(0);

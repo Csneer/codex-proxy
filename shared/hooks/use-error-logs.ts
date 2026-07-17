@@ -8,6 +8,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from "preact/hooks";
+import { adminFetch } from "../http/admin-fetch.js";
 
 export type ErrorSource = "main" | "renderer" | "server" | "external";
 
@@ -33,7 +34,7 @@ const POLL_MS = 30_000;
 type ErrorLogsFetch = (input: string, init: RequestInit) => Promise<Pick<Response, "ok">>;
 
 export async function clearErrorLogsRequest(
-  fetchImpl: ErrorLogsFetch = (input, init) => fetch(input, init),
+  fetchImpl: ErrorLogsFetch = (input, init) => adminFetch(input, init),
 ): Promise<boolean> {
   const res = await fetchImpl("/admin/error-logs", { method: "DELETE" });
   return res.ok;
@@ -70,7 +71,7 @@ export function useErrorLogs() {
 
   const markAllSeen = useCallback(async () => {
     try {
-      await fetch("/admin/error-logs/seen", { method: "POST" });
+      await adminFetch("/admin/error-logs/seen", { method: "POST" });
       await load();
     } catch {
       /* swallow */

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "preact/hooks";
 import { extractErrorMessage } from "../utils/extract-error";
+import { adminFetch } from "../http/admin-fetch.js";
 
 export interface GeneralSettingsData {
   port: number;
@@ -62,7 +63,7 @@ export function useGeneralSettings(apiKey: string | null) {
       if (apiKey) {
         headers["Authorization"] = `Bearer ${apiKey}`;
       }
-      const resp = await fetch("/admin/general-settings", {
+      const resp = await adminFetch("/admin/general-settings", {
         method: "POST",
         headers,
         body: JSON.stringify(patch),

@@ -11,6 +11,7 @@ import { requestId } from "./middleware/request-id.js";
 import { logger } from "./middleware/logger.js";
 import { errorHandler } from "./middleware/error-handler.js";
 import { dashboardAuth } from "./middleware/dashboard-auth.js";
+import { adminMutationGuard } from "./middleware/admin-mutation-guard.js";
 import { logCapture } from "./middleware/log-capture.js";
 import { cors } from "./middleware/cors.js";
 
@@ -122,6 +123,7 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   app.use("*", logger);
   app.onError(errorHandler);
   app.use("*", dashboardAuth);
+  app.use("*", adminMutationGuard);
   app.use("*", logCapture);
 
   // Build upstream router from config

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "preact/hooks";
+import { adminFetch } from "../http/admin-fetch.js";
 
 export type LogFilterDirection = "ingress" | "egress" | "all";
 
@@ -139,7 +140,7 @@ export function useLogs(refreshIntervalMs = 1500) {
   }, [load, loadState, page, refreshIntervalMs, clearTimer]);
 
   const setLogState = useCallback(async (patch: Partial<Pick<LogState, "enabled" | "paused">>) => {
-    const resp = await fetch("/admin/logs/state", {
+    const resp = await adminFetch("/admin/logs/state", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(patch),

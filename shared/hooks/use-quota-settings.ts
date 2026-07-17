@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "preact/hooks";
 import { extractErrorMessage } from "../utils/extract-error";
+import { adminFetch } from "../http/admin-fetch.js";
 
 export interface QuotaSettingsData {
   refresh_interval_minutes: number;
@@ -35,7 +36,7 @@ export function useQuotaSettings(apiKey: string | null) {
       if (apiKey) {
         headers["Authorization"] = `Bearer ${apiKey}`;
       }
-      const resp = await fetch("/admin/quota-settings", {
+      const resp = await adminFetch("/admin/quota-settings", {
         method: "POST",
         headers,
         body: JSON.stringify(patch),

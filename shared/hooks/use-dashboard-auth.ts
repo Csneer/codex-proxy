@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "preact/hooks";
+import { clearAdminCsrfCache } from "../http/admin-fetch.js";
 
 export type DashboardAuthStatus = "loading" | "login" | "authenticated";
 
@@ -42,6 +43,7 @@ export function useDashboardAuth() {
         setStatus("authenticated");
         setIsRemoteSession(data.required && data.authenticated);
       } else {
+        clearAdminCsrfCache();
         setStatus("login");
       }
     } catch {
@@ -58,6 +60,7 @@ export function useDashboardAuth() {
   useEffect(() => {
     installFetchInterceptor();
     const handler = () => {
+      clearAdminCsrfCache();
       setStatus("login");
       setIsRemoteSession(false);
     };
@@ -74,6 +77,7 @@ export function useDashboardAuth() {
         body: JSON.stringify({ password }),
       });
       if (res.ok) {
+        clearAdminCsrfCache();
         setStatus("authenticated");
         setIsRemoteSession(true);
       } else {
@@ -89,6 +93,7 @@ export function useDashboardAuth() {
     try {
       await fetch("/auth/dashboard-logout", { method: "POST" });
     } finally {
+      clearAdminCsrfCache();
       setStatus("login");
       setIsRemoteSession(false);
     }

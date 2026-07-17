@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "preact/hooks";
+import { adminFetch } from "../http/admin-fetch.js";
 
 export interface UpdateStatus {
   settings: {
@@ -132,7 +133,7 @@ export function useUpdateStatus() {
     setError(null);
     setResult(null);
     try {
-      const resp = await fetch("/admin/check-update", { method: "POST" });
+      const resp = await adminFetch("/admin/check-update", { method: "POST" });
       const data = await resp.json() as CheckResult;
       if (!resp.ok) {
         setError("Check failed");
@@ -152,7 +153,7 @@ export function useUpdateStatus() {
     setError(null);
     setUpdateSteps([]);
     try {
-      const resp = await fetch("/admin/apply-update", { method: "POST" });
+      const resp = await adminFetch("/admin/apply-update", { method: "POST" });
       if (!resp.ok) {
         const text = await resp.text();
         try {
