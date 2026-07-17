@@ -163,3 +163,26 @@ export interface CallRecordStoreState {
   databaseBytes: number;
   searchMode: "fts5" | "like";
 }
+
+export type CallRangePreset = "today" | "24h" | "7d";
+export interface CallRange {
+  preset: CallRangePreset;
+  timezone: string;
+  from: string;
+  to: string;
+  previousFrom: string;
+  previousTo: string;
+}
+export interface CallOverview {
+  range: Pick<CallRange, "preset" | "timezone" | "from" | "to">;
+  generatedAt: string;
+  success: { count: number; previousCount: number; lastCompletedAt: string | null };
+  usage: { inputTokens: number; outputTokens: number; cachedTokens: number; cacheRatio: number };
+  storage: { permanentBytes: number; rawBytes: number; semanticLogicalBytes: number; rawLogicalBytes: number; indexBytes: number; walBytes: number; totalBytes: number; measurement: "sqlite-pages-and-logical-sums" };
+  outcomes: { failure: number; interrupted: number; retry: number };
+  series: Array<{ bucketStart: string; success: number }>;
+  models: Array<{ model: string; count: number; share: number }>;
+  protocols: Array<{ protocol: string; count: number; share: number }>;
+  contexts: CallContextSummary[];
+  sections: Record<string, { error?: string }>;
+}

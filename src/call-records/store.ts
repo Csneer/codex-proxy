@@ -333,6 +333,11 @@ export class CallRecordStore {
     return { path: this.path, rowCount, contextCount, databaseBytes, searchMode: this.searchMode };
   }
 
+  /** Read-only aggregate helper for dashboard analytics. */
+  queryAnalytics<T = unknown>(sql: string, params: Record<string, unknown> = {}): T[] {
+    return this.db.prepare(sql).all(params) as T[];
+  }
+
   cleanup(retentionDays: number | null, now = new Date()): number {
     if (retentionDays === null) return 0;
     const cutoff = new Date(now.getTime() - retentionDays * 86_400_000).toISOString();
