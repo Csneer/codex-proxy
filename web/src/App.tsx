@@ -158,7 +158,7 @@ function Dashboard() {
   const activeTab = TABS.find((t) => t.hash === hash)?.hash ?? "";
 
   return (
-    <div class="min-h-screen flex flex-col glass-workbench">
+    <div class="min-h-screen glass-workbench px-0 md:px-4 lg:px-6 py-0 md:py-4">
       <Header
         onAddAccount={accounts.startAdd}
         onCheckUpdate={update.checkForUpdate}
@@ -173,8 +173,19 @@ function Dashboard() {
         unreadErrors={errorCount.unread}
       />
 
-      <main class="flex-grow px-4 md:px-8 lg:px-40 py-8 flex justify-center">
-        <div class="flex flex-col w-full max-w-[960px]">
+      <div class="app-shell glass-surface min-h-[calc(100vh-32px)] overflow-hidden">
+        <div class="app-shell-body">
+          <aside class="icon-rail" aria-label="主导航">
+            <a class="icon-nav active" href="#/" title="调用大盘" aria-label="调用大盘">⌁</a>
+            <a class="icon-nav" href="#/accounts" title="账号" aria-label="账号">◎</a>
+            <a class="icon-nav" href="#/proxies" title="代理路由" aria-label="代理路由">↗</a>
+            <a class="icon-nav" href="#/usage-stats" title="用量" aria-label="用量">◫</a>
+            <a class="icon-nav" href="#/logs" title="日志" aria-label="日志">≡</a>
+            <span class="flex-1" />
+            <a class="icon-nav" href="#/settings" title="设置" aria-label="设置">⚙</a>
+          </aside>
+          <main class="shell-main">
+        <div class="flex flex-col w-full">
           <AddAccount
             visible={accounts.addVisible}
             onCancel={accounts.cancelAdd}
@@ -185,30 +196,9 @@ function Dashboard() {
           />
           <AppearanceDrawer />
 
-          <TabBar activeHash={activeTab} />
-
           {activeTab === "" && (
             <div class="flex flex-col gap-6">
               <CallDashboardPage />
-              <PoolOverview
-                accounts={accounts.list}
-                creditsPerUsd={generalSettings.data?.credits_per_usd}
-              />
-              <AccountList
-                accounts={accounts.list}
-                loading={accounts.loading}
-                onDelete={accounts.deleteAccount}
-                onRefresh={accounts.refresh}
-                refreshing={accounts.refreshing}
-                lastUpdated={accounts.lastUpdated}
-                proxies={proxies.proxies}
-                onProxyChange={handleProxyChange}
-                onExport={accounts.exportAccounts}
-                onImport={accounts.importAccounts}
-                onToggleStatus={accounts.toggleStatus}
-                onUpdateLabel={accounts.updateLabel}
-              />
-              <ProxyPool proxies={proxies} />
             </div>
           )}
 
@@ -259,6 +249,8 @@ function Dashboard() {
           )}
         </div>
       </main>
+        </div>
+      </div>
 
       <Footer updateStatus={update.status} />
       {update.proxyUpdateInfo && (
