@@ -127,6 +127,7 @@ describe("PersistentWs", () => {
       reused: false,
     });
     await nextTick();
+    ws.pushMessage({ type: "codex.response.metadata", request_id: "req_1" });
     ws.pushMessage({ type: "response.created", id: "r1" });
     ws.pushMessage({ type: "response.output_text.delta", delta: "hi" });
     const resp = await promise;
@@ -134,6 +135,7 @@ describe("PersistentWs", () => {
     expect(resp.headers.get("content-type")).toBe("text/event-stream");
     ws.pushMessage({ type: "response.completed" });
     const text = await resp.text();
+    expect(text).toContain("event: codex.response.metadata");
     expect(text).toContain("event: response.created");
     expect(text).toContain("event: response.output_text.delta");
     expect(text).toContain("event: response.completed");
@@ -234,6 +236,32 @@ describe("PersistentWs", () => {
     const err = await promise.then(() => null, (e: unknown) => e);
     expect(err).toBeInstanceOf(CodexApiError);
     expect((err as CodexApiError).status).toBe(429);
+  });
+
+  it("keeps codex.response.metadata buffered so a following classified error can reject", async () => {
+    const { ws, persistent } = newPersistentWs();
+    persistent.tryAcquire();
+    const promise = persistent.send({
+      request: { type: "response.create", model: "m", instructions: "", input: [] },
+      signal: undefined,
+      onRateLimits: undefined,
+      reused: false,
+    });
+    await nextTick();
+
+    ws.pushMessage({ type: "codex.response.metadata", request_id: "req_1" });
+    ws.pushMessage({
+      type: "error",
+      error: {
+        code: "previous_response_not_found",
+        message: "Previous response with id 'resp_stale' not found.",
+      },
+    });
+
+    const err = await promise.then(() => null, (e: unknown) => e);
+    expect(err).toBeInstanceOf(CodexApiError);
+    expect((err as CodexApiError).status).toBe(400);
+    expect((err as CodexApiError).body).toContain("previous_response_not_found");
   });
 
   it("websocket_connection_limit_reached early error evicts the WS", async () => {
