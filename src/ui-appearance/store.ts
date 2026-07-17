@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { getDataDir } from "../paths.js";
+import { inspectImage } from "./image-metadata.js";
 
 export interface AppearanceSettings { panelOpacity: number; cardOpacity: number; brightness: number; blurPx: number; enabled: boolean; }
 const defaults: AppearanceSettings = { panelOpacity: 0.38, cardOpacity: 0.49, brightness: 0.72, blurPx: 2, enabled: false };
@@ -20,6 +21,8 @@ export function updateAppearance(patch: Partial<AppearanceSettings>): Appearance
 export function replaceBackground(bytes: Buffer, contentType: string): void {
   if (bytes.length > 16 * 1024 * 1024) throw new Error("image_too_large");
   if (!["image/png", "image/jpeg", "image/webp"].includes(contentType)) throw new Error("unsupported_image");
+  const metadata = inspectImage(bytes);
+  if (metadata.width > 8192 || metadata.height > 8192) throw new Error("image_dimensions_too_large");
   const target = imagePath(); const temp = `${target}.tmp-${process.pid}`;
   writeFileSync(temp, bytes); renameSync(temp, target); updateAppearance({ enabled: true });
 }

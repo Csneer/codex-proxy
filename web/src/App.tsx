@@ -20,6 +20,7 @@ import { ErrorsPage } from "./pages/ErrorsPage";
 import { CallRecordsPage } from "./pages/CallRecordsPage";
 import { CallDashboardPage } from "./pages/CallDashboardPage";
 import { useUiAppearance } from "../../shared/hooks/use-ui-appearance";
+import { AppearanceDrawer } from "./components/AppearanceDrawer";
 import { useAccounts } from "../../shared/hooks/use-accounts";
 import { useErrorLogsCount } from "../../shared/hooks/use-error-logs";
 import { useProxies } from "../../shared/hooks/use-proxies";
@@ -166,6 +167,7 @@ function Dashboard() {
             addInfo={accounts.addInfo}
             addError={accounts.addError}
           />
+          <AppearanceDrawer />
 
           <TabBar activeHash={activeTab} />
 
