@@ -1,0 +1,27 @@
+import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { getDataDir } from "../paths.js";
+
+export interface AppearanceSettings { panelOpacity: number; cardOpacity: number; brightness: number; blurPx: number; enabled: boolean; }
+const defaults: AppearanceSettings = { panelOpacity: 0.38, cardOpacity: 0.49, brightness: 0.72, blurPx: 2, enabled: false };
+const dir = () => { const value = join(getDataDir(), "ui"); mkdirSync(value, { recursive: true }); return value; };
+const metaPath = () => join(dir(), "appearance.json");
+const imagePath = () => join(dir(), "background.bin");
+export function getAppearance(): AppearanceSettings & { hasBackground: boolean } {
+  let value: Partial<AppearanceSettings> = {};
+  try { value = JSON.parse(readFileSync(metaPath(), "utf8")); } catch {}
+  return { ...defaults, ...value, hasBackground: existsSync(imagePath()) };
+}
+export function updateAppearance(patch: Partial<AppearanceSettings>): AppearanceSettings & { hasBackground: boolean } {
+  const next = { ...getAppearance(), ...patch };
+  writeFileSync(metaPath(), JSON.stringify(next, null, 2));
+  return next;
+}
+export function replaceBackground(bytes: Buffer, contentType: string): void {
+  if (bytes.length > 16 * 1024 * 1024) throw new Error("image_too_large");
+  if (!["image/png", "image/jpeg", "image/webp"].includes(contentType)) throw new Error("unsupported_image");
+  const target = imagePath(); const temp = `${target}.tmp-${process.pid}`;
+  writeFileSync(temp, bytes); renameSync(temp, target); updateAppearance({ enabled: true });
+}
+export function readBackground(): Buffer | null { try { return readFileSync(imagePath()); } catch { return null; } }
+export function removeBackground(): void { try { unlinkSync(imagePath()); } catch {} updateAppearance({ enabled: false }); }

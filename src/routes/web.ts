@@ -13,6 +13,7 @@ import { createUsageStatsRoutes } from "./admin/usage-stats.js";
 import { createLogRoutes } from "./admin/logs.js";
 import { createErrorLogRoutes } from "./admin/error-logs.js";
 import { createCallRecordRoutes } from "./admin/call-records.js";
+import { createUiAppearanceRoutes } from "./admin/ui-appearance.js";
 import { createCallObservabilityRoutes } from "./admin/call-observability.js";
 import type { UsageStatsStore } from "../auth/usage-stats.js";
 
@@ -54,6 +55,7 @@ export function createWebRoutes(accountPool: AccountPool, usageStats: UsageStats
   app.route("/", createLogRoutes());
   app.route("/", createErrorLogRoutes());
   app.route("/", createCallRecordRoutes());
+  app.route("/", createUiAppearanceRoutes());
   app.route("/", createCallObservabilityRoutes());
 
   return app;

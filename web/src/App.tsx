@@ -19,6 +19,7 @@ import { LogsPage } from "./pages/LogsPage";
 import { ErrorsPage } from "./pages/ErrorsPage";
 import { CallRecordsPage } from "./pages/CallRecordsPage";
 import { CallDashboardPage } from "./pages/CallDashboardPage";
+import { useUiAppearance } from "../../shared/hooks/use-ui-appearance";
 import { useAccounts } from "../../shared/hooks/use-accounts";
 import { useErrorLogsCount } from "../../shared/hooks/use-error-logs";
 import { useProxies } from "../../shared/hooks/use-proxies";
@@ -113,6 +114,8 @@ function Dashboard() {
   const prevUpdateAvailable = useRef(false);
   const hash = useHash();
   const errorCount = useErrorLogsCount();
+  const appearance = useUiAppearance();
+  useEffect(() => { if (!appearance.data?.hasBackground) return; document.body.style.backgroundImage = `linear-gradient(rgb(var(--bg-page) / .52), rgb(var(--bg-page) / .52)), url(${appearance.data.backgroundUrl})`; document.body.style.backgroundSize = "cover"; document.body.style.backgroundPosition = "center"; document.body.style.backgroundAttachment = "fixed"; }, [appearance.data]);
 
   useEffect(() => {
     if (shouldAutoOpenUpdateModal({
