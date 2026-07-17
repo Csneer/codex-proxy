@@ -156,23 +156,23 @@ describe("Theme CSS", () => {
       }
     });
 
-    it("uses the green palette for primary action/status tokens instead of dark emerald", () => {
+    it("uses the warm terracotta palette for primary action/status tokens", () => {
       const root = getRootVars();
       const dark = getDarkVars();
 
-      expect(root["--primary"]).toBe("21 128 61");
-      expect(root["--primary-hover"]).toBe("22 101 52");
-      expect(root["--primary-action"]).toBe("21 128 61");
-      expect(root["--primary-action-hover"]).toBe("22 101 52");
-      expect(root["--success"]).toBe("21 128 61");
+      expect(root["--primary"]).toBe("166 76 49");
+      expect(root["--primary-hover"]).toBe("145 63 40");
+      expect(root["--primary-action"]).toBe("166 76 49");
+      expect(root["--primary-action-hover"]).toBe("145 63 40");
+      expect(root["--success"]).toBe("57 119 78");
       expect(root["--avatar-emerald-text"]).toBe("21 128 61");
       expect(root["--avatar-emerald-bg"]).toBe("220 252 231");
 
-      expect(dark["--primary"]).toBe("74 222 128");
-      expect(dark["--primary-hover"]).toBe("34 197 94");
-      expect(dark["--primary-action"]).toBe("21 128 61");
-      expect(dark["--primary-action-hover"]).toBe("22 101 52");
-      expect(dark["--success"]).toBe("74 222 128");
+      expect(dark["--primary"]).toBe("223 121 87");
+      expect(dark["--primary-hover"]).toBe("238 148 115");
+      expect(dark["--primary-action"]).toBe("166 76 49");
+      expect(dark["--primary-action-hover"]).toBe("145 63 40");
+      expect(dark["--success"]).toBe("142 209 164");
       expect(dark["--avatar-emerald-text"]).toBe("74 222 128");
       expect(dark["--avatar-emerald-bg"]).toBe("20 83 45");
 

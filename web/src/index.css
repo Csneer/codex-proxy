@@ -3,10 +3,10 @@
 @tailwind utilities;
 
 :root {
-  --primary: 189 96 65;
-  --primary-hover: 166 76 49;
-  --primary-action: 189 96 65;
-  --primary-action-hover: 166 76 49;
+  --primary: 166 76 49;
+  --primary-hover: 145 63 40;
+  --primary-action: 166 76 49;
+  --primary-action-hover: 145 63 40;
   --primary-container: 251 232 222;
   --accent: 189 96 65;
   --success: 57 119 78;
@@ -52,9 +52,9 @@
 .dark {
   --primary: 223 121 87;
   --primary-hover: 238 148 115;
-  --primary-action: 189 96 65;
-  --primary-action-hover: 166 76 49;
-  --primary-container: 82 45 36;
+  --primary-action: 166 76 49;
+  --primary-action-hover: 145 63 40;
+  --primary-container: 58 36 30;
   --accent: 223 121 87;
   --success: 142 209 164;
   --success-container: 32 63 44;
