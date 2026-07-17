@@ -85,7 +85,13 @@ function isTerminalWsEvent(type: string): boolean {
 }
 
 function isEarlyMetadataWsEvent(type: string): boolean {
-  return type === "response.created" || type === "response.in_progress";
+  // `codex.response.metadata` is an upstream control frame and may be
+  // followed by a classified terminal error (for example,
+  // previous_response_not_found). Keep it buffered so that error can reject
+  // the send-level promise before HTTP 200/SSE is exposed downstream.
+  return type === "response.created" ||
+    type === "response.in_progress" ||
+    type === "codex.response.metadata";
 }
 
 const WS_CONNECTING = 0;

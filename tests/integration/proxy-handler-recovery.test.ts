@@ -242,6 +242,94 @@ describe("proxy-handler recovery & defense", () => {
     });
   });
 
+  it("replays full original input after implicit previous_response_not_found", async () => {
+    const req: ProxyRequest = {
+      ...createDefaultRequest(),
+      codexRequest: {
+        ...createDefaultRequest().codexRequest,
+        prompt_cache_key: "thread-implicit-not-found",
+        input: [
+          { role: "user", content: "first" },
+          { role: "assistant", content: "ok" },
+          { role: "user", content: "continue" },
+        ],
+        turnState: "turn-original",
+        useWebSocket: false,
+      },
+    };
+    const affinityMap = getSessionAffinityMap();
+    const promptCacheIdentity = resolvePromptCacheIdentity(req.codexRequest, req.clientConversationId);
+    const variantHash = computeVariantHash(
+      req.codexRequest.instructions,
+      req.codexRequest.tools,
+      buildVariantIdentity(req.codexRequest, promptCacheIdentity),
+    );
+    affinityMap.record(
+      "resp_implicit_not_found",
+      "e1",
+      "thread-implicit-not-found",
+      "turn-implicit",
+      "You are helpful",
+      undefined,
+      undefined,
+      variantHash,
+    );
+
+    const notFoundBody = JSON.stringify({
+      error: {
+        type: "invalid_request_error",
+        code: "previous_response_not_found",
+        message: "Previous response with id 'resp_implicit_not_found' not found.",
+      },
+    });
+    const seenRequests: Array<{
+      input: CodexResponsesRequest["input"];
+      previousResponseId: string | undefined;
+      turnState: string | undefined;
+      useWebSocket: boolean | undefined;
+    }> = [];
+    let createCount = 0;
+    mockCreateResponse = (request) => {
+      createCount++;
+      seenRequests.push({
+        input: [...request.input],
+        previousResponseId: request.previous_response_id,
+        turnState: request.turnState,
+        useWebSocket: request.useWebSocket,
+      });
+      if (createCount === 1) {
+        return Promise.reject(new CodexApiError(400, notFoundBody));
+      }
+      return Promise.resolve(new Response("data: {}\n\n"));
+    };
+
+    const accountPool = createMockAccountPool();
+    const fmt = createMockFormatAdapter();
+    const { app } = buildTestApp({ accountPool, fmt, req });
+
+    const res = await app.request("/test", { method: "POST" });
+    expect(res.status).toBe(200);
+    expect(seenRequests).toEqual([
+      {
+        input: [{ role: "user", content: "continue" }],
+        previousResponseId: "resp_implicit_not_found",
+        turnState: "turn-implicit",
+        useWebSocket: true,
+      },
+      {
+        input: [
+          { role: "user", content: "first" },
+          { role: "assistant", content: "ok" },
+          { role: "user", content: "continue" },
+        ],
+        previousResponseId: undefined,
+        turnState: undefined,
+        useWebSocket: false,
+      },
+    ]);
+    expect(accountPool.acquire).toHaveBeenCalledTimes(1);
+  });
+
   it("recovers when collectTranslator raises previous_response_not_found", async () => {
     const notFoundBody = JSON.stringify({
       error: {
