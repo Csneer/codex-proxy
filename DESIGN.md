@@ -1,415 +1,218 @@
----
-version: alpha
-name: Codex Proxy
-description: Compact operational dashboard with quiet surfaces, GitHub-like dark mode, emerald primary actions, and dense data cards.
-colors:
-  background: "#F8FAFC"
-  background-dark: "#0D1117"
-  surface: "#FFFFFF"
-  surface-muted: "#F8FAFC"
-  surface-subtle: "#F1F5F9"
-  surface-dark: "#161B22"
-  surface-muted-dark: "#0D1117"
-  surface-subtle-dark: "#21262D"
-  border: "#E5E7EB"
-  border-subtle: "#F1F5F9"
-  border-strong: "#CBD5E1"
-  border-dark: "#30363D"
-  text: "#1E293B"
-  text-soft: "#334155"
-  text-muted: "#64748B"
-  text-faint: "#94A3B8"
-  text-dark: "#E6EDF3"
-  text-muted-dark: "#8B949E"
-  primary: "#047857"
-  primary-hover: "#065F46"
-  primary-action: "#047857"
-  primary-action-hover: "#065F46"
-  primary-dark: "#34D399"
-  primary-hover-dark: "#10B981"
-  primary-action-dark: "#047857"
-  primary-action-hover-dark: "#065F46"
-  on-primary: "#FFFFFF"
-  primary-container: "#DCFCE7"
-  primary-container-dark: "#11281D"
-  primary-border-dark: "#1A442E"
-  success: "#047857"
-  success-dark: "#34D399"
-  success-container: "#DCFCE7"
-  success-container-dark: "#11281D"
-  warning: "#B45309"
-  warning-dark: "#FBBF24"
-  warning-container: "#FEF3C7"
-  warning-container-dark: "#3D2C16"
-  warning-strong: "#B45309"
-  danger: "#B91C1C"
-  danger-dark: "#F87171"
-  danger-container: "#FEE2E2"
-  danger-container-dark: "#3F1A1A"
-  danger-strong: "#B91C1C"
-  info: "#1D4ED8"
-  info-dark: "#60A5FA"
-  info-container: "#DBEAFE"
-  info-container-dark: "#1A2A3F"
-  secondary: "#6366F1"
-  tertiary: "#06B6D4"
-  chart-blue: "#3B82F6"
-  chart-blue-dark: "#60A5FA"
-  chart-green: "#10B981"
-  chart-green-dark: "#34D399"
-  chart-amber: "#F59E0B"
-  chart-amber-dark: "#FBBF24"
-  chart-violet: "#8B5CF6"
-  chart-violet-dark: "#A78BFA"
-  chart-fuchsia: "#D946EF"
-  avatar-purple-text: "#7E22CE"
-  avatar-purple-bg: "#F3E8FF"
-  avatar-purple-text-dark: "#A78BFA"
-  avatar-purple-bg-dark: "#2A1A3F"
-  avatar-amber-text: "#92400E"
-  avatar-amber-bg: "#FEF3C7"
-  avatar-amber-text-dark: "#F59E0B"
-  avatar-amber-bg-dark: "#3D2C16"
-  avatar-blue-text: "#1D4ED8"
-  avatar-blue-bg: "#DBEAFE"
-  avatar-blue-text-dark: "#60A5FA"
-  avatar-blue-bg-dark: "#1A2A3F"
-  avatar-emerald-text: "#047857"
-  avatar-emerald-bg: "#D1FAE5"
-  avatar-emerald-text-dark: "#34D399"
-  avatar-emerald-bg-dark: "#112A1F"
-  avatar-red-text: "#B91C1C"
-  avatar-red-bg: "#FEE2E2"
-  avatar-red-text-dark: "#F87171"
-  avatar-red-bg-dark: "#3F1A1A"
-  code-background: "#F8FAFC"
-  code-background-dark: "#0D1117"
-  code-text-dark: "#CBD5E1"
-typography:
-  title-lg:
-    fontFamily: system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif
-    fontSize: 18px
-    fontWeight: 700
-    lineHeight: 1.4
-    letterSpacing: 0em
-  title-md:
-    fontFamily: system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif
-    fontSize: 15px
-    fontWeight: 700
-    lineHeight: 1.35
-    letterSpacing: 0em
-  title-sm:
-    fontFamily: system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif
-    fontSize: 14px
-    fontWeight: 700
-    lineHeight: 1.35
-    letterSpacing: 0em
-  body-md:
-    fontFamily: system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif
-    fontSize: 14px
-    fontWeight: 400
-    lineHeight: 1.5
-    letterSpacing: 0em
-  body-sm:
-    fontFamily: system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif
-    fontSize: 13px
-    fontWeight: 400
-    lineHeight: 1.45
-    letterSpacing: 0em
-  label-md:
-    fontFamily: system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif
-    fontSize: 13px
-    fontWeight: 600
-    lineHeight: 1.25
-    letterSpacing: 0em
-  label-sm:
-    fontFamily: system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif
-    fontSize: 12px
-    fontWeight: 600
-    lineHeight: 1.25
-    letterSpacing: 0em
-  caption:
-    fontFamily: system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif
-    fontSize: 11px
-    fontWeight: 500
-    lineHeight: 1.35
-    letterSpacing: 0em
-  micro:
-    fontFamily: system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif
-    fontSize: 10px
-    fontWeight: 500
-    lineHeight: 1.25
-    letterSpacing: 0em
-  mono-sm:
-    fontFamily: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace
-    fontSize: 12px
-    fontWeight: 500
-    lineHeight: 1.45
-    letterSpacing: 0em
-  mono-xs:
-    fontFamily: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace
-    fontSize: 11px
-    fontWeight: 500
-    lineHeight: 1.45
-    letterSpacing: 0em
-rounded:
-  none: 0px
-  xs: 4px
-  sm: 6px
-  md: 8px
-  lg: 12px
-  xl: 16px
-  full: 9999px
-spacing:
-  unit: 4px
-  hairline: 1px
-  micro: 2px
-  xs: 4px
-  sm: 6px
-  md: 8px
-  lg: 12px
-  xl: 16px
-  2xl: 20px
-  3xl: 24px
-  4xl: 32px
-  5xl: 40px
-  section-gap: 24px
-  card-padding: 16px
-  panel-padding: 20px
-  page-padding-mobile: 16px
-  page-padding-tablet: 32px
-  page-padding-desktop: 160px
-  content-max: 960px
-  content-max-wide: 1100px
-  header-height: 56px
-shadows:
-  none: none
-  sm: 0 1px 2px 0 rgb(0 0 0 / 0.05)
-  md: 0 4px 6px -1px rgb(0 0 0 / 0.10), 0 2px 4px -2px rgb(0 0 0 / 0.10)
-  lg: 0 10px 15px -3px rgb(0 0 0 / 0.10), 0 4px 6px -4px rgb(0 0 0 / 0.10)
-elevation:
-  base:
-    surface: "{colors.background}"
-    shadow: "{shadows.none}"
-  sticky-header:
-    surface: "{colors.surface}"
-    borderColor: "{colors.border}"
-    shadow: "{shadows.sm}"
-  card:
-    surface: "{colors.surface}"
-    borderColor: "{colors.border}"
-    shadow: "{shadows.sm}"
-  card-hover:
-    surface: "{colors.surface}"
-    borderColor: "{colors.primary}"
-    shadow: "{shadows.md}"
-  modal:
-    surface: "{colors.surface}"
-    borderColor: "{colors.border}"
-    shadow: "{shadows.lg}"
-motion:
-  duration-fast: 150ms
-  duration-standard: 200ms
-  duration-slow: 300ms
-  easing-standard: ease
-  scale-press: 0.98
-components:
-  button-primary:
-    backgroundColor: "{colors.primary-action}"
-    textColor: "{colors.on-primary}"
-    typography: "{typography.label-sm}"
-    rounded: "{rounded.md}"
-    padding: 8px 16px
-  button-primary-hover:
-    backgroundColor: "{colors.primary-action-hover}"
-    textColor: "{colors.on-primary}"
-  button-secondary:
-    backgroundColor: "{colors.surface}"
-    textColor: "{colors.text-muted}"
-    typography: "{typography.label-sm}"
-    rounded: "{rounded.md}"
-    padding: 6px 12px
-  button-secondary-hover:
-    backgroundColor: "{colors.surface-subtle}"
-    textColor: "{colors.primary}"
-  chip-active:
-    backgroundColor: "{colors.primary-container}"
-    textColor: "{colors.primary}"
-    typography: "{typography.label-sm}"
-    rounded: "{rounded.full}"
-    padding: 6px 12px
-  chip-neutral:
-    backgroundColor: "{colors.surface}"
-    textColor: "{colors.text-muted}"
-    typography: "{typography.label-sm}"
-    rounded: "{rounded.full}"
-    padding: 4px 12px
-  card-standard:
-    backgroundColor: "{colors.surface}"
-    textColor: "{colors.text}"
-    typography: "{typography.body-sm}"
-    rounded: "{rounded.lg}"
-    padding: "{spacing.card-padding}"
-  panel-standard:
-    backgroundColor: "{colors.surface}"
-    textColor: "{colors.text}"
-    typography: "{typography.body-sm}"
-    rounded: "{rounded.lg}"
-    padding: "{spacing.panel-padding}"
-  input-field:
-    backgroundColor: "{colors.surface-muted}"
-    textColor: "{colors.text}"
-    typography: "{typography.mono-sm}"
-    rounded: "{rounded.md}"
-    padding: 8px 12px
-  input-field-focus:
-    backgroundColor: "{colors.surface}"
-    textColor: "{colors.text}"
-  status-success:
-    backgroundColor: "{colors.success-container}"
-    textColor: "{colors.success}"
-    typography: "{typography.label-sm}"
-    rounded: "{rounded.full}"
-    padding: 4px 10px
-  status-warning:
-    backgroundColor: "{colors.warning-container}"
-    textColor: "{colors.warning-strong}"
-    typography: "{typography.label-sm}"
-    rounded: "{rounded.full}"
-    padding: 4px 10px
-  status-danger:
-    backgroundColor: "{colors.danger-container}"
-    textColor: "{colors.danger-strong}"
-    typography: "{typography.label-sm}"
-    rounded: "{rounded.full}"
-    padding: 4px 10px
-  avatar:
-    backgroundColor: "{colors.avatar-blue-bg}"
-    textColor: "{colors.avatar-blue-text}"
-    typography: "{typography.title-lg}"
-    rounded: "{rounded.full}"
-    size: 40px
-  icon-button:
-    backgroundColor: transparent
-    textColor: "{colors.text-faint}"
-    typography: "{typography.label-sm}"
-    rounded: "{rounded.sm}"
-    padding: 6px
-  progress-track:
-    backgroundColor: "{colors.surface-subtle}"
-    rounded: "{rounded.full}"
-    height: 8px
-  progress-primary:
-    backgroundColor: "{colors.primary-action}"
-    rounded: "{rounded.full}"
-    height: 8px
-  code-block:
-    backgroundColor: "{colors.code-background}"
-    textColor: "{colors.text}"
-    typography: "{typography.mono-xs}"
-    rounded: "{rounded.md}"
-    padding: "{spacing.card-padding}"
----
+# Design
 
-# Design System: Codex Proxy
+## Source of truth
 
-## Overview
+- Status: Active
+- Last refreshed: 2026-07-18
+- Primary product surfaces: authenticated Web dashboard, call observability dashboard, context timeline, call detail, account and proxy administration, settings, logs, usage, and errors.
+- Evidence reviewed:
+  - `web/src/App.tsx`
+  - `web/src/index.css`
+  - `web/src/pages/CallRecordsPage.tsx`
+  - `web/src/pages/UsageStats.tsx`
+  - `web/src/components/Header.tsx`
+  - `shared/theme/context.tsx`
+  - `src/call-records/types.ts`
+  - `src/call-records/store.ts`
+  - `src/routes/admin/call-records.ts`
+  - `docs/superpowers/specs/2026-07-11-successful-call-records-design.md`
+  - `.superpowers/brainstorm/1004237-1784314377/content/observability-drilldown-desktop.html`
+  - `.superpowers/brainstorm/1004237-1784314377/artifacts/observability-type-overview-light.png`
+  - `.superpowers/brainstorm/1004237-1784314377/artifacts/observability-type-context-light.png`
+  - `.superpowers/brainstorm/1004237-1784314377/artifacts/observability-type-detail-dark.png`
+  - User-provided background reference at `/mnt/c/Users/devop/Pictures/IMG_20260307_152804.png`
+- Detailed feature contract: `docs/superpowers/specs/2026-07-18-call-observability-dashboard-and-web-redesign-design.md`.
+- Decision rule: this file governs durable product and visual decisions. The detailed feature contract governs call-observability storage, APIs, migration, and acceptance criteria. If they conflict, update both documents before implementation proceeds.
 
-Codex Proxy is a compact operational dashboard for managing accounts, proxy routing, API keys, settings, logs, and usage telemetry. The visual identity should feel precise, calm, and engineer-owned: more control room than landing page. The interface should privilege scan speed, status clarity, and repeatable workflows over decorative composition.
+## Brand
 
-The default feeling is restrained and utilitarian. Pages sit on a very light slate field in light mode and a GitHub-like near-black field in dark mode. Cards are clean white or graphite panels with thin borders, small radii, and soft shadows. The primary accent is a contrast-safe emerald system: deep emerald for readable light-mode text and solid actions, brighter mint-emerald for dark-mode text, and pale or dim containers for selected states.
+- Personality: calm, precise, private, engineer-owned, and quietly warm. The product is an operational workbench rather than a marketing site.
+- Trust signals: current collection state, exact timestamps, explicit data-retention labels, stable status colors, predictable navigation, and visible distinctions between stored semantic content and temporary raw evidence.
+- Avoid:
+  - saturated brand colors over large surfaces;
+  - decorative gradients that compete with data;
+  - heavy glass refraction, lens distortion, ripples, or warped background imagery;
+  - oversized editorial typography;
+  - raw JSON as the primary reading experience;
+  - ambiguous health indicators that hide the underlying timestamp or count.
 
-The product should never feel oversized or editorial. Keep the information density high, controls close to the data they affect, and headings compact. The strongest visual signals are state color, tab selection, badges, progress bars, and small inline icons.
+## Product goals
 
-## Colors
+- Goals:
+  - make the latest successful model activity and collection health understandable at a glance;
+  - expose model share, tokens, cache use, storage size, growth, and active contexts without opening individual records;
+  - let users drill from the dashboard into a context timeline and then a semantic call detail;
+  - keep recent raw evidence for diagnosis without allowing repeated request history and stream deltas to dominate long-term storage or search;
+  - give all dashboard pages one navigation, layout, theme, typography, table, filter, and state language;
+  - support a server-shared custom background while preserving readable light and dark themes.
+- Non-goals:
+  - quality scoring, prompt grading, cost forecasting, or automatic optimization advice;
+  - retaining failed request or response bodies;
+  - a mobile-first administration experience;
+  - visible geometric glass refraction or animated background effects;
+  - a generic analytics builder or arbitrary custom time-range workflow in the primary UI.
+- Success signals:
+  - a user can identify whether a recent successful call exists, and when it occurred, without opening a list;
+  - a user can identify the most active model and context within one screen;
+  - a user can reach a readable user-input/final-output view in two drill-down actions;
+  - full-text results are based on semantic content instead of tool schemas, repeated history, or stream delta noise;
+  - raw storage converges under a seven-day retention policy while semantic records remain available;
+  - all operational text follows the documented type scale and remains readable over the configured background.
 
-The palette is built from neutral slate surfaces plus one operational green accent.
+## Personas and jobs
 
-- **Operational Emerald (#047857 light text/action, #34D399 dark text, #DCFCE7/#11281D containers):** Primary action color, online status, active toggles, selected tabs, healthy quota bars, and successful copy/save states. Text/accent tokens and solid action tokens are separate so white text stays readable on buttons while selected chips remain legible in both themes.
-- **Slate Canvas (#F8FAFC) and GitHub Night (#0D1117):** Page backgrounds. The light background is cool and quiet; the dark background is a deep technical graphite.
-- **Card Surfaces (#FFFFFF, #161B22):** Main content cards and settings panels. Surfaces should remain plain, bordered, and easy to scan.
-- **Borders (#E5E7EB, #30363D):** Most hierarchy is carried by hairline borders rather than heavy depth.
-- **Muted Text (#64748B, #8B949E):** Metadata, helper text, empty states, timestamps, and low-priority toolbar labels.
-- **Alerts:** Red is reserved for failed requests, unread errors, destructive actions, and quota exhaustion. Amber is for rate limiting, warnings, and attention states. Blue, violet, cyan, and fuchsia appear mainly in charts, secondary quotas, and avatars. Status and avatar colors should always be used as foreground/container pairs, not as raw color-on-white combinations.
+- Primary personas:
+  - the operator running Codex Proxy on a workstation or private server;
+  - a developer diagnosing a session, model, proxy, or translation problem;
+  - a power user reviewing personal model usage and storage growth from another desktop device.
+- User jobs:
+  - verify that the proxy is still receiving and completing calls;
+  - understand which models, sessions, and tasks consume the most tokens and storage;
+  - search for a remembered user request or assistant answer;
+  - inspect a single call without reading protocol envelopes;
+  - expand recent raw evidence only when semantic content is insufficient;
+  - administer accounts, routes, settings, and logs through the same visual shell.
+- Key contexts of use: desktop browsers are primary; tablets receive a functional adaptation; phones support read-oriented dashboard, context, and detail access.
 
-Dark mode is not just inverted light mode. It uses a GitHub-inspired neutral stack: black-blue page canvas, graphite panels, steel borders, and muted gray text. The primary accent becomes brighter and slightly more teal for text, while solid primary actions keep the deeper emerald background needed for white label contrast.
+## Information architecture
 
-## Typography
+- Primary navigation: a persistent high-density icon rail with tooltips and an active-state label available to assistive technology. The call dashboard is the default observability destination.
+- Core routes/screens:
+  - call overview: collection health, range metrics, trends, model share, storage composition, outcome counts, and active contexts;
+  - context index and context detail: aggregated usage plus chronological call timeline;
+  - call search: global semantic search with advanced filters in a secondary surface;
+  - call detail: semantic conversation first, raw evidence second;
+  - accounts, proxy routing, usage, logs/errors, API/configuration, and appearance settings.
+- Content hierarchy:
+  1. health and recency;
+  2. scale and trend;
+  3. active contexts and model distribution;
+  4. search and advanced filters;
+  5. individual semantic content;
+  6. raw protocol evidence.
+- Time-range contract: default to local-calendar “Today”; provide “24h” and “7d” shortcuts; keep custom range behind a secondary action rather than in the primary segmented control.
 
-Use the system sans stack for the product voice. This keeps the UI native, compact, and fast. Use the monospace stack only for API keys, URLs, code examples, timestamps, IDs, and other technical strings.
+## Design principles
 
-Hierarchy should be shallow. Most headings live between 14px and 18px with bold weight. Body copy is usually 13px to 14px. Captions and metadata use 10px to 12px. Avoid large display type unless creating a completely new entry screen such as an authentication page.
+- Background is atmosphere, not content. Every data surface must remain readable when the custom image contains a bright face, dark clothing, or high-contrast highlights.
+- Semantic first, evidence on demand. Default views use normalized meaning and stable metadata; raw protocol material is collapsed and retention-labelled.
+- Dense but not miniature. Preserve desktop information density through alignment, spacing, and grouping, never by shrinking operational text below 11px.
+- Health must be inspectable. Pair “active” or “normal” labels with the last successful timestamp and relevant counts.
+- One visual grammar. Existing pages adopt the same shell and tokens instead of creating isolated redesigns.
+- Tradeoffs:
+  - desktop scan speed takes priority over large touch targets and card-heavy mobile composition;
+  - a visible background is allowed, but minimum contrast protection overrides a user-selected transparency value;
+  - long-term semantic usefulness takes priority over indefinite raw replay capability.
 
-Weights matter more than size. Use semibold for labels and controls, bold for panel titles, regular for descriptions, and medium monospace for technical values. Keep letter spacing normal; the product should read as a dense tool, not a brand campaign.
+## Visual language
 
-## Layout
-
-The layout uses a centered fixed-width working area. The main dashboard width is 960px, while chart-heavy standalone views can expand to 1100px. Desktop side padding is generous enough to center the control surface, while mobile and tablet padding tighten to 16px and 32px.
-
-Spacing follows a 4px base rhythm with 8px, 12px, 16px, 20px, and 24px doing most of the work. Dense toolbars use 6px gaps and compact vertical padding. Cards and settings panels use 16px to 20px internal padding. Major stacked sections use 24px gaps.
-
-Use grids for repeated summaries and account cards. Use flexible wrapping toolbars so controls can collapse without clipping. Keep controls directly above or inside the content they modify; do not split operational workflows into isolated marketing-like sections.
-
-## Elevation & Depth
-
-Depth is deliberately shallow. The system relies on tonal layering, thin borders, and low-opacity shadows. Standard cards use a subtle one-step shadow, and hover states can lift to a medium shadow only when the element is interactive. Sticky headers get a thin border and a small shadow so they separate from scroll content without feeling heavy.
-
-Do not introduce dramatic drop shadows, glass effects, blurred backgrounds, gradient panels, or floating decorative layers. The dashboard should feel stable and machine-like. In dark mode, borders and surface contrast carry most depth; shadows should be visually minimal.
-
-## Shapes
-
-The shape language is compact and pragmatic.
-
-- **Cards and panels:** 12px radius. This is enough softness to avoid harsh rectangles while preserving an engineered feel.
-- **Inputs and primary buttons:** 8px radius. They should feel direct and utilitarian.
-- **Small icon buttons:** 6px radius.
-- **Badges, status chips, progress bars, avatars, and toggles:** Fully pill-shaped.
-- **Login or modal containers:** 16px radius is acceptable for the rare elevated entry point.
-
-Avoid oversized rounded cards or pill-shaped containers for general content. Pills are reserved for badges, filters, compact header actions, and binary status.
+- Color:
+  - light mode uses warm off-white glass, charcoal text, and restrained terracotta accent `#BD6041`;
+  - dark mode uses smoked near-black glass, warm off-white text, and lighter terracotta `#DF7957`;
+  - green is reserved for successful/healthy state, amber for warning/retention attention, and red for failure/destructive state;
+  - charts use a small stable palette and must not use color as the only series identifier.
+- Typography:
+  - operational stack: `ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif`;
+  - technical stack: `ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", monospace`;
+  - identity stack, used only for the product name and page title: `ui-serif, "Iowan Old Style", "Noto Serif SC", "Songti SC", serif`;
+  - fixed scale: 11px metadata and captions, 12px controls and component titles, 13px reading body, 16px only for dialog/drawer titles or a standalone heading that introduces multiple panels, 22px page title, and 26px primary metric;
+  - no operational or interactive text below 11px;
+  - tabular numerals are required for metrics, timestamps, token counts, byte sizes, and latency;
+  - hierarchy should come from weight, color, and spacing before adding another font size.
+- Spacing/layout rhythm: 4px base; use 8, 12, 16, 20, and 24px for most gaps. Desktop content fills the available workbench rather than using the old narrow 960px page.
+- Shape/radius/elevation: 9px controls, 12px cards, 18px outer workbench, thin translucent borders, and low-spread shadows. Avoid inflated pill cards; pills are for status and compact filters.
+- Motion: 150–220ms color/opacity/transform transitions; no bounce; no background parallax; honor reduced motion.
+- Imagery/iconography: one server-shared background image may cover the viewport. Navigation and actions use one consistent outline icon set or repo-native SVGs, never mixed Unicode symbols in production.
 
 ## Components
 
-### Header
+- Existing components to reuse:
+  - Preact application and hash-routing structure;
+  - current authenticated admin fetch patterns;
+  - theme provider behavior and existing account, settings, table, and chart business logic where behavior is correct;
+  - existing i18n provider and translation catalog.
+- New/changed components:
+  - `AppShell`, `IconRail`, `TopBar`, `PageHeader`, `TimeRangeControl`;
+  - `MetricCard`, `StatusBadge`, `DataPanel`, `DataTable`, `EmptyState`, `InlineAlert`, and `Skeleton`;
+  - `CallOverview`, `ContextTable`, `ContextTimeline`, `SemanticCallDetail`, `RawEvidenceDisclosure`, and `CallSearchDialog`;
+  - `AppearanceDrawer`, `BackgroundUploader`, and `GlassSurface` primitives.
+- Variants and states:
+  - surfaces: workbench, chrome, card, inset, modal/drawer;
+  - status: healthy, warning, failed, inactive, unknown;
+  - raw evidence: available with expiry, expired, missing because capture failed, and unavailable for migrated/truncated records;
+  - tables: loading, empty, error, partial-data warning, selected row, and pagination.
+- Token/component ownership:
+  - semantic color, typography, opacity, blur, radius, spacing, and shadow tokens live in global CSS variables;
+  - components consume semantic tokens and must not embed page-specific light/dark color literals;
+  - user appearance settings override bounded CSS custom properties at the shell, not individual component classes.
 
-The header is sticky, 56px tall, bordered, and softly shadowed. It uses a compact logo mark, product name, status pill, utility actions, language and theme toggles, and a primary add action. Header controls should remain small, horizontally grouped, and icon-led where possible.
+## Accessibility
 
-### Navigation
+- Target standard: WCAG 2.2 AA for authenticated dashboard workflows.
+- Keyboard/focus behavior: visible focus rings, logical tab order, keyboard-operable disclosures, tables, segmented controls, dialogs, drawers, and navigation; `Escape` closes transient surfaces and returns focus to the trigger.
+- Contrast/readability:
+  - minimum contrast protection clamps glass opacity when the configured background would make text fail contrast;
+  - status never relies on color alone;
+  - body text remains at least 13px and operational metadata at least 11px;
+  - pure/no-background mode is always available.
+- Screen-reader semantics: landmarks for navigation/header/main, real headings, table semantics, button labels for icon-only controls, live regions for refresh and save outcomes, and explicit descriptions for raw-retention state.
+- Reduced motion and sensory considerations: disable nonessential transitions under `prefers-reduced-motion`; do not animate or distort the background; respect `prefers-reduced-transparency` when supported by increasing surface opacity and disabling backdrop blur.
 
-Top navigation uses compact text tabs. The active tab uses a pale emerald container and emerald text; inactive tabs use muted slate text and a light hover surface. Tabs should not become large segmented cards.
+## Responsive behavior
 
-### Cards
+- Supported breakpoints/devices:
+  - desktop at 1024px and above is the full operational target;
+  - tablet from 768px to 1023px stacks secondary charts and preserves core controls;
+  - phone below 768px is a read-priority adaptation.
+- Layout adaptations:
+  - desktop keeps the icon rail, four-metric row, split dashboards, and aligned data tables;
+  - tablet uses two-column metrics and stacks the main/secondary analysis panels;
+  - phone hides the rail, collapses breadcrumbs to the current page, uses two metric columns when space permits, stacks context/detail panels, and permits horizontal scrolling for nonessential wide tables;
+  - phone does not expose account bulk operations or attempt to compress all desktop columns.
+- Touch/hover differences: tooltips must not be the only source of a label; touch targets reach at least 40px on tablet/phone even though desktop controls remain compact.
 
-Account cards are dense operational objects. They contain avatar, identity, status toggle, status badge, quick actions, metrics, proxy selector, and quota bars. Preserve the structure: identity and controls first, then metric rows, then assignment and quota state. Hover may add a little shadow and accent border, but the card should remain quiet.
+## Interaction states
 
-Summary cards are smaller and flatter. They emphasize the value with a bold 18px number and keep labels and hints muted.
+- Loading: preserve panel geometry with skeletons; refresh should keep stale data visible and mark it as refreshing.
+- Empty: explain whether no calls exist, collection is disabled, or the selected range/filter has no results; provide the relevant action.
+- Error: keep other panels usable, identify the failed data source, and provide retry. A raw-evidence error must not hide semantic content.
+- Success: show saved/updated confirmation without blocking navigation. Collection health is derived from timestamps and counts, not a decorative animation.
+- Disabled: explain why collection, background upload, or an action is unavailable.
+- Offline/slow network: keep the last successfully loaded dashboard visible, mark its age, and retry only safe idempotent reads automatically.
 
-### Buttons
+## Content voice
 
-Primary buttons are emerald with white text, 8px radius, compact padding, and a subtle shadow. Secondary buttons are neutral bordered controls with muted slate text and a light hover fill. Destructive actions should usually appear as icon buttons that become red on hover, unless the action is the main page intent.
+- Tone: concise, factual, calm, and operational.
+- Terminology:
+  - “successful call” means semantic completion, not merely upstream HTTP 2xx;
+  - “context” is the shared technical grouping; the UI may label it “session / task” when that is clearer;
+  - “semantic content” means normalized current-turn input, final assistant output, and tool activity summary;
+  - “raw evidence” means the temporary redacted request/response/event capture;
+  - “data size” must identify whether it is raw, semantic, index, or total storage.
+- Microcopy rules: show absolute timestamps with relative time where space allows; state retention deadlines explicitly; avoid claiming “normal” without a supporting last-success time.
 
-Pressed states can scale slightly to 98 percent. Keep transitions short and color-based. Avoid bouncy or playful motion.
+## Implementation constraints
 
-### Inputs And Selects
+- Framework/styling system: Preact, TypeScript, Vite, Tailwind 3, and repo-native CSS variables. Do not add a component framework or chart dependency solely for this redesign.
+- Design-token constraints: replace the obsolete emerald/no-glass design contract with the semantic tokens in this file. Keep opacity values bounded and theme-specific.
+- Performance constraints:
+  - custom background assets are served with cache validation and never embedded in configuration JSON;
+  - defer raw body download until the disclosure is opened;
+  - virtualize or paginate long call/context tables;
+  - avoid applying multiple nested high-radius backdrop filters; default background blur is 2px and may be set to 0.
+- Compatibility constraints:
+  - the same server background configuration is shared by all dashboard devices;
+  - light/dark preference remains browser-local;
+  - no-background mode works if upload is absent, invalid, deleted, or unsupported;
+  - network-exposed dashboard access remains behind existing dashboard authentication.
+  - every state-changing admin route is covered by the explicit mutation/CSRF guard defined in the detailed feature contract; CORS and dashboard authentication alone are not treated as CSRF protection.
+- Test/screenshot expectations:
+  - component tests cover semantic states and keyboard behavior;
+  - integration tests cover storage/API contracts;
+  - production build and typecheck must pass;
+  - visual checks include 1440×1050 light/dark desktop overview and detail plus 390×844 read-only mobile overview/detail;
+  - visual-verdict target is at least 90.
 
-Inputs use neutral surfaces, thin borders, 8px radius, and compact padding. Technical inputs should use monospace. Focus states use an emerald ring or border. Selects should match text inputs in height, border, and surface treatment.
+## Open questions
 
-### Badges And Status
-
-Status chips are pill-shaped, small, and color coded. Active and healthy states use green; warning and rate-limited states use amber or orange; failed and exhausted states use red; disabled states use slate. Keep badge text short and semibold.
-
-### Progress And Charts
-
-Progress bars are 8px tall, pill-shaped, and sit on a pale slate track. Healthy quota is green, warning quota is amber, exhausted quota is red, secondary quota can be indigo, and review quota can be cyan.
-
-Charts are SVG-like, lightweight, and line-based. Use blue for input tokens, green for output tokens, violet for cached tokens, amber for request count, and fuchsia for hit rate. Grid lines and axis labels should stay muted so the series carries attention.
-
-### Code Blocks
-
-Code examples live in bordered containers with a muted surface and monospace text. In dark mode, code blocks use the same near-black canvas as the page background. Copy actions should appear on hover or stay visually secondary.
-
-## Do's and Don'ts
-
-Do keep screens dense, quiet, and operational. Do use borders, muted text, and small spacing steps to preserve scanability. Do reserve emerald for selected, healthy, and primary actions. Do keep chart colors consistent across pages.
-
-Do not create a landing-page hero, oversized cards, decorative gradients, glass panels, or large editorial headings. Do not use purple as a dominant theme; violet is only a chart and secondary-data accent. Do not hide state behind animation or imagery. Do not replace historical or operational semantics with visually nicer surrogate metrics.
+- None for the approved scope. New product or visual decisions must be recorded here before implementation diverges from this contract.
