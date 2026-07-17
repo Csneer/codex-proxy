@@ -136,6 +136,20 @@ export class SessionAffinityMap {
     this.map.delete(responseId);
   }
 
+  /** Drop every response recorded for a conversation, optionally scoped to a
+   * variant. A silently failed resumed stream can poison every previous ID on
+   * the same rotated connection, so forgetting only the newest ID is unsafe. */
+  forgetConversation(conversationId: string, variantHash?: string): number {
+    let dropped = 0;
+    for (const [responseId, entry] of this.map) {
+      if (entry.conversationId !== conversationId) continue;
+      if (variantHash !== undefined && entry.variantHash !== variantHash) continue;
+      this.map.delete(responseId);
+      dropped++;
+    }
+    return dropped;
+  }
+
   private getEntry(responseId: string): AffinityEntry | null {
     const entry = this.map.get(responseId);
     if (!entry) return null;

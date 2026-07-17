@@ -11,6 +11,7 @@ import {
   getReasoningReplayCache,
   resetReasoningReplayCacheForTests,
 } from "@src/proxy/reasoning-replay-cache.js";
+import { _resetWsPoolForTests, getWsPool } from "@src/proxy/ws-pool.js";
 
 function createMockAccountPool(): { pool: AccountPool; release: ReturnType<typeof vi.fn> } {
   const release = vi.fn();
@@ -40,6 +41,7 @@ describe("handleStreaming", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     resetReasoningReplayCacheForTests();
+    _resetWsPoolForTests();
     for (const affinityMap of affinityMaps) {
       affinityMap.dispose();
     }
@@ -234,5 +236,114 @@ describe("handleStreaming", () => {
       undefined,
       "variant-stream",
     )).toBeNull();
+  });
+
+  it("drops the poisoned conversation variant and evicts pooled WS after a resumed terminal failure", async () => {
+    const { pool } = createMockAccountPool();
+    const affinityMap = new SessionAffinityMap();
+    affinityMaps.push(affinityMap);
+    affinityMap.record(
+      "resp_stale",
+      "entry-stream",
+      "conversation-stream",
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "variant-stream",
+    );
+    affinityMap.record(
+      "resp_other_variant",
+      "entry-stream",
+      "conversation-stream",
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "variant-other",
+    );
+    const evictSpy = vi.spyOn(getWsPool(), "evictByEntryId");
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const fmt = createMockFormatAdapter({
+      streamTranslator: vi.fn(async function* (options: FormatStreamTranslatorOptions) {
+        options.onResponseMetadata?.({ terminalFailure: true });
+        yield "event: response.failed\ndata: {\"response\":{\"status\":\"failed\"}}\n\n";
+      }),
+    });
+    const app = new Hono();
+
+    app.get("/stream", (c) => handleStreaming({
+      c,
+      accountPool: pool,
+      req: createStreamingRequest(),
+      fmt,
+      api: {} as unknown as CodexApi,
+      response: new Response(""),
+      entryId: "entry-stream",
+      abortController: new AbortController(),
+      released: new Set<string>(),
+      requestId: "request-stream-123",
+      affinityMap,
+      conversationId: "conversation-stream",
+      variantHash: "variant-stream",
+      implicitResumeActive: true,
+    }));
+
+    const res = await app.request("/stream");
+    await res.text();
+
+    expect(affinityMap.lookup("resp_stale")).toBeNull();
+    expect(affinityMap.lookup("resp_other_variant")).toBe("entry-stream");
+    expect(evictSpy).toHaveBeenCalledOnce();
+    expect(evictSpy).toHaveBeenCalledWith("entry-stream");
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("[implicit-resume-poison]"));
+  });
+
+  it("keeps affinity and pooled WS intact when the failed stream was not implicitly resumed", async () => {
+    const { pool } = createMockAccountPool();
+    const affinityMap = new SessionAffinityMap();
+    affinityMaps.push(affinityMap);
+    affinityMap.record(
+      "resp_existing",
+      "entry-stream",
+      "conversation-stream",
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "variant-stream",
+    );
+    const evictSpy = vi.spyOn(getWsPool(), "evictByEntryId");
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const fmt = createMockFormatAdapter({
+      streamTranslator: vi.fn(async function* (options: FormatStreamTranslatorOptions) {
+        options.onResponseMetadata?.({ terminalFailure: true });
+        yield "event: response.failed\ndata: {\"response\":{\"status\":\"failed\"}}\n\n";
+      }),
+    });
+    const app = new Hono();
+
+    app.get("/stream", (c) => handleStreaming({
+      c,
+      accountPool: pool,
+      req: createStreamingRequest(),
+      fmt,
+      api: {} as unknown as CodexApi,
+      response: new Response(""),
+      entryId: "entry-stream",
+      abortController: new AbortController(),
+      released: new Set<string>(),
+      requestId: "request-stream-123",
+      affinityMap,
+      conversationId: "conversation-stream",
+      variantHash: "variant-stream",
+      implicitResumeActive: false,
+    }));
+
+    const res = await app.request("/stream");
+    await res.text();
+
+    expect(affinityMap.lookup("resp_existing")).toBe("entry-stream");
+    expect(evictSpy).not.toHaveBeenCalled();
   });
 });

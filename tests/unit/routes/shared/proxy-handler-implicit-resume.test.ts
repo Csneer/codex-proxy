@@ -244,3 +244,55 @@ describe("getInlineFunctionCallIds / isSelfContainedReplay", () => {
     ])).toBe(false);
   });
 });
+
+describe("custom_tool_call resume support", () => {
+  it("uses the last custom_tool_call as the continuation anchor", async () => {
+    const { getContinuationInputStartIndex } = await import("@src/routes/shared/proxy-session-helpers.js");
+    const start = getContinuationInputStartIndex([
+      { role: "user", content: "hi" },
+      { role: "assistant", content: "ok" },
+      { type: "custom_tool_call", call_id: "c1", name: "exec", input: "{}" },
+      { type: "custom_tool_call_output", call_id: "c1", output: "{}" },
+      { type: "custom_tool_call", call_id: "c2", name: "exec", input: "{}" },
+      { type: "custom_tool_call_output", call_id: "c2", output: "{}" },
+    ]);
+    expect(start).toBe(5);
+  });
+
+  it("does not treat custom_tool_call_output as a model-output anchor", async () => {
+    const { getContinuationInputStartIndex } = await import("@src/routes/shared/proxy-session-helpers.js");
+    const start = getContinuationInputStartIndex([
+      { role: "user", content: "hi" },
+      { type: "custom_tool_call_output", call_id: "c_prev", output: "{}" },
+    ]);
+    expect(start).toBe(0);
+  });
+
+  it("collects custom tool output ids with function output ids", async () => {
+    const { getFunctionCallOutputIds } = await import("@src/routes/shared/proxy-session-helpers.js");
+    const ids = getFunctionCallOutputIds([
+      { role: "user", content: "hi" },
+      { type: "function_call_output", call_id: "c_fn", output: "{}" },
+      { type: "custom_tool_call_output", call_id: "c_custom", output: "{}" },
+    ]);
+    expect(ids).toEqual(["c_fn", "c_custom"]);
+  });
+
+  it("collects custom tool call ids with function call ids", async () => {
+    const { getInlineFunctionCallIds } = await import("@src/routes/shared/proxy-session-helpers.js");
+    const ids = getInlineFunctionCallIds([
+      { type: "function_call", call_id: "c_fn", name: "read", arguments: "{}" },
+      { type: "custom_tool_call", call_id: "c_custom", name: "exec", input: "{}" },
+      { type: "custom_tool_call_output", call_id: "c_custom", output: "{}" },
+    ]);
+    expect(ids).toEqual(["c_fn", "c_custom"]);
+  });
+
+  it("recognizes a paired custom tool call as a self-contained replay", async () => {
+    const { isSelfContainedReplay } = await import("@src/routes/shared/proxy-session-helpers.js");
+    expect(isSelfContainedReplay([
+      { type: "custom_tool_call", call_id: "c1", name: "exec", input: "{}" },
+      { type: "custom_tool_call_output", call_id: "c1", output: "{}" },
+    ])).toBe(true);
+  });
+});

@@ -43,6 +43,10 @@ export interface ResponseMetadata {
   functionCallIds?: string[];
   reasoningReplayItems?: ReasoningReplayItem[];
   invalidReasoningReplay?: boolean;
+  /** The upstream ended without a terminal event. */
+  prematureClose?: boolean;
+  /** The upstream ended with `error` or `response.failed`. */
+  terminalFailure?: boolean;
 }
 
 export interface FormatStreamTranslatorOptions {
