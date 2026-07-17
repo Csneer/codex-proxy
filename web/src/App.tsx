@@ -18,6 +18,7 @@ import { UsageStats } from "./pages/UsageStats";
 import { LogsPage } from "./pages/LogsPage";
 import { ErrorsPage } from "./pages/ErrorsPage";
 import { CallRecordsPage } from "./pages/CallRecordsPage";
+import { CallDashboardPage } from "./pages/CallDashboardPage";
 import { useAccounts } from "../../shared/hooks/use-accounts";
 import { useErrorLogsCount } from "../../shared/hooks/use-error-logs";
 import { useProxies } from "../../shared/hooks/use-proxies";
@@ -167,6 +168,7 @@ function Dashboard() {
 
           {activeTab === "" && (
             <div class="flex flex-col gap-6">
+              <CallDashboardPage />
               <PoolOverview
                 accounts={accounts.list}
                 creditsPerUsd={generalSettings.data?.credits_per_usd}
