@@ -137,7 +137,7 @@ function Dashboard() {
   const activeTab = TABS.find((t) => t.hash === hash)?.hash ?? "";
 
   return (
-    <div class="min-h-screen flex flex-col bg-slate-50 dark:bg-bg-dark">
+    <div class="min-h-screen flex flex-col glass-workbench">
       <Header
         onAddAccount={accounts.startAdd}
         onCheckUpdate={update.checkForUpdate}
@@ -276,7 +276,7 @@ function LoginGate({ children }: { children: ComponentChildren }) {
 
   if (auth.status === "loading") {
     return (
-      <div class="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-bg-dark">
+      <div class="min-h-screen flex items-center justify-center glass-workbench">
         <div class="animate-pulse text-slate-400 dark:text-text-dim text-sm">Loading...</div>
       </div>
     );
@@ -285,8 +285,8 @@ function LoginGate({ children }: { children: ComponentChildren }) {
   if (auth.status === "login") {
     const handleSubmit = (e: Event) => { e.preventDefault(); if (password.trim()) auth.login(password.trim()); };
     return (
-      <div class="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-bg-dark px-4">
-        <div class="w-full max-w-sm bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-2xl shadow-lg p-8">
+      <div class="min-h-screen flex items-center justify-center glass-workbench px-4">
+        <div class="w-full max-w-sm glass-surface rounded-2xl shadow-lg p-8">
           <div class="flex flex-col items-center gap-2 mb-6">
             <div class="flex items-center justify-center size-12 rounded-full bg-primary-container text-primary border border-primary/20">
               <svg class="size-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

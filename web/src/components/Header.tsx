@@ -49,7 +49,7 @@ export function Header({ onAddAccount, onCheckUpdate, onOpenUpdateModal, checkin
   const { isDark, toggle: toggleTheme } = useTheme();
 
   return (
-    <header class="sticky top-0 z-50 w-full bg-white dark:bg-card-dark border-b border-gray-200 dark:border-border-dark shadow-sm transition-colors">
+    <header class="sticky top-0 z-50 w-full glass-surface border-x-0 border-t-0 transition-colors">
       <div class="px-4 md:px-8 lg:px-40 flex h-14 items-center justify-center">
         <div class="flex w-full max-w-[960px] items-center justify-between">
           {/* Logo & Title */}

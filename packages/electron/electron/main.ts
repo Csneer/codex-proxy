@@ -139,7 +139,10 @@ app.on("ready", async () => {
 
     // 4. Start the proxy server (try configured port first, fall back to random if occupied)
     try {
-      serverHandle = await startServer({});
+      // Desktop mode stays local-only even though the CLI/Docker defaults are
+      // LAN-ready. Users who explicitly set server.host in local.yaml still
+      // retain that override through startServer's config precedence.
+      serverHandle = await startServer({ host: "127.0.0.1" });
     } catch {
       console.warn("[Electron] Default port in use, using random port");
       serverHandle = await startServer({ port: 0 });

@@ -3,19 +3,35 @@
 @tailwind utilities;
 
 :root {
-  --primary: 21 128 61;
-  --primary-hover: 22 101 52;
-  --primary-action: 21 128 61;
-  --primary-action-hover: 22 101 52;
-  --primary-container: 220 252 231;
-  --success: 21 128 61;
-  --success-container: 220 252 231;
-  --warning: 180 83 9;
-  --warning-container: 254 243 199;
+  --primary: 189 96 65;
+  --primary-hover: 166 76 49;
+  --primary-action: 189 96 65;
+  --primary-action-hover: 166 76 49;
+  --primary-container: 251 232 222;
+  --accent: 189 96 65;
+  --success: 57 119 78;
+  --success-container: 225 240 228;
+  --warning: 140 88 43;
+  --warning-container: 250 238 218;
   --danger: 185 28 28;
   --danger-container: 254 226 226;
   --info: 29 78 216;
   --info-container: 219 234 254;
+  --bg-page: 248 246 242;
+  --bg-surface: 255 253 249;
+  --border-soft: 228 220 212;
+  --text-main-rgb: 49 42 37;
+  --text-meta: 11px;
+  --text-control: 12px;
+  --text-body: 13px;
+  --text-section: 16px;
+  --text-page: 22px;
+  --text-metric: 26px;
+  --font-ui: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --workbench-alpha: .38;
+  --card-alpha: .49;
+  --background-blur: 2px;
+  --surface-blur: 4px;
   --avatar-purple-text: 126 34 206;
   --avatar-purple-bg: 243 232 255;
   --avatar-amber-text: 146 64 14;
@@ -34,19 +50,27 @@
 }
 
 .dark {
-  --primary: 74 222 128;
-  --primary-hover: 34 197 94;
-  --primary-action: 21 128 61;
-  --primary-action-hover: 22 101 52;
-  --primary-container: 20 83 45;
-  --success: 74 222 128;
-  --success-container: 20 83 45;
-  --warning: 251 191 36;
-  --warning-container: 61 44 22;
+  --primary: 223 121 87;
+  --primary-hover: 238 148 115;
+  --primary-action: 189 96 65;
+  --primary-action-hover: 166 76 49;
+  --primary-container: 82 45 36;
+  --accent: 223 121 87;
+  --success: 142 209 164;
+  --success-container: 32 63 44;
+  --warning: 225 170 101;
+  --warning-container: 74 55 32;
   --danger: 248 113 113;
   --danger-container: 63 26 26;
   --info: 96 165 250;
   --info-container: 26 42 63;
+  --bg-page: 35 32 29;
+  --bg-surface: 48 43 39;
+  --border-soft: 83 72 64;
+  --text-main-rgb: 245 239 232;
+  --workbench-alpha: .36;
+  --card-alpha: .48;
+  --background-blur: 2px;
   --avatar-purple-text: 167 139 250;
   --avatar-purple-bg: 42 26 63;
   --avatar-amber-text: 245 158 11;
@@ -63,6 +87,19 @@
   --chart-violet: #a78bfa;
   color-scheme: dark;
 }
+
+html, body { font-family: var(--font-ui); font-size: var(--text-body); color: rgb(var(--text-main-rgb)); background: rgb(var(--bg-page)); }
+body { min-width: 320px; background-image: linear-gradient(rgb(var(--bg-page) / var(--workbench-alpha)), rgb(var(--bg-page) / var(--workbench-alpha))), radial-gradient(circle at 8% 0%, rgb(var(--accent) / .08), transparent 34rem)); background-attachment: fixed; }
+button, input, select, textarea { font: inherit; }
+.text-meta { font-size: var(--text-meta); line-height: 1.35; }
+.text-control { font-size: var(--text-control); line-height: 1.4; }
+.text-reading { font-size: var(--text-body); line-height: 1.55; }
+.text-section { font-size: var(--text-section); line-height: 1.35; }
+.text-page-title { font-size: var(--text-page); line-height: 1.2; }
+.text-metric { font-size: var(--text-metric); line-height: 1.1; font-variant-numeric: tabular-nums; }
+.tabular-nums { font-variant-numeric: tabular-nums; }
+.glass-surface { background: rgb(var(--bg-surface) / var(--card-alpha)); border: 1px solid rgb(var(--border-soft) / .8); box-shadow: 0 14px 36px rgb(64 45 31 / .08); backdrop-filter: blur(var(--surface-blur)); }
+.glass-workbench { background: rgb(var(--bg-page) / var(--workbench-alpha)); backdrop-filter: blur(var(--background-blur)); }
 
 /* Dark scrollbar for code blocks */
 pre::-webkit-scrollbar { height: 8px; }
