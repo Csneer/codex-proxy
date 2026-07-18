@@ -125,4 +125,54 @@ describe("CallRecordsPage", () => {
     expect(window.confirm).toHaveBeenCalled();
     expect(clearRecords).toHaveBeenCalledOnce();
   });
+
+  it("collapses long input and output independently", () => {
+    mockCallRecords.useCallRecords.mockReturnValue(state({
+      selected: {
+        id: "record-long",
+        requestJson: JSON.stringify({
+          input: [{ role: "user", content: [{ type: "input_text", text: "input ".repeat(120) }] }],
+        }),
+        responseJson: JSON.stringify({ text: "output ".repeat(120) }),
+        requestTruncated: false,
+        responseTruncated: false,
+      },
+    }));
+
+    renderPage();
+
+    const input = screen.getByTestId("call-input-text");
+    const output = screen.getByTestId("call-output-text");
+    expect(input.className).toContain("call-text-collapsed");
+    expect(output.className).toContain("call-text-collapsed");
+
+    const expandButtons = screen.getAllByRole("button", { name: "展开全文" });
+    expect(expandButtons).toHaveLength(2);
+    expect(expandButtons[0].getAttribute("aria-controls")).toBe(input.id);
+    expect(expandButtons[1].getAttribute("aria-controls")).toBe(output.id);
+    fireEvent.click(expandButtons[0]);
+
+    expect(input.className).not.toContain("call-text-collapsed");
+    expect(output.className).toContain("call-text-collapsed");
+    fireEvent.click(screen.getByRole("button", { name: "收起" }));
+    expect(input.className).toContain("call-text-collapsed");
+  });
+
+  it("does not show expansion controls for short detail text", () => {
+    mockCallRecords.useCallRecords.mockReturnValue(state({
+      selected: {
+        id: "record-short",
+        requestJson: JSON.stringify({
+          input: [{ role: "user", content: [{ type: "input_text", text: "short input" }] }],
+        }),
+        responseJson: JSON.stringify({ text: "short output" }),
+        requestTruncated: false,
+        responseTruncated: false,
+      },
+    }));
+
+    renderPage();
+
+    expect(screen.queryByRole("button", { name: "展开全文" })).toBeNull();
+  });
 });

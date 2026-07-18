@@ -5,6 +5,10 @@ import {
   type CallRecordFilters,
 } from "../../../shared/hooks/use-call-records";
 import { extractInputText, extractOutputText, parseStoredJson } from "../../../shared/call-records/semantic";
+import { useState } from "preact/hooks";
+
+const COLLAPSIBLE_TEXT_LENGTH = 480;
+const COLLAPSIBLE_TEXT_LINES = 10;
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -32,6 +36,51 @@ function fromDateTimeLocal(value: string): string {
   return value ? new Date(value).toISOString() : "";
 }
 
+function CollapsibleText({
+  title,
+  text,
+  fallback,
+  tone,
+  testId,
+  contentId,
+}: {
+  title: string;
+  text: string;
+  fallback: string;
+  tone: "input" | "output";
+  testId: string;
+  contentId: string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const value = text || fallback;
+  const isLong = text.length > COLLAPSIBLE_TEXT_LENGTH || text.split(/\r?\n/).length > COLLAPSIBLE_TEXT_LINES;
+  const collapsed = isLong && !expanded;
+
+  return (
+    <section>
+      <div class="text-section font-semibold mb-1">{title}</div>
+      <div
+        class={`call-text call-text-${tone}${collapsed ? " call-text-collapsed" : ""}`}
+        data-testid={testId}
+        id={contentId}
+      >
+        <div class="whitespace-pre-wrap break-words p-3">{value}</div>
+      </div>
+      {isLong && (
+        <button
+          type="button"
+          class="call-text-toggle"
+          aria-expanded={expanded}
+          aria-controls={contentId}
+          onClick={() => setExpanded((value) => !value)}
+        >
+          {expanded ? "收起" : "展开全文"}
+        </button>
+      )}
+    </section>
+  );
+}
+
 function DetailPanel({ selected }: { selected: CallRecordDetail | null }) {
   const t = useT();
   if (!selected) {
@@ -49,14 +98,24 @@ function DetailPanel({ selected }: { selected: CallRecordDetail | null }) {
           {t("callRecordsTruncated")}
         </div>
       )}
-      <div>
-        <div class="text-section font-semibold mb-1">用户输入</div>
-        <div class="whitespace-pre-wrap break-words rounded-xl bg-primary-container/40 p-3">{inputText || "未提取到用户文本（可能只有工具调用或已截断）"}</div>
-      </div>
-      <div>
-        <div class="text-section font-semibold mb-1">模型输出</div>
-        <div class="whitespace-pre-wrap break-words rounded-xl bg-white/50 dark:bg-black/20 p-3">{outputText || "未提取到最终文本（可能为工具活动或空响应）"}</div>
-      </div>
+      <CollapsibleText
+        key={`${selected.id}-input`}
+        title="用户输入"
+        text={inputText}
+        fallback="未提取到用户文本（可能只有工具调用或已截断）"
+        tone="input"
+        testId="call-input-text"
+        contentId={`call-${selected.id}-input`}
+      />
+      <CollapsibleText
+        key={`${selected.id}-output`}
+        title="模型输出"
+        text={outputText}
+        fallback="未提取到最终文本（可能为工具活动或空响应）"
+        tone="output"
+        testId="call-output-text"
+        contentId={`call-${selected.id}-output`}
+      />
       <details class="rounded-xl border border-slate-200/70 dark:border-border-dark p-3">
         <summary class="cursor-pointer text-control font-semibold">查看原始证据</summary>
         <div class="mt-3 space-y-3">

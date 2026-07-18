@@ -102,6 +102,50 @@ export function TabBar({ activeHash }: { activeHash: string }) {
   );
 }
 
+const ICON_NAV_ITEMS = [
+  { hashes: ["", "#/"], href: "#/", title: "调用大盘", icon: "⌁" },
+  { hashes: ["#/accounts", "#/api-keys"], href: "#/accounts", title: "账号", icon: "◎" },
+  { hashes: ["#/proxies"], href: "#/proxies", title: "代理路由", icon: "↗" },
+  { hashes: ["#/usage-stats"], href: "#/usage-stats", title: "用量", icon: "◫" },
+  { hashes: ["#/logs", "#/errors"], href: "#/logs", title: "日志", icon: "≡" },
+  { hashes: ["#/call-records"], href: "#/call-records", title: "调用记录", icon: "⌕" },
+] as const;
+
+export function IconRail({ activeHash }: { activeHash: string }) {
+  const navLink = (item: (typeof ICON_NAV_ITEMS)[number]) => {
+    const active = (item.hashes as readonly string[]).includes(activeHash);
+    return (
+      <a
+        key={item.href}
+        class={`icon-nav${active ? " active" : ""}`}
+        href={item.href}
+        title={item.title}
+        aria-label={item.title}
+        aria-current={active ? "page" : undefined}
+      >
+        {item.icon}
+      </a>
+    );
+  };
+
+  const settingsActive = activeHash === "#/settings";
+  return (
+    <nav class="icon-rail" aria-label="主导航">
+      {ICON_NAV_ITEMS.map(navLink)}
+      <span class="flex-1" />
+      <a
+        class={`icon-nav${settingsActive ? " active" : ""}`}
+        href="#/settings"
+        title="设置"
+        aria-label="设置"
+        aria-current={settingsActive ? "page" : undefined}
+      >
+        ⚙
+      </a>
+    </nav>
+  );
+}
+
 // ── Dashboard ───────────────────────────────────────────────────────
 
 function Dashboard() {
@@ -188,15 +232,7 @@ function Dashboard() {
           unreadErrors={errorCount.unread}
         />
         <div class="app-shell-body">
-          <aside class="icon-rail" aria-label="主导航">
-            <a class="icon-nav active" href="#/" title="调用大盘" aria-label="调用大盘">⌁</a>
-            <a class="icon-nav" href="#/accounts" title="账号" aria-label="账号">◎</a>
-            <a class="icon-nav" href="#/proxies" title="代理路由" aria-label="代理路由">↗</a>
-            <a class="icon-nav" href="#/usage-stats" title="用量" aria-label="用量">◫</a>
-            <a class="icon-nav" href="#/logs" title="日志" aria-label="日志">≡</a>
-            <span class="flex-1" />
-            <a class="icon-nav" href="#/settings" title="设置" aria-label="设置">⚙</a>
-          </aside>
+          <IconRail activeHash={hash} />
           <main class="shell-main">
         <div class="mx-auto flex w-full max-w-[1320px] flex-col">
           <AddAccount

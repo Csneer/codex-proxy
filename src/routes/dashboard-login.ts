@@ -73,7 +73,10 @@ export function createDashboardAuthRoutes(): Hono {
 
   // Theme preference is non-sensitive and is needed before the dashboard
   // session exists so the login screen uses the same appearance as the app.
-  app.get("/auth/dashboard-preferences", (c) => c.json({ theme: getAppearance().theme }));
+  app.get("/auth/dashboard-preferences", (c) => {
+    c.header("Cache-Control", "no-store");
+    return c.json({ theme: getAppearance().theme });
+  });
 
   // POST /auth/dashboard-login — validate proxy_api_key and set session cookie
   app.post("/auth/dashboard-login", async (c) => {
