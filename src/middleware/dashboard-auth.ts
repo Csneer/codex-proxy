@@ -28,9 +28,10 @@ const ALLOWED_EXACT = new Set([
   "/auth/dashboard-login",
   "/auth/dashboard-logout",
   "/auth/dashboard-status",
+  "/auth/dashboard-preferences",
 ]);
 /** GET-only paths allowed (HTML shell must load to render login form). */
-const ALLOWED_GET_EXACT = new Set(["/"]);
+const ALLOWED_GET_EXACT = new Set(["/", "/admin/ui-background"]);
 
 
 export async function dashboardAuth(c: Context, next: Next): Promise<Response | void> {

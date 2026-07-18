@@ -1,6 +1,7 @@
 import { createContext } from "preact";
-import { useContext, useState, useCallback } from "preact/hooks";
+import { useContext, useState, useCallback, useEffect } from "preact/hooks";
 import type { ComponentChildren } from "preact";
+import { adminFetch } from "../http/admin-fetch.js";
 
 interface ThemeContextValue {
   isDark: boolean;
@@ -30,6 +31,20 @@ document.documentElement.style.colorScheme = _initialDark ? "dark" : "light";
 export function ThemeProvider({ children }: { children: ComponentChildren }) {
   const [isDark, setIsDark] = useState(_initialDark);
 
+  useEffect(() => {
+    void fetch("/auth/dashboard-preferences")
+      .then((response) => response.ok ? response.json() : null)
+      .then((value: { theme?: string } | null) => {
+        if (value?.theme !== "dark" && value?.theme !== "light") return;
+        const next = value.theme === "dark";
+        setIsDark(next);
+        document.documentElement.classList.toggle("dark", next);
+        document.documentElement.style.colorScheme = next ? "dark" : "light";
+        localStorage.setItem("codex-proxy-theme", value.theme);
+      })
+      .catch(() => undefined);
+  }, []);
+
   const toggle = useCallback(() => {
     setIsDark((prev) => {
       const next = !prev;
@@ -40,6 +55,7 @@ export function ThemeProvider({ children }: { children: ComponentChildren }) {
         document.documentElement.classList.remove("dark");
       }
       document.documentElement.style.colorScheme = next ? "dark" : "light";
+      void adminFetch("/admin/ui-appearance", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theme: next ? "dark" : "light" }) }).catch(() => undefined);
       return next;
     });
   }, []);

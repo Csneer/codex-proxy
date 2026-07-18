@@ -135,6 +135,18 @@ function Dashboard() {
       document.body.style.backgroundImage = "";
     }
   }, [appearance.data]);
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const value = (event as CustomEvent).detail as typeof appearance.data;
+      if (!value) return;
+      document.documentElement.style.setProperty("--workbench-alpha", String(value.panelOpacity));
+      document.documentElement.style.setProperty("--card-alpha", String(value.cardOpacity));
+      document.documentElement.style.setProperty("--background-blur", `${value.blurPx}px`);
+      document.documentElement.style.setProperty("--background-brightness", String(value.brightness));
+    };
+    window.addEventListener("codex:appearance-updated", handler);
+    return () => window.removeEventListener("codex:appearance-updated", handler);
+  }, []);
 
   useEffect(() => {
     if (shouldAutoOpenUpdateModal({
@@ -331,7 +343,7 @@ function LoginGate({ children }: { children: ComponentChildren }) {
   if (auth.status === "login") {
     const handleSubmit = (e: Event) => { e.preventDefault(); if (password.trim()) auth.login(password.trim()); };
     return (
-      <div class="min-h-screen flex items-center justify-center glass-workbench px-4">
+      <div class="login-screen min-h-screen flex items-center justify-center glass-workbench px-4">
         <div class="w-full max-w-sm glass-surface rounded-2xl shadow-lg p-8">
           <div class="flex flex-col items-center gap-2 mb-6">
             <div class="flex items-center justify-center size-12 rounded-full bg-primary-container text-primary border border-primary/20">

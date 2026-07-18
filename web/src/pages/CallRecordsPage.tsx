@@ -4,6 +4,7 @@ import {
   type CallRecordDetail,
   type CallRecordFilters,
 } from "../../../shared/hooks/use-call-records";
+import { extractInputText, extractOutputText, parseStoredJson } from "../../../shared/call-records/semantic";
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -37,16 +38,10 @@ function DetailPanel({ selected }: { selected: CallRecordDetail | null }) {
     return <div class="p-3 text-xs text-slate-500">{t("callRecordsSelectHint")}</div>;
   }
   const truncated = selected.requestTruncated || selected.responseTruncated;
-  let requestValue: any = null;
-  let responseValue: any = null;
-  try { requestValue = JSON.parse(selected.requestJson); } catch { requestValue = selected.requestJson; }
-  try { responseValue = JSON.parse(selected.responseJson); } catch { responseValue = selected.responseJson; }
-  const semanticText = (value: any): string => {
-    if (typeof value === "string") return value;
-    if (Array.isArray(value)) return value.map(semanticText).filter(Boolean).join("\n");
-    if (value && typeof value === "object") return String(value.output_text ?? value.text ?? value.content ?? value.message ?? "");
-    return "";
-  };
+  const requestValue = parseStoredJson(selected.requestJson);
+  const responseValue = parseStoredJson(selected.responseJson);
+  const inputText = extractInputText(requestValue);
+  const outputText = extractOutputText(responseValue);
   return (
     <div class="p-3 space-y-3 text-reading max-h-[620px] overflow-auto">
       {truncated && (
@@ -56,11 +51,11 @@ function DetailPanel({ selected }: { selected: CallRecordDetail | null }) {
       )}
       <div>
         <div class="text-section font-semibold mb-1">用户输入</div>
-        <div class="whitespace-pre-wrap break-words rounded-xl bg-primary-container/40 p-3">{semanticText(requestValue) || "未提取到文本内容"}</div>
+        <div class="whitespace-pre-wrap break-words rounded-xl bg-primary-container/40 p-3">{inputText || "未提取到用户文本（可能只有工具调用或已截断）"}</div>
       </div>
       <div>
         <div class="text-section font-semibold mb-1">模型输出</div>
-        <div class="whitespace-pre-wrap break-words rounded-xl bg-white/50 dark:bg-black/20 p-3">{semanticText(responseValue) || "未提取到最终文本"}</div>
+        <div class="whitespace-pre-wrap break-words rounded-xl bg-white/50 dark:bg-black/20 p-3">{outputText || "未提取到最终文本（可能为工具活动或空响应）"}</div>
       </div>
       <details class="rounded-xl border border-slate-200/70 dark:border-border-dark p-3">
         <summary class="cursor-pointer text-control font-semibold">查看原始证据</summary>
@@ -71,6 +66,11 @@ function DetailPanel({ selected }: { selected: CallRecordDetail | null }) {
       </details>
     </div>
   );
+}
+
+function recordTitle(record: CallRecordDetail): string {
+  const input = extractInputText(parseStoredJson(record.requestJson));
+  return input.split("\n").map((value) => value.trim()).find(Boolean)?.slice(0, 96) || `${record.model} 调用`;
 }
 
 export function CallRecordsPage({ embedded = false }: { embedded?: boolean }) {
@@ -109,11 +109,13 @@ export function CallRecordsPage({ embedded = false }: { embedded?: boolean }) {
         </div>
       </div>
 
+      {calls.selected && <div class="glass-surface rounded-xl px-4 py-3"><p class="text-meta uppercase tracking-[.16em] text-slate-500">SELECTED CALL</p><h3 class="text-section font-semibold mt-1">{recordTitle(calls.selected)}</h3><p class="text-reading text-slate-500 mt-1">{calls.selected.model} · {calls.selected.protocol} · {calls.selected.latencyMs}ms · {new Date(calls.selected.completedAt).toLocaleString()}</p></div>}
+
       {calls.state && (
         <div class="flex flex-wrap gap-x-4 gap-y-1 rounded-lg border border-slate-200 dark:border-border-dark bg-white dark:bg-card-dark px-3 py-2 text-xs text-slate-500">
           <span>{calls.state.enabled ? t("callRecordsEnabled") : t("callRecordsDisabled")}</span>
           <span>{t("callRecordsStored", { count: calls.state.rowCount })}</span>
-          <span>{formatBytes(calls.state.databaseBytes)}</span>
+          <span>{formatBytes(calls.state.totalBytes ?? calls.state.databaseBytes)}</span>
           <span>{calls.state.searchMode.toUpperCase()}</span>
           <span class="truncate max-w-[360px]" title={calls.state.path}>{calls.state.path}</span>
         </div>
@@ -186,14 +188,14 @@ export function CallRecordsPage({ embedded = false }: { embedded?: boolean }) {
 
       {calls.error && <div class="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">{calls.error}</div>}
 
-      <div class="flex flex-col lg:flex-row gap-4 min-w-0">
-        <div class="flex-1 min-w-0 border border-slate-200 dark:border-border-dark rounded-lg overflow-hidden bg-white dark:bg-bg-dark">
+      <div class="call-record-layout flex flex-col lg:flex-row gap-4 min-w-0">
+        <div class="call-record-list flex-1 min-w-0 border border-slate-200 dark:border-border-dark rounded-xl overflow-hidden bg-white/55 dark:bg-bg-dark/55">
           {calls.loading && <div class="p-4 text-xs text-slate-500">{t("callRecordsLoading")}</div>}
           {!calls.loading && calls.total === 0 && <div class="p-4 text-xs text-slate-500">{t("callRecordsEmpty")}</div>}
           {calls.view === "calls" && calls.records.map((record) => (
             <button
               key={record.id}
-              class="w-full text-left grid grid-cols-12 gap-2 px-3 py-2 text-xs border-b border-slate-100 dark:border-border-dark hover:bg-slate-50 dark:hover:bg-border-dark"
+              class={`w-full text-left grid grid-cols-12 gap-2 px-3 py-2 text-xs border-b border-slate-100 dark:border-border-dark hover:bg-slate-50 dark:hover:bg-border-dark ${calls.selected?.id === record.id ? "bg-primary-container/55" : ""}`}
               onClick={() => calls.selectRecord(record.id)}
             >
               <div class="col-span-3">
@@ -225,7 +227,7 @@ export function CallRecordsPage({ embedded = false }: { embedded?: boolean }) {
           </div>
         </div>
 
-        <div class="w-full lg:w-[420px] shrink-0 border border-slate-200 dark:border-border-dark rounded-lg bg-white dark:bg-bg-dark">
+        <div class="call-record-detail glass-surface rounded-xl">
           <div class="px-3 py-2 text-xs text-slate-500 border-b border-slate-200 dark:border-border-dark">{t("callRecordsDetails")}</div>
           <DetailPanel selected={calls.selected} />
         </div>

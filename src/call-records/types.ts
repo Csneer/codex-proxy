@@ -161,6 +161,9 @@ export interface CallRecordStoreState {
   rowCount: number;
   contextCount: number;
   databaseBytes: number;
+  walBytes: number;
+  shmBytes: number;
+  totalBytes: number;
   searchMode: "fts5" | "like";
 }
 

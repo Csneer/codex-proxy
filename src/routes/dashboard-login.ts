@@ -22,6 +22,7 @@ import {
   localDashboardPrincipal,
   sessionDashboardPrincipal,
 } from "../auth/dashboard-csrf.js";
+import { getAppearance } from "../ui-appearance/store.js";
 
 /** Per-IP brute-force tracking: IP → { count, resetAt } */
 const failedAttempts = new Map<string, { count: number; resetAt: number }>();
@@ -69,6 +70,10 @@ export function _resetRateLimitForTest(): void {
 
 export function createDashboardAuthRoutes(): Hono {
   const app = new Hono();
+
+  // Theme preference is non-sensitive and is needed before the dashboard
+  // session exists so the login screen uses the same appearance as the app.
+  app.get("/auth/dashboard-preferences", (c) => c.json({ theme: getAppearance().theme }));
 
   // POST /auth/dashboard-login — validate proxy_api_key and set session cookie
   app.post("/auth/dashboard-login", async (c) => {

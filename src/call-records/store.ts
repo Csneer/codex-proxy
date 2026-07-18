@@ -330,7 +330,11 @@ export class CallRecordStore {
     const rowCount = (this.db.prepare("SELECT COUNT(*) AS total FROM call_records").get() as CountRow).total;
     const contextCount = (this.db.prepare("SELECT COUNT(*) AS total FROM call_contexts").get() as CountRow).total;
     const databaseBytes = existsSync(this.path) ? statSync(this.path).size : 0;
-    return { path: this.path, rowCount, contextCount, databaseBytes, searchMode: this.searchMode };
+    const walPath = `${this.path}-wal`;
+    const shmPath = `${this.path}-shm`;
+    const walBytes = existsSync(walPath) ? statSync(walPath).size : 0;
+    const shmBytes = existsSync(shmPath) ? statSync(shmPath).size : 0;
+    return { path: this.path, rowCount, contextCount, databaseBytes, walBytes, shmBytes, totalBytes: databaseBytes + walBytes + shmBytes, searchMode: this.searchMode };
   }
 
   /** Read-only aggregate helper for dashboard analytics. */

@@ -76,6 +76,9 @@ export interface CallRecordState {
   rowCount: number;
   contextCount: number;
   databaseBytes: number;
+  walBytes?: number;
+  shmBytes?: number;
+  totalBytes?: number;
   searchMode: "fts5" | "like";
 }
 
@@ -283,6 +286,11 @@ export function useCallRecords(pageSize = 50) {
       setError(selectError instanceof Error ? selectError.message : String(selectError));
     }
   }, []);
+
+  useEffect(() => {
+    if (view !== "calls" || loading || selected || records.length === 0) return;
+    void selectRecord(records[0].id);
+  }, [loading, records, selected, selectRecord, view]);
 
   const clearRecords = useCallback(async () => {
     setClearing(true);
