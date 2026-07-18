@@ -199,6 +199,36 @@ function Dashboard() {
           {activeTab === "" && (
             <div class="flex flex-col gap-6">
               <CallDashboardPage />
+              <section class="home-account-section">
+                <div class="home-section-heading">
+                  <div>
+                    <p class="text-meta uppercase tracking-[.16em] text-slate-500">ACCOUNTS & QUOTA</p>
+                    <h2 class="text-page-title font-semibold">账号与额度</h2>
+                    <p class="text-reading text-slate-500">查看账号状态、额度窗口与刷新时间，并直接完成常用管理操作。</p>
+                  </div>
+                  <a href="#/accounts" class="px-3 py-2 rounded-lg text-control glass-surface text-primary">完整账号管理 →</a>
+                </div>
+                <div class="mt-4 flex flex-col gap-4">
+                  <PoolOverview
+                    accounts={accounts.list}
+                    creditsPerUsd={generalSettings.data?.credits_per_usd}
+                  />
+                  <AccountList
+                    accounts={accounts.list}
+                    loading={accounts.loading}
+                    onDelete={accounts.deleteAccount}
+                    onRefresh={accounts.refresh}
+                    refreshing={accounts.refreshing}
+                    lastUpdated={accounts.lastUpdated}
+                    proxies={proxies.proxies}
+                    onProxyChange={handleProxyChange}
+                    onExport={accounts.exportAccounts}
+                    onImport={accounts.importAccounts}
+                    onToggleStatus={accounts.toggleStatus}
+                    onUpdateLabel={accounts.updateLabel}
+                  />
+                </div>
+              </section>
             </div>
           )}
 
