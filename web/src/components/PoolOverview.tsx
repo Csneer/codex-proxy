@@ -66,7 +66,7 @@ export function PoolOverview({ accounts, creditsPerUsd = DEFAULT_CREDITS_PER_USD
   return (
     <div
       data-testid="pool-overview"
-      class="px-4 py-3 rounded-xl bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark text-sm transition-colors"
+      class="glass-surface px-4 py-3 rounded-xl text-sm transition-colors"
     >
       <div class="flex items-baseline justify-between mb-2">
         <h3 class="font-semibold text-primary">{t("poolOverview")}</h3>

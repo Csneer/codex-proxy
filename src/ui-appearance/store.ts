@@ -4,7 +4,9 @@ import { getDataDir } from "../paths.js";
 import { inspectImage } from "./image-metadata.js";
 
 export interface AppearanceSettings { panelOpacity: number; cardOpacity: number; brightness: number; blurPx: number; enabled: boolean; }
-const defaults: AppearanceSettings = { panelOpacity: 0.38, cardOpacity: 0.49, brightness: 0.72, blurPx: 2, enabled: false };
+// Keep the background visible around the workbench, while giving text and
+// controls a stable, readable surface similar to the approved reference.
+const defaults: AppearanceSettings = { panelOpacity: 0.70, cardOpacity: 0.74, brightness: 0.72, blurPx: 2, enabled: false };
 const dir = () => { const value = join(getDataDir(), "ui"); mkdirSync(value, { recursive: true }); return value; };
 const metaPath = () => join(dir(), "appearance.json");
 const imagePath = () => join(dir(), "background.bin");

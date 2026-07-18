@@ -161,7 +161,7 @@ function Dashboard() {
 
   return (
     <div class="min-h-screen glass-workbench px-0 md:px-4 lg:px-6 py-0 md:py-4">
-      <div class="app-shell glass-surface min-h-[calc(100vh-32px)] overflow-hidden">
+      <div class="app-shell mx-auto w-full max-w-[1420px] min-h-[calc(100vh-32px)] overflow-hidden">
         <Header
           onAddAccount={accounts.startAdd}
           onCheckUpdate={update.checkForUpdate}
@@ -186,7 +186,7 @@ function Dashboard() {
             <a class="icon-nav" href="#/settings" title="设置" aria-label="设置">⚙</a>
           </aside>
           <main class="shell-main">
-        <div class="flex flex-col w-full">
+        <div class="mx-auto flex w-full max-w-[1320px] flex-col">
           <AddAccount
             visible={accounts.addVisible}
             onCancel={accounts.cancelAdd}

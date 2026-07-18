@@ -7,6 +7,8 @@ export interface CallOverviewData {
   success: { count: number; previousCount: number; lastCompletedAt: string | null };
   usage: { inputTokens: number; outputTokens: number; cachedTokens: number; cacheRatio: number };
   storage: { totalBytes: number };
+  outcomes?: { failure: number; interrupted: number; retry: number };
+  series?: Array<{ bucketStart: string; success: number }>;
   models: Array<{ model: string; count: number; share: number }>;
   contexts: Array<{ id: string; sessionId: string | null; taskId: string | null; cwd: string | null; callCount: number; lastCompletedAt: string }>;
 }

@@ -50,8 +50,8 @@ export function Header({ onAddAccount, onCheckUpdate, onOpenUpdateModal, checkin
 
   return (
     <header class="sticky top-0 z-50 w-full glass-surface border-x-0 border-t-0 transition-colors">
-      <div class="px-4 md:px-8 lg:px-40 flex h-14 items-center justify-center">
-        <div class="flex w-full max-w-[960px] items-center justify-between">
+      <div class="px-4 md:px-5 flex h-14 items-center justify-center">
+        <div class="flex w-full items-center justify-between gap-4">
           {/* Logo & Title */}
           <div class="flex items-center gap-3">
             <div class="flex items-center justify-center size-8 rounded-full bg-primary-container text-primary border border-primary/20">
@@ -60,9 +60,11 @@ export function Header({ onAddAccount, onCheckUpdate, onOpenUpdateModal, checkin
               </svg>
             </div>
             <h1 class="text-[0.9rem] font-bold tracking-tight">Codex Proxy</h1>
+            <div class="header-breadcrumb hidden md:flex items-center gap-2 text-meta" aria-label="当前位置"><span>观测</span><span>/</span><b>调用大盘</b></div>
           </div>
           {/* Actions */}
           <div class="flex items-center gap-2">
+            <a href="#/call-records" class="header-search hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-lg text-control" title="搜索调用与会话">⌕ <span>搜索调用与会话</span><kbd>⌘ K</kbd></a>
             {/* Unread error badge — appears only when there's something to show. */}
             {unreadErrors !== undefined && unreadErrors > 0 && (
               <a
@@ -146,6 +148,7 @@ export function Header({ onAddAccount, onCheckUpdate, onOpenUpdateModal, checkin
             >
               {isDark ? SVG_SUN : SVG_MOON}
             </button>
+            <button class="header-appearance hidden sm:inline-flex items-center justify-center size-8 rounded-lg text-control" title="外观设置" onClick={() => window.dispatchEvent(new Event("codex:open-appearance"))}>⚙</button>
             <button
               onClick={onAddAccount}
               class="flex items-center gap-2 px-4 py-2 bg-primary-action hover:bg-primary-action-hover text-white text-xs font-semibold rounded-lg transition-colors shadow-sm active:scale-95"
