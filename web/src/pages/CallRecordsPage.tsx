@@ -4,7 +4,7 @@ import {
   type CallRecordDetail,
   type CallRecordFilters,
 } from "../../../shared/hooks/use-call-records";
-import { extractInputText, extractOutputText, parseStoredJson } from "../../../shared/call-records/semantic";
+import { extractInputText, extractOutputText, extractToolActivities, parseStoredJson } from "../../../shared/call-records/semantic";
 import { useState } from "preact/hooks";
 
 const COLLAPSIBLE_TEXT_LENGTH = 480;
@@ -91,6 +91,10 @@ function DetailPanel({ selected }: { selected: CallRecordDetail | null }) {
   const responseValue = parseStoredJson(selected.responseJson);
   const inputText = extractInputText(requestValue);
   const outputText = extractOutputText(responseValue);
+  const toolActivities = extractToolActivities(responseValue);
+  const outputFallback = outputText || (toolActivities.length > 0
+    ? `工具活动：${toolActivities.map((tool) => `${tool.name}（${tool.status}）`).join("、")}，未返回文本`
+    : "未提取到最终文本（可能为工具活动或空响应）");
   return (
     <div class="p-3 space-y-3 text-reading max-h-[620px] overflow-auto">
       {truncated && (
@@ -111,7 +115,7 @@ function DetailPanel({ selected }: { selected: CallRecordDetail | null }) {
         key={`${selected.id}-output`}
         title="模型输出"
         text={outputText}
-        fallback="未提取到最终文本（可能为工具活动或空响应）"
+        fallback={outputFallback}
         tone="output"
         testId="call-output-text"
         contentId={`call-${selected.id}-output`}

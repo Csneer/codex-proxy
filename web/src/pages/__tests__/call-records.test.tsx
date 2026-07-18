@@ -133,7 +133,7 @@ describe("CallRecordsPage", () => {
         requestJson: JSON.stringify({
           input: [{ role: "user", content: [{ type: "input_text", text: "input ".repeat(120) }] }],
         }),
-        responseJson: JSON.stringify({ text: "output ".repeat(120) }),
+        responseJson: JSON.stringify({ output_text: "output ".repeat(120) }),
         requestTruncated: false,
         responseTruncated: false,
       },
@@ -165,7 +165,7 @@ describe("CallRecordsPage", () => {
         requestJson: JSON.stringify({
           input: [{ role: "user", content: [{ type: "input_text", text: "short input" }] }],
         }),
-        responseJson: JSON.stringify({ text: "short output" }),
+        responseJson: JSON.stringify({ output_text: "short output" }),
         requestTruncated: false,
         responseTruncated: false,
       },
@@ -174,5 +174,24 @@ describe("CallRecordsPage", () => {
     renderPage();
 
     expect(screen.queryByRole("button", { name: "展开全文" })).toBeNull();
+  });
+
+  it("shows a compact tool activity summary when no text response exists", () => {
+    mockCallRecords.useCallRecords.mockReturnValue(state({
+      selected: {
+        id: "record-tool",
+        requestJson: JSON.stringify({ input: [{ role: "user", content: [{ type: "input_text", text: "run it" }] }] }),
+        responseJson: JSON.stringify([
+          { event: "response.output_item.added", data: { item: { type: "custom_tool_call", id: "ctc_1", name: "exec" } } },
+          { event: "response.output_item.done", data: { item: { type: "custom_tool_call", id: "ctc_1", name: "exec", status: "completed", input: "pwd" } } },
+        ]),
+        requestTruncated: false,
+        responseTruncated: false,
+      },
+    }));
+
+    renderPage();
+
+    expect(screen.getByText("工具活动：exec（已完成），未返回文本")).toBeTruthy();
   });
 });
