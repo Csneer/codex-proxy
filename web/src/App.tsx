@@ -125,11 +125,13 @@ function Dashboard() {
     root.style.setProperty("--background-blur", `${value.blurPx}px`);
     root.style.setProperty("--background-brightness", String(value.brightness));
     if (value.hasBackground && value.enabled) {
+      document.documentElement.style.setProperty("--runtime-background-image", `url(${value.backgroundUrl})`);
       document.body.style.backgroundImage = `linear-gradient(rgb(0 0 0 / ${Math.max(0, 1 - value.brightness)}), rgb(0 0 0 / ${Math.max(0, 1 - value.brightness)})), url(${value.backgroundUrl})`;
       document.body.style.backgroundSize = "cover";
       document.body.style.backgroundPosition = "center";
       document.body.style.backgroundAttachment = "fixed";
     } else {
+      document.documentElement.style.setProperty("--runtime-background-image", "none");
       document.body.style.backgroundImage = "";
     }
   }, [appearance.data]);
@@ -159,21 +161,20 @@ function Dashboard() {
 
   return (
     <div class="min-h-screen glass-workbench px-0 md:px-4 lg:px-6 py-0 md:py-4">
-      <Header
-        onAddAccount={accounts.startAdd}
-        onCheckUpdate={update.checkForUpdate}
-        onOpenUpdateModal={() => setShowModal(true)}
-        checking={update.checking}
-        updateStatusMsg={update.msg}
-        updateStatusColor={update.color}
-        version={update.status?.proxy.version ?? null}
-        commit={update.status?.proxy.commit ?? null}
-        hasUpdate={update.hasUpdate}
-        onLogout={onLogout}
-        unreadErrors={errorCount.unread}
-      />
-
       <div class="app-shell glass-surface min-h-[calc(100vh-32px)] overflow-hidden">
+        <Header
+          onAddAccount={accounts.startAdd}
+          onCheckUpdate={update.checkForUpdate}
+          onOpenUpdateModal={() => setShowModal(true)}
+          checking={update.checking}
+          updateStatusMsg={update.msg}
+          updateStatusColor={update.color}
+          version={update.status?.proxy.version ?? null}
+          commit={update.status?.proxy.commit ?? null}
+          hasUpdate={update.hasUpdate}
+          onLogout={onLogout}
+          unreadErrors={errorCount.unread}
+        />
         <div class="app-shell-body">
           <aside class="icon-rail" aria-label="主导航">
             <a class="icon-nav active" href="#/" title="调用大盘" aria-label="调用大盘">⌁</a>
