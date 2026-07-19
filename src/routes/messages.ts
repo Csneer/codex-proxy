@@ -185,8 +185,8 @@ export function createMessagesRoutes(
     if (!allowUnauthenticated) {
       codexRequest.useWebSocket = true;
     }
-    // Check after translation so suffix-parsed and config-default effort are included.
-    const wantThinking = !!codexRequest.reasoning?.effort;
+    // Anthropic thinking blocks are returned only when the client explicitly requests them.
+    const wantThinking = req.thinking?.type === "enabled" || req.thinking?.type === "adaptive";
     const proxyReq: ProxyRequest = {
       codexRequest,
       model: buildDisplayModelName(parseModelName(req.model)),

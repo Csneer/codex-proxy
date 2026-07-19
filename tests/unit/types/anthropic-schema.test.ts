@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { AnthropicMessagesRequestSchema } from "@src/types/anthropic.js";
+import {
+  AnthropicCountTokensRequestSchema,
+  AnthropicMessagesRequestSchema,
+} from "@src/types/anthropic.js";
 
 const BASE_REQUEST = {
   model: "claude-opus-4-5",
@@ -90,5 +93,32 @@ describe("AnthropicMessagesRequestSchema", () => {
       ],
     });
     expect(result.success).toBe(true);
+  });
+
+  it("preserves output_config effort and forward-compatible fields", () => {
+    const result = AnthropicMessagesRequestSchema.parse({
+      ...BASE_REQUEST,
+      output_config: { effort: "ultra", future_setting: true },
+    });
+
+    expect(result.output_config).toEqual({
+      effort: "ultra",
+      future_setting: true,
+    });
+  });
+});
+
+describe("AnthropicCountTokensRequestSchema", () => {
+  it("preserves output_config for count_tokens requests", () => {
+    const { max_tokens: _maxTokens, ...request } = BASE_REQUEST;
+    const result = AnthropicCountTokensRequestSchema.parse({
+      ...request,
+      output_config: { effort: "max", future_setting: "kept" },
+    });
+
+    expect(result.output_config).toEqual({
+      effort: "max",
+      future_setting: "kept",
+    });
   });
 });

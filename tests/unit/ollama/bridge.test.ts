@@ -140,6 +140,36 @@ describe("Ollama bridge routes", () => {
       });
     });
 
+  it.each(["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.6"])(
+    "returns GPT-5.6 context metadata for %s",
+    async (model) => {
+      fetchMock.mockResolvedValueOnce(json({
+        id: model,
+        displayName: model,
+        inputModalities: ["text"],
+        supportedReasoningEfforts: [{ reasoningEffort: "high" }],
+        defaultReasoningEffort: "high",
+      }));
+      const app = createApp();
+
+      const res = await app.request("/api/show", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model }),
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json() as Record<string, unknown>;
+      expect(body.details).toMatchObject({ family: "gpt-5.6" });
+      expect(body.parameters).toBe("num_ctx 1050000\nreasoning high");
+      expect(body.model_info).toMatchObject({
+        "gpt-5.6.context_length": 1_050_000,
+        context_length: 1_050_000,
+        upstream_id: model,
+      });
+    },
+  );
+
   it("converts non-streaming Ollama chat requests and responses", async () => {
     fetchMock.mockResolvedValueOnce(json({
       model: "gpt-5.4-mini",

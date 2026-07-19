@@ -405,6 +405,64 @@ describe("translateAnthropicToCodexRequest", () => {
 
   // ── Thinking → reasoning effort ──────────────────────────────────────
 
+  describe("output_config effort", () => {
+    it.each(["low", "medium", "high", "xhigh", "max"])(
+      "forwards %s unchanged",
+      (effort) => {
+        const result = translateAnthropicToCodexRequest(
+          makeRequest({ output_config: { effort } }),
+        );
+
+        expect(result.reasoning).toEqual({ effort, summary: "auto" });
+      },
+    );
+
+    it.each(["ultra", "ultracode"])("maps %s to Codex xhigh", (effort) => {
+      const result = translateAnthropicToCodexRequest(
+        makeRequest({ output_config: { effort } }),
+      );
+
+      expect(result.reasoning).toEqual({ effort: "xhigh", summary: "auto" });
+    });
+
+    it("forwards future non-empty effort values unchanged", () => {
+      const result = translateAnthropicToCodexRequest(
+        makeRequest({ output_config: { effort: "future-level" } }),
+      );
+
+      expect(result.reasoning).toEqual({ effort: "future-level", summary: "auto" });
+    });
+
+    it("takes priority over thinking budget, model suffix, and configured default", () => {
+      const result = translateAnthropicToCodexRequest(
+        makeRequest({
+          model: "gpt-5.4-high",
+          thinking: { type: "enabled", budget_tokens: 15000 },
+          output_config: { effort: "ultra" },
+        }),
+        {
+          default_reasoning_effort: "low",
+          default_service_tier: null,
+          inject_desktop_context: false,
+          suppress_desktop_directives: false,
+        },
+      );
+
+      expect(result.reasoning?.effort).toBe("xhigh");
+    });
+
+    it("does not infer an effort alias from user content", () => {
+      const result = translateAnthropicToCodexRequest(
+        makeRequest({
+          messages: [{ role: "user", content: "let me try ultracode mode" }],
+          output_config: { effort: "xhigh" },
+        }),
+      );
+
+      expect(result.reasoning?.effort).toBe("xhigh");
+    });
+  });
+
   describe("thinking to reasoning effort", () => {
     it("maps enabled thinking with budget_tokens to effort", () => {
       const result = translateAnthropicToCodexRequest(
