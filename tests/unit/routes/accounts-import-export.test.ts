@@ -284,6 +284,19 @@ describe("account import/export", () => {
     getUsageSpy.mockRestore();
   });
 
+  it("maps an upstream 402 probe failure to HTTP 402", async () => {
+    const id = pool.addAccount("token402PROBE1234567890");
+    pool.markStatus(id, "disabled");
+    const { CodexApi } = await import("@src/proxy/codex-api.js");
+    const getUsageSpy = vi.spyOn(CodexApi.prototype, "getUsage")
+      .mockRejectedValueOnce(Object.assign(new Error("Payment required"), { status: 402, body: "{}" }));
+    const res = await app.request(`/auth/accounts/${id}/quota?probe_disabled=true`);
+    expect(res.status).toBe(402);
+    expect(await res.json()).toMatchObject({ probe_status: "quota_exhausted", routing_status: "disabled" });
+    expect(pool.getEntry(id)?.status).toBe("disabled");
+    getUsageSpy.mockRestore();
+  });
+
   // ── Import ─────────────────────────────────────────────
 
   it("POST /auth/accounts/import adds new accounts", async () => {

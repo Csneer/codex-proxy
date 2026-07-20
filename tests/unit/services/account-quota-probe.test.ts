@@ -94,6 +94,12 @@ describe("AccountQuotaProbeService", () => {
     expect(h.pool.markStatus).not.toHaveBeenCalled();
   });
 
+  it("uses secondary quota exclusively when it is available", async () => {
+    const h = harness();
+    h.deps.getUsage.mockResolvedValue(usage(95, 10));
+    expect((await h.service.probe("account-1")).probe_status).toBe("available");
+  });
+
   it.each([
     [codexError(402), "quota_exhausted"],
     [codexError(403, '{"error":"deactivated"}'), "account_banned"],
@@ -139,6 +145,15 @@ describe("AccountQuotaProbeService", () => {
     expect(h.deps.releaseRefreshLock).not.toHaveBeenCalled();
   });
 
+  it("does not use the disabled-only refresh path for active accounts", async () => {
+    const h = harness("active");
+    h.deps.getUsage.mockRejectedValue(codexError(401));
+    const result = await h.service.probe("account-1");
+    expect(result.probe_status).toBe("token_invalid");
+    expect(h.deps.tryAcquireRefreshLock).not.toHaveBeenCalled();
+    expect(h.deps.refreshAccessToken).not.toHaveBeenCalled();
+  });
+
   it("rechecks the latest refresh token after locking", async () => {
     const h = harness();
     h.deps.getUsage.mockRejectedValue(codexError(401));
@@ -156,6 +171,25 @@ describe("AccountQuotaProbeService", () => {
     expect(result.detail).not.toContain("secret-refresh-token");
     expect(h.deps.releaseRefreshLock).toHaveBeenCalledOnce();
     expect(h.current.status).toBe("disabled");
+  });
+
+  it.each([
+    [new Error("TLS EOF during refresh"), "transient_network"],
+    [codexError(403, "<!doctype html>Just a moment"), "upstream_blocked"],
+  ] as const)("classifies refresh transport failures as %s", async (error, status) => {
+    const h = harness();
+    h.deps.getUsage.mockRejectedValue(codexError(401));
+    h.deps.refreshAccessToken.mockRejectedValue(error);
+    expect((await h.service.probe("account-1")).probe_status).toBe(status);
+  });
+
+  it("redacts the actual disk refresh token used by the probe", async () => {
+    const h = harness();
+    h.deps.getUsage.mockRejectedValue(codexError(401));
+    h.pool.readEntryRTFromDisk.mockReturnValue("rotated-secret-from-disk");
+    h.deps.refreshAccessToken.mockRejectedValue(new Error("invalid_grant rotated-secret-from-disk"));
+    const result = await h.service.probe("account-1");
+    expect(result.detail).not.toContain("rotated-secret-from-disk");
   });
 
   it("bounds and redacts error detail", async () => {

@@ -203,7 +203,8 @@ export function createAccountRoutes(pool: AccountPool, scheduler: RefreshSchedul
       );
       const result = await service.probe(id);
       const status = result.probe_status;
-      if (status === "token_invalid") c.status(401);
+      if (status === "quota_exhausted" && !result.quota) c.status(402);
+      else if (status === "token_invalid") c.status(401);
       else if (status === "account_banned") c.status(403);
       else if (status === "transient_network" || status === "upstream_blocked" || status === "unknown_failure") c.status(502);
       return c.json(result);

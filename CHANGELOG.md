@@ -20,6 +20,8 @@
 
 ### Added
 
+- 新增额度批次账号调度与停用账号安全探测：`quota_batch` 会沿用现有缓存额度刷新，优先按周额度、无周额度时按主额度，在相对基线增加约 1–100 个百分点后切到下一个合格账号，不新增轮询探测；显式 `GET /auth/accounts/:id/quota?probe_disabled=true` 可实时探测 active/disabled 账号并返回结构化健康分类，disabled 状态始终保留，401 最多在现有跨进程锁内刷新一次且响应不包含原始上游正文或凭据。Dashboard 可直接配置批次百分比。
+
 - 新增默认关闭的本地成功调用记录 MVP：仅在 OpenAI / Anthropic / Gemini / Responses / Official Agent 调用语义完成且客户端输出成功后写入 `data/call-records.sqlite`，失败、取消、中断和客户端写失败不留存；请求/响应正文在递归脱敏、二进制替换和独立大小上限后保存，支持会话/任务/执行目录分组、FTS5/LIKE 检索、保留期清理和 Dashboard “调用记录”平铺/分组查询页。管理 API 复用 Dashboard 鉴权，列表只返回预览、详情按需加载完整脱敏正文；当前版本明确不评分、不评估调用质量。
 
 - Release Notes 改为 LLM 双语生成（替换并删除此前的逐词替换字典 `translate-notes.js`，机翻词盐根因）：新增 `summarize-release-notes.mjs` 调 OpenAI-compatible endpoint（secrets：`RELEASE_NOTES_BASE_URL/API_KEY/MODEL`）按 Electron 用户视角输出「✨ 本次更新」中文亮点 + 英文对照 + 折叠完整 commit 清单；输出强校验（JSON 契约、必须含 CJK、条数上限），LLM 不可用/校验失败时回退按 type 分组的纯英文列表，脚本永不非零退出（notes 问题不阻塞发版）；notes 过滤规则对齐 bump 的 `SKIP_RELEASE_PATTERN`（排除 chore/docs/ci/test/refactor/style）；已用真实 gateway 连调 3 次验证双语产出（`.github/scripts/summarize-release-notes.mjs`、`.github/scripts/generate-release-notes.sh`、`tests/unit/ci/summarize-release-notes.test.ts`、`tests/unit/ci/release-notes-script.test.ts`）

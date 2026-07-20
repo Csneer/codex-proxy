@@ -63,6 +63,7 @@ export class AccountQuotaProbeService {
       return await this.fetchAndClassify(entryId, routingStatus, false);
     } catch (error) {
       if (!isTokenInvalidError(error)) return this.failure(entryId, routingStatus, false, error);
+      if (routingStatus !== "disabled") return this.failure(entryId, routingStatus, false, error);
       return this.retryAfterRefresh(entryId, routingStatus, error);
     }
   }
@@ -77,12 +78,14 @@ export class AccountQuotaProbeService {
       return this.failure(entryId, routingStatus, false, originalError);
     }
 
+    let refreshTokenUsed: string | null = null;
     try {
       const latest = this.pool.getEntry(entryId);
       if (!latest) return this.failure(entryId, routingStatus, false, originalError);
       const diskRefreshToken = this.pool.readEntryRTFromDisk?.(entryId);
       const refreshToken = diskRefreshToken || latest.refreshToken;
       if (!refreshToken) return this.failure(entryId, routingStatus, false, originalError);
+      refreshTokenUsed = refreshToken;
 
       const proxyUrl = this.deps.getProxyUrl(entryId);
       const tokens = await this.deps.refreshAccessToken(refreshToken, proxyUrl);
@@ -93,12 +96,15 @@ export class AccountQuotaProbeService {
         return this.failure(entryId, routingStatus, true, retryError);
       }
     } catch (refreshError) {
+      const classified = classifyProbeError(refreshError);
       return {
         routing_status: routingStatus,
-        probe_status: "token_invalid",
+        probe_status: classified === "unknown_failure" && isRefreshCredentialError(refreshError)
+          ? "token_invalid"
+          : classified,
         quota_source: "live",
         token_refreshed: false,
-        detail: this.safeDetail(refreshError, entryId),
+        detail: this.safeDetail(refreshError, entryId, refreshTokenUsed ? [refreshTokenUsed] : []),
       };
     } finally {
       this.deps.releaseRefreshLock(entryId);
@@ -144,12 +150,12 @@ export class AccountQuotaProbeService {
     };
   }
 
-  private safeDetail(error: unknown, entryId?: string): string {
+  private safeDetail(error: unknown, entryId?: string, extraSecrets: string[] = []): string {
     let detail = error instanceof Error ? error.message : String(error);
     const entry = entryId ? this.pool.getEntry(entryId) : undefined;
-    const secrets = entry
+    const secrets = [...(entry
       ? [entry.token, entry.refreshToken].filter((value): value is string => Boolean(value))
-      : [];
+      : []), ...extraSecrets];
     for (const secret of secrets) detail = detail.split(secret).join("[redacted]");
     return detail.slice(0, 256);
   }
@@ -162,13 +168,20 @@ export function classifyQuota(
   if (quota.rate_limit.limit_reached || quota.secondary_rate_limit?.limit_reached) {
     return "quota_exhausted";
   }
-  const primaryUsed = quota.rate_limit.used_percent;
   const secondaryUsed = quota.secondary_rate_limit?.used_percent;
-  if ((typeof primaryUsed === "number" && primaryUsed >= getThreshold("primary")) ||
-      (typeof secondaryUsed === "number" && secondaryUsed >= getThreshold("secondary"))) {
+  const primaryUsed = quota.rate_limit.used_percent;
+  const isLow = typeof secondaryUsed === "number"
+    ? secondaryUsed >= getThreshold("secondary")
+    : typeof primaryUsed === "number" && primaryUsed >= getThreshold("primary");
+  if (isLow) {
     return "quota_low";
   }
   return "available";
+}
+
+function isRefreshCredentialError(error: unknown): boolean {
+  const text = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  return /invalid_grant|invalid_token|refresh_token_expired|refresh_token_reused|access_denied/.test(text);
 }
 
 export function classifyProbeError(error: unknown): AccountProbeStatus {
