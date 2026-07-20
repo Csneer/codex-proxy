@@ -10,7 +10,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mockConfig = {
   server: { proxy_api_key: null as string | null },
-  auth: { rotation_strategy: "least_used" as string },
+  auth: { rotation_strategy: "least_used" as string, quota_batch_percent: 30 },
   quota: {
     refresh_interval_minutes: 5,
     warning_thresholds: { primary: [80, 90], secondary: [80, 90] },
@@ -22,7 +22,7 @@ vi.mock("@src/config.js", () => ({
   getConfig: vi.fn(() => mockConfig),
   reloadAllConfigs: vi.fn(),
   getLocalConfigPath: vi.fn(() => "/tmp/test/local.yaml"),
-  ROTATION_STRATEGIES: ["least_used", "round_robin", "sticky"],
+  ROTATION_STRATEGIES: ["least_used", "round_robin", "sticky", "quota_batch"],
 }));
 
 vi.mock("@src/paths.js", () => ({
@@ -78,6 +78,7 @@ const mockPool = {
   getAll: vi.fn(() => []),
   acquire: vi.fn(),
   release: vi.fn(),
+  setRotationStrategy: vi.fn(),
 } as unknown as Parameters<typeof createWebRoutes>[0];
 
 describe("GET /admin/rotation-settings", () => {
@@ -91,7 +92,7 @@ describe("GET /admin/rotation-settings", () => {
     const res = await app.request("/admin/rotation-settings");
     expect(res.status).toBe(200);
     const data = await res.json();
-    expect(data).toEqual({ rotation_strategy: "least_used" });
+    expect(data).toEqual({ rotation_strategy: "least_used", quota_batch_percent: 30 });
   });
 
   it("reflects config value", async () => {
@@ -123,9 +124,9 @@ describe("POST /admin/rotation-settings", () => {
     expect(mutateYaml).toHaveBeenCalledOnce();
   });
 
-  it("accepts all three valid strategies", async () => {
+  it("accepts all valid strategies", async () => {
     const app = createWebRoutes(mockPool);
-    for (const strategy of ["least_used", "round_robin", "sticky"]) {
+    for (const strategy of ["least_used", "round_robin", "sticky", "quota_batch"]) {
       vi.mocked(mutateYaml).mockClear();
       const res = await app.request("/admin/rotation-settings", {
         method: "POST",
