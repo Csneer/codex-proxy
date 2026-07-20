@@ -30,12 +30,26 @@ export async function fetchUsage(
 
   let lastBody = "";
   let lastError: string | null = null;
+  let lastHttpError: CodexApiError | null = null;
   for (const url of usageUrls(resolvedBaseUrl)) {
     let body: string;
     try {
       const result = await transport.get(url, headers, 15, proxyUrl);
       body = result.body;
+      if (result.status < 200 || result.status >= 300) {
+        const error = new CodexApiError(result.status, body);
+        // A missing endpoint is the expected signal to try the compatibility
+        // fallback URL. Authentication, quota, and account-state responses
+        // are authoritative and must retain their original status/body.
+        if (result.status === 404) {
+          lastHttpError = error;
+          lastBody = body;
+          continue;
+        }
+        throw error;
+      }
     } catch (err) {
+      if (err instanceof CodexApiError) throw err;
       lastError = err instanceof Error ? err.message : String(err);
       continue;
     }
@@ -54,6 +68,7 @@ export async function fetchUsage(
     }
   }
 
+  if (lastHttpError && !lastError) throw lastHttpError;
   if (lastBody) throw new CodexApiError(502, lastError ?? `Invalid usage response: ${lastBody.slice(0, 200)}`);
   throw new CodexApiError(0, `transport GET failed: ${lastError ?? "unknown error"}`);
 }
