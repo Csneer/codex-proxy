@@ -2,10 +2,11 @@ import { useState, useEffect, useCallback } from "preact/hooks";
 import { extractErrorMessage } from "../utils/extract-error";
 import { adminFetch } from "../http/admin-fetch.js";
 
-export type RotationStrategy = "least_used" | "round_robin" | "sticky";
+export type RotationStrategy = "least_used" | "round_robin" | "sticky" | "quota_batch";
 
 export interface RotationSettingsData {
   rotation_strategy: RotationStrategy;
+  quota_batch_percent: number;
 }
 
 export function useRotationSettings(apiKey: string | null) {
@@ -45,7 +46,7 @@ export function useRotationSettings(apiKey: string | null) {
         throw new Error(extractErrorMessage(body, `HTTP ${resp.status}`));
       }
       const result = await resp.json() as { success: boolean } & RotationSettingsData;
-      setData({ rotation_strategy: result.rotation_strategy });
+      setData({ rotation_strategy: result.rotation_strategy, quota_batch_percent: result.quota_batch_percent });
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (err) {

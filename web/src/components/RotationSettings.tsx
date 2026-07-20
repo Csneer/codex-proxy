@@ -4,7 +4,7 @@ import { useRotationSettings, type RotationStrategy } from "../../../shared/hook
 import { useSettings } from "../../../shared/hooks/use-settings";
 
 type Mode = "sticky" | "rotation";
-type RotationSub = "least_used" | "round_robin";
+type RotationSub = "least_used" | "round_robin" | "quota_batch";
 
 function toMode(strategy: RotationStrategy): Mode {
   return strategy === "sticky" ? "sticky" : "rotation";
@@ -26,18 +26,22 @@ export function RotationSettings() {
   const [draftMode, setDraftMode] = useState<Mode | null>(null);
   const [draftSub, setDraftSub] = useState<RotationSub | null>(null);
   const [collapsed, setCollapsed] = useState(true);
+  const [draftPercent, setDraftPercent] = useState<number | null>(null);
 
   const displayMode = draftMode ?? currentMode;
   const displaySub = draftSub ?? currentSub;
   const displayStrategy = toStrategy(displayMode, displaySub);
-  const isDirty = displayStrategy !== current;
+  const displayPercent = draftPercent ?? rs.data?.quota_batch_percent ?? 30;
+  const validPercent = Number.isInteger(displayPercent) && displayPercent >= 1 && displayPercent <= 100;
+  const isDirty = displayStrategy !== current || displayPercent !== (rs.data?.quota_batch_percent ?? 30);
 
   const handleSave = useCallback(async () => {
-    if (!isDirty) return;
-    await rs.save({ rotation_strategy: displayStrategy });
+    if (!isDirty || !validPercent) return;
+    await rs.save({ rotation_strategy: displayStrategy, quota_batch_percent: displayPercent });
     setDraftMode(null);
     setDraftSub(null);
-  }, [isDirty, displayStrategy, rs]);
+    setDraftPercent(null);
+  }, [isDirty, validPercent, displayStrategy, displayPercent, rs]);
 
   const radioCls = "w-4 h-4 text-primary focus:ring-primary cursor-pointer";
   const labelCls = "text-[0.8rem] font-medium text-slate-700 dark:text-text-main cursor-pointer";
@@ -111,6 +115,21 @@ export function RotationSettings() {
                     <span class="text-xs text-slate-400 dark:text-text-dim ml-1.5">{t("rotationLeastUsedDesc")}</span>
                   </div>
                 </label>
+                <label class="flex items-start gap-2 cursor-pointer">
+                  <input type="radio" name="rotation-sub" checked={displaySub === "quota_batch"} onChange={() => setDraftSub("quota_batch")} class={radioCls + " mt-0.5"} />
+                  <div>
+                    <span class="text-xs font-medium text-slate-600 dark:text-text-main">{t("rotationQuotaBatch")}</span>
+                    <p class="text-xs text-slate-400 dark:text-text-dim mt-0.5">{t("rotationQuotaBatchDesc")}</p>
+                  </div>
+                </label>
+                {displaySub === "quota_batch" && (
+                  <div class="pl-6 flex items-center gap-2">
+                    <label class="text-xs text-slate-500 dark:text-text-dim" for="quota-batch-percent">{t("rotationQuotaBatchPercent")}</label>
+                    <input id="quota-batch-percent" type="number" min="1" max="100" step="1" value={displayPercent} onInput={(event) => setDraftPercent(Number((event.currentTarget as HTMLInputElement).value))} class="w-20 rounded-md border border-gray-200 dark:border-border-dark bg-white/80 dark:bg-bg-dark px-2 py-1 text-sm" />
+                    <span class="text-xs text-slate-400">%</span>
+                    {!validPercent && <span class="text-xs text-red-500">1–100</span>}
+                  </div>
+                )}
                 <label class="flex items-center gap-2 cursor-pointer">
                   <input
                     type="radio"
@@ -132,9 +151,9 @@ export function RotationSettings() {
           <div class="flex items-center gap-3">
             <button
               onClick={handleSave}
-              disabled={rs.saving || !isDirty}
+              disabled={rs.saving || !isDirty || !validPercent}
               class={`px-4 py-2 text-sm font-medium rounded-lg transition-colors whitespace-nowrap ${
-                isDirty && !rs.saving
+                isDirty && validPercent && !rs.saving
                   ? "bg-primary-action text-white hover:bg-primary-action-hover cursor-pointer"
                   : "bg-slate-100 dark:bg-[#21262d] text-slate-400 dark:text-text-dim cursor-not-allowed"
               }`}
