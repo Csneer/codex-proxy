@@ -110,6 +110,7 @@ const mockPool = {
   getAll: vi.fn(() => []),
   acquire: vi.fn(),
   release: vi.fn(),
+  setRotationStrategy: vi.fn(),
 } as unknown as Parameters<typeof createWebRoutes>[0];
 
 const mockUsageStats = {} as unknown as Parameters<typeof createWebRoutes>[1];
@@ -161,6 +162,7 @@ describe("/admin/rotation-settings", () => {
       auth: { rotation_strategy: "quota_batch", quota_batch_percent: 42 },
     });
     expect(reloadAllConfigs).toHaveBeenCalledOnce();
+    expect(mockPool.setRotationStrategy).toHaveBeenCalledWith("quota_batch");
   });
 
   it("updates only the supplied strategy and preserves the configured percentage", async () => {
@@ -202,6 +204,20 @@ describe("/admin/rotation-settings", () => {
     expect(mutateYaml).not.toHaveBeenCalled();
     expect(reloadAllConfigs).not.toHaveBeenCalled();
   });
+
+  it.each(["null", "[]", "\"quota_batch\"", "{"])(
+    "rejects malformed or non-object JSON: %s",
+    async (body) => {
+      const res = await makeApp().request("/admin/rotation-settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+      });
+      expect(res.status).toBe(400);
+      expect(mutateYaml).not.toHaveBeenCalled();
+      expect(mockPool.setRotationStrategy).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe("GET /admin/general-settings", () => {

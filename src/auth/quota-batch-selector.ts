@@ -56,6 +56,20 @@ function finiteNumberOrNull(value: number | null | undefined): number | null {
 function isCheckpoint(value: unknown): value is QuotaBatchCheckpoint {
   if (!value || typeof value !== "object") return false;
   const state = value as Record<string, unknown>;
+  const expectedKeys = [
+    "version", "strategy", "batchPercent", "currentEntryId",
+    "baselineUsedPercent", "meter", "resetAt",
+  ];
+  if (Object.keys(state).length !== expectedKeys.length ||
+      !Object.keys(state).every((key) => expectedKeys.includes(key))) return false;
+  const meterIsNull = state.meter === null;
+  const baselineIsValid = meterIsNull
+    ? state.baselineUsedPercent === null && state.resetAt === null
+    : typeof state.baselineUsedPercent === "number" &&
+      Number.isFinite(state.baselineUsedPercent) &&
+      state.baselineUsedPercent >= 0 && state.baselineUsedPercent <= 100 &&
+      (state.resetAt === null ||
+        (typeof state.resetAt === "number" && Number.isFinite(state.resetAt) && state.resetAt >= 0));
   return state.version === 1 &&
     state.strategy === "quota_batch" &&
     Number.isInteger(state.batchPercent) &&
@@ -63,9 +77,8 @@ function isCheckpoint(value: unknown): value is QuotaBatchCheckpoint {
     (state.batchPercent as number) <= 100 &&
     typeof state.currentEntryId === "string" &&
     state.currentEntryId.length > 0 &&
-    (state.baselineUsedPercent === null || Number.isFinite(state.baselineUsedPercent)) &&
     (state.meter === null || state.meter === "secondary" || state.meter === "primary") &&
-    (state.resetAt === null || Number.isFinite(state.resetAt));
+    baselineIsValid;
 }
 
 export class FileQuotaBatchStateStore implements QuotaBatchStateStore {

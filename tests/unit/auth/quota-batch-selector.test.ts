@@ -223,6 +223,21 @@ describe("QuotaBatchSelector", () => {
     expect(warn).toHaveBeenCalled();
   });
 
+  it.each([
+    { version: 1, strategy: "quota_batch", batchPercent: 30, currentEntryId: "a", baselineUsedPercent: 10, meter: "primary", resetAt: 1000, token: "secret" },
+    { version: 1, strategy: "quota_batch", batchPercent: 30, currentEntryId: "a", baselineUsedPercent: -1, meter: "primary", resetAt: 1000 },
+    { version: 1, strategy: "quota_batch", batchPercent: 30, currentEntryId: "a", baselineUsedPercent: 101, meter: "primary", resetAt: 1000 },
+    { version: 1, strategy: "quota_batch", batchPercent: 30, currentEntryId: "a", baselineUsedPercent: 10, meter: null, resetAt: null },
+    { version: 1, strategy: "quota_batch", batchPercent: 30, currentEntryId: "a", baselineUsedPercent: 10, meter: "primary", resetAt: -1 },
+  ])("rejects semantically invalid or credential-bearing checkpoints", (invalid) => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    store.state = invalid as unknown as QuotaBatchCheckpoint;
+    const fresh = new QuotaBatchSelector(store);
+    expect(fresh.select([entry("a", 25)], 30)).toBeDefined();
+    expect(store.state).toMatchObject({ baselineUsedPercent: 25, meter: "primary" });
+    expect(store.state).not.toHaveProperty("token");
+  });
+
   it("clears persisted state on reset", () => {
     selector.select([entry("a", 10)], 30);
     selector.reset();

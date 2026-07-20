@@ -5,6 +5,7 @@ import { logStore } from "../../logs/store.js";
 import { mutateYaml } from "../../utils/yaml-mutate.js";
 import { isLocalhostRequest } from "../../utils/is-localhost.js";
 import { updateCallRecordServiceConfig } from "../../call-records/service.js";
+import type { AccountPool } from "../../auth/account-pool.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -42,7 +43,7 @@ function normalizeModelAliases(input: unknown): {
   return { aliases, error: null };
 }
 
-export function createSettingsRoutes(): Hono {
+export function createSettingsRoutes(accountPool?: Pick<AccountPool, "setRotationStrategy">): Hono {
   const app = new Hono();
 
 
@@ -57,22 +58,30 @@ export function createSettingsRoutes(): Hono {
   });
 
   app.post("/admin/rotation-settings", async (c) => {
-    const body = await c.req.json() as {
-      rotation_strategy?: string;
-      quota_batch_percent?: number;
-    };
+    let body: Record<string, unknown>;
+    try {
+      const parsed: unknown = await c.req.json();
+      if (!isRecord(parsed)) throw new Error("rotation settings must be an object");
+      body = parsed;
+    } catch {
+      c.status(400);
+      return c.json({ error: "rotation settings must be a valid JSON object" });
+    }
     const valid: readonly string[] = ROTATION_STRATEGIES;
     if (body.rotation_strategy === undefined && body.quota_batch_percent === undefined) {
       c.status(400);
       return c.json({ error: "at least one rotation setting is required" });
     }
-    if (body.rotation_strategy !== undefined && !valid.includes(body.rotation_strategy)) {
+    if (body.rotation_strategy !== undefined &&
+        (typeof body.rotation_strategy !== "string" || !valid.includes(body.rotation_strategy))) {
       c.status(400);
       return c.json({ error: `rotation_strategy must be one of: ${ROTATION_STRATEGIES.join(", ")}` });
     }
     if (
       body.quota_batch_percent !== undefined &&
-      (!Number.isInteger(body.quota_batch_percent) || body.quota_batch_percent < 1 || body.quota_batch_percent > 100)
+      (typeof body.quota_batch_percent !== "number" ||
+        !Number.isInteger(body.quota_batch_percent) ||
+        body.quota_batch_percent < 1 || body.quota_batch_percent > 100)
     ) {
       c.status(400);
       return c.json({ error: "quota_batch_percent must be an integer between 1 and 100" });
@@ -90,6 +99,7 @@ export function createSettingsRoutes(): Hono {
     reloadAllConfigs();
 
     const updated = getConfig();
+    accountPool?.setRotationStrategy(updated.auth.rotation_strategy);
     return c.json({
       success: true,
       rotation_strategy: updated.auth.rotation_strategy,
