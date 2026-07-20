@@ -246,8 +246,8 @@ describe("Theme CSS", () => {
 
     it("includes theme detection script", () => {
       expect(html).toContain("codex-proxy-theme");
-      expect(html).toContain("prefers-color-scheme");
-      expect(html).toContain("classList.add('dark')");
+      expect(html).toContain("let isDark = true");
+      expect(html).toContain("classList.toggle('dark', isDark)");
     });
   });
 });
