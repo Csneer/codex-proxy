@@ -26,6 +26,7 @@ import {
   parseAccountImportPayload,
   parseAccountImportText,
 } from "../services/account-transfer-formats.js";
+import { createDefaultAccountQuotaProbeService } from "../services/account-quota-probe.js";
 
 const BatchIdsSchema = z.object({ ids: z.array(z.string()).min(1) });
 const HealthCheckSchema = z.object({
@@ -189,6 +190,24 @@ export function createAccountRoutes(pool: AccountPool, scheduler: RefreshSchedul
     const id = c.req.param("id");
     const entry = pool.getEntry(id);
     if (!entry) { c.status(404); return c.json({ error: "Account not found" }); }
+    if (c.req.query("probe_disabled") === "true") {
+      if (entry.status !== "active" && entry.status !== "disabled") {
+        c.status(409);
+        return c.json({ error: `Account is ${entry.status}, cannot probe quota` });
+      }
+      const service = createDefaultAccountQuotaProbeService(
+        pool,
+        async (token, accountId, entryId, proxyUrl) =>
+          new CodexApi(token, accountId, cookieJar, entryId, proxyUrl).getUsage(),
+        (entryId) => proxyPool?.resolveProxyUrl(entryId, true) ?? getConfig().tls?.proxy_url ?? null,
+      );
+      const result = await service.probe(id);
+      const status = result.probe_status;
+      if (status === "token_invalid") c.status(401);
+      else if (status === "account_banned") c.status(403);
+      else if (status === "transient_network" || status === "upstream_blocked" || status === "unknown_failure") c.status(502);
+      return c.json(result);
+    }
     if (entry.status !== "active") { c.status(409); return c.json({ error: `Account is ${entry.status}, cannot query quota` }); }
     try {
       const usage = await new CodexApi(entry.token, entry.accountId, cookieJar, id, proxyPool?.resolveProxyUrl(id)).getUsage();

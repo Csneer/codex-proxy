@@ -28,6 +28,7 @@ vi.mock("@src/config.js", () => ({
       rate_limit_backoff_seconds: 60,
     },
     server: { proxy_api_key: null },
+    quota: { warning_thresholds: { primary: [80, 90], secondary: [80, 90] } },
   })),
 }));
 
@@ -207,6 +208,79 @@ describe("account import/export", () => {
     const body = await res.json() as { quota: { rate_limit: { remaining_percent: number } } };
     expect(body.quota.rate_limit.remaining_percent).toBe(36);
     expect(pool.getEntry(id)?.cachedQuota?.rate_limit.remaining_percent).toBe(36);
+    getUsageSpy.mockRestore();
+  });
+
+  it("keeps legacy quota behavior for disabled accounts", async () => {
+    const id = pool.addAccount("tokenLEGACY1234567890");
+    pool.markStatus(id, "disabled");
+    const res = await app.request(`/auth/accounts/${id}/quota`);
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ error: expect.stringContaining("disabled") });
+  });
+
+  it.each(["expired", "banned", "refreshing", "quota_exhausted"] as const)(
+    "rejects explicit quota probing for %s accounts",
+    async (status) => {
+      const id = pool.addAccount(`token-${status}-1234567890`);
+      pool.markStatus(id, status);
+      const res = await app.request(`/auth/accounts/${id}/quota?probe_disabled=true`);
+      expect(res.status).toBe(409);
+      expect(pool.getEntry(id)?.status).toBe(status);
+    },
+  );
+
+  it.each(["active", "disabled"] as const)(
+    "returns a structured live probe for %s accounts without raw payload",
+    async (status) => {
+      const id = pool.addAccount(`tokenPROBE-${status}-1234567890`);
+      pool.markStatus(id, status);
+      const { CodexApi } = await import("@src/proxy/codex-api.js");
+      const getUsageSpy = vi.spyOn(CodexApi.prototype, "getUsage").mockResolvedValueOnce({
+        plan_type: "plus",
+        rate_limit: {
+          allowed: true,
+          limit_reached: false,
+          primary_window: {
+            used_percent: 30,
+            reset_at: 2_000_000_000,
+            limit_window_seconds: 18_000,
+            reset_after_seconds: 100,
+          },
+          secondary_window: null,
+        },
+        code_review_rate_limit: null,
+        credits: null,
+        promo: null,
+      });
+
+      const res = await app.request(`/auth/accounts/${id}/quota?probe_disabled=true`);
+      expect(res.status).toBe(200);
+      const body = await res.json() as Record<string, unknown>;
+      expect(body).toMatchObject({
+        routing_status: status,
+        probe_status: "available",
+        quota_source: "live",
+        token_refreshed: false,
+      });
+      expect(body).toHaveProperty("quota");
+      expect(body).not.toHaveProperty("raw");
+      expect(pool.getEntry(id)?.status).toBe(status);
+      getUsageSpy.mockRestore();
+    },
+  );
+
+  it("keeps a disabled account disabled when the explicit probe fails", async () => {
+    const id = pool.addAccount("tokenFAILPROBE1234567890");
+    pool.markStatus(id, "disabled");
+    const { CodexApi } = await import("@src/proxy/codex-api.js");
+    const getUsageSpy = vi.spyOn(CodexApi.prototype, "getUsage")
+      .mockRejectedValueOnce(Object.assign(new Error("TLS EOF"), { status: 502, body: "" }));
+
+    const res = await app.request(`/auth/accounts/${id}/quota?probe_disabled=true`);
+    expect(res.status).toBe(502);
+    expect(await res.json()).toMatchObject({ probe_status: "transient_network", routing_status: "disabled" });
+    expect(pool.getEntry(id)?.status).toBe("disabled");
     getUsageSpy.mockRestore();
   });
 
