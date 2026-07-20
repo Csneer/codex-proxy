@@ -74,8 +74,17 @@ export class AccountQuotaProbeService {
     originalError: unknown,
   ): Promise<AccountQuotaProbeResult> {
     const beforeLock = this.pool.getEntry(entryId);
-    if (!beforeLock?.refreshToken || !this.deps.tryAcquireRefreshLock(entryId)) {
+    if (!beforeLock?.refreshToken) {
       return this.failure(entryId, routingStatus, false, originalError);
+    }
+    if (!this.deps.tryAcquireRefreshLock(entryId)) {
+      return {
+        routing_status: routingStatus,
+        probe_status: "unknown_failure",
+        quota_source: "live",
+        token_refreshed: false,
+        detail: "Refresh already in progress; probe could not safely verify credentials",
+      };
     }
 
     let refreshTokenUsed: string | null = null;
@@ -165,7 +174,9 @@ export function classifyQuota(
   quota: CodexQuota,
   getThreshold: (kind: "primary" | "secondary") => number,
 ): AccountProbeStatus {
-  if (quota.rate_limit.limit_reached || quota.secondary_rate_limit?.limit_reached) {
+  if (quota.rate_limit.limit_reached ||
+      quota.secondary_rate_limit?.limit_reached ||
+      quota.code_review_rate_limit?.limit_reached) {
     return "quota_exhausted";
   }
   const secondaryUsed = quota.secondary_rate_limit?.used_percent;

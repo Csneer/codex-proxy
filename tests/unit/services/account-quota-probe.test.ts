@@ -140,9 +140,22 @@ describe("AccountQuotaProbeService", () => {
     h.deps.getUsage.mockRejectedValue(codexError(401));
     h.deps.tryAcquireRefreshLock.mockReturnValue(false);
     const result = await h.service.probe("account-1");
-    expect(result.probe_status).toBe("token_invalid");
+    expect(result.probe_status).toBe("unknown_failure");
     expect(h.deps.refreshAccessToken).not.toHaveBeenCalled();
     expect(h.deps.releaseRefreshLock).not.toHaveBeenCalled();
+  });
+
+  it("classifies exhausted code review quota as quota_exhausted", async () => {
+    const h = harness();
+    const live = usage(10);
+    live.code_review_rate_limit = {
+      allowed: false,
+      limit_reached: true,
+      primary_window: { used_percent: 100, reset_at: 2_000_000_000, limit_window_seconds: 604_800, reset_after_seconds: 100 },
+      secondary_window: null,
+    };
+    h.deps.getUsage.mockResolvedValue(live);
+    expect((await h.service.probe("account-1")).probe_status).toBe("quota_exhausted");
   });
 
   it("does not use the disabled-only refresh path for active accounts", async () => {
