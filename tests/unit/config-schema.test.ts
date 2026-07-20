@@ -253,13 +253,15 @@ describe("ConfigSchema", () => {
   it("accepts quota_batch rotation and validates its percentage bounds", () => {
     const base = { api: {}, client: {}, model: {}, server: {}, session: {} };
 
-    expect(ConfigSchema.parse({
-      ...base,
-      auth: { rotation_strategy: "quota_batch", quota_batch_percent: 42 },
-    }).auth).toMatchObject({
-      rotation_strategy: "quota_batch",
-      quota_batch_percent: 42,
-    });
+    for (const value of [20, 30, 40]) {
+      expect(ConfigSchema.parse({
+        ...base,
+        auth: { rotation_strategy: "quota_batch", quota_batch_percent: value },
+      }).auth).toMatchObject({
+        rotation_strategy: "quota_batch",
+        quota_batch_percent: value,
+      });
+    }
     expect(ConfigSchema.safeParse({ ...base, auth: { quota_batch_percent: 0 } }).success).toBe(false);
     expect(ConfigSchema.safeParse({ ...base, auth: { quota_batch_percent: 101 } }).success).toBe(false);
     expect(ConfigSchema.safeParse({ ...base, auth: { quota_batch_percent: 30.5 } }).success).toBe(false);

@@ -13,6 +13,7 @@ import { AccountLifecycle } from "./account-lifecycle.js";
 import type { AccountPersistence, PersistenceLoadHealth } from "./account-persistence.js";
 import type { AccountCapacitySummary } from "./account-lifecycle.js";
 import type { RotationStrategyName } from "./rotation-strategy.js";
+import type { QuotaBatchStateStore } from "./quota-batch-selector.js";
 import type {
   AccountEntry,
   AccountInfo,
@@ -39,6 +40,7 @@ export class AccountPool {
     rotationStrategy?: RotationStrategyName;
     initialToken?: string | null;
     rateLimitBackoffSeconds?: number;
+    quotaBatchStateStore?: QuotaBatchStateStore;
   }) {
     const persistence = options?.persistence ?? createFsPersistence();
 
@@ -67,7 +69,7 @@ export class AccountPool {
     this.registry = new AccountRegistry(persistence, loaded.entries, {
       persistDisabled: loaded.loadFailed === true,
     });
-    this.lifecycle = new AccountLifecycle(this.registry, strategyName);
+    this.lifecycle = new AccountLifecycle(this.registry, strategyName, options?.quotaBatchStateStore);
 
     // Override with initial token if set
     const initialToken =
@@ -115,7 +117,7 @@ export class AccountPool {
     return this.registry.hasAvailableAccounts(excludeIds);
   }
 
-  setRotationStrategy(name: "least_used" | "round_robin" | "sticky"): void {
+  setRotationStrategy(name: RotationStrategyName): void {
     this.lifecycle.setRotationStrategy(name);
   }
 

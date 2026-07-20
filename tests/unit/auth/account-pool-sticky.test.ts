@@ -12,6 +12,8 @@ import { createValidJwt } from "@helpers/jwt.js";
 import { setConfigForTesting, resetConfigForTesting } from "@src/config.js";
 import { AccountPool } from "@src/auth/account-pool.js";
 import { getModelPlanTypes } from "@src/models/model-store.js";
+import type { CodexQuota } from "@src/auth/types.js";
+import type { QuotaBatchCheckpoint, QuotaBatchStateStore } from "@src/auth/quota-batch-selector.js";
 
 // Only model-store needs mocking (for model-aware selection test)
 vi.mock("@src/models/model-store.js", () => ({
@@ -141,5 +143,142 @@ describe("account-pool sticky strategy", () => {
     expect(acquired).not.toBeNull();
     expect(acquired!.entryId).toBe(idB);
     pool.release(acquired!.entryId);
+  });
+});
+
+class MemoryQuotaBatchStore implements QuotaBatchStateStore {
+  state: QuotaBatchCheckpoint | null = null;
+  load(): QuotaBatchCheckpoint | null { return this.state; }
+  save(state: QuotaBatchCheckpoint): void { this.state = structuredClone(state); }
+  clear(): void { this.state = null; }
+}
+
+function quota(usedPercent: number, options?: { secondary?: number; exhausted?: boolean }): CodexQuota {
+  const nowSec = Math.floor(Date.now() / 1000);
+  return {
+    plan_type: "plus",
+    rate_limit: {
+      allowed: options?.exhausted !== true,
+      limit_reached: options?.exhausted === true,
+      used_percent: usedPercent,
+      reset_at: nowSec + 18_000,
+      limit_window_seconds: 18_000,
+    },
+    secondary_rate_limit: options?.secondary === undefined ? null : {
+      limit_reached: false,
+      used_percent: options.secondary,
+      reset_at: nowSec + 604_800,
+      limit_window_seconds: 604_800,
+    },
+    code_review_rate_limit: null,
+  };
+}
+
+describe("account-pool quota_batch strategy", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setConfigForTesting(createMockConfig({
+      auth: { rotation_strategy: "quota_batch", quota_batch_percent: 30 },
+    }));
+  });
+
+  afterEach(() => resetConfigForTesting());
+
+  function createPool(): AccountPool {
+    return new AccountPool({
+      persistence: createMemoryPersistence(),
+      quotaBatchStateStore: new MemoryQuotaBatchStore(),
+    });
+  }
+
+  it("keeps an account until cached weekly usage crosses the configured delta", () => {
+    const pool = createPool();
+    const idA = pool.addAccount(createValidJwt({ accountId: "qb-a", planType: "plus" }));
+    const idB = pool.addAccount(createValidJwt({ accountId: "qb-b", planType: "plus" }));
+    pool.updateCachedQuota(idA, quota(90, { secondary: 12 }));
+    pool.updateCachedQuota(idB, quota(0, { secondary: 5 }));
+
+    const first = pool.acquire()!;
+    pool.release(first.entryId);
+    expect(first.entryId).toBe(idA);
+    pool.updateCachedQuota(idA, quota(99, { secondary: 41 }));
+    const below = pool.acquire()!;
+    pool.release(below.entryId);
+    expect(below.entryId).toBe(idA);
+    pool.updateCachedQuota(idA, quota(99, { secondary: 42 }));
+    const switched = pool.acquire()!;
+    pool.release(switched.entryId);
+    expect(switched.entryId).toBe(idB);
+  });
+
+  it("overrides stale conversation affinity", () => {
+    const pool = createPool();
+    const idA = pool.addAccount(createValidJwt({ accountId: "qb-aff-a", planType: "plus" }));
+    const idB = pool.addAccount(createValidJwt({ accountId: "qb-aff-b", planType: "plus" }));
+    pool.updateCachedQuota(idA, quota(10));
+    pool.updateCachedQuota(idB, quota(10));
+    const first = pool.acquire({ preferredEntryId: idB })!;
+    pool.release(first.entryId);
+    expect(first.entryId).toBe(idA);
+    pool.updateCachedQuota(idA, quota(40));
+    const switched = pool.acquire({ preferredEntryId: idA })!;
+    pool.release(switched.entryId);
+    expect(switched.entryId).toBe(idB);
+  });
+
+  it("filters retry exclusions, disabled, exhaustion, and concurrency first", () => {
+    setConfigForTesting(createMockConfig({
+      auth: { rotation_strategy: "quota_batch", quota_batch_percent: 30, max_concurrent_per_account: 1 },
+      quota: { skip_exhausted: true },
+    }));
+    const pool = createPool();
+    const idA = pool.addAccount(createValidJwt({ accountId: "qb-filter-a", planType: "plus" }));
+    const idB = pool.addAccount(createValidJwt({ accountId: "qb-filter-b", planType: "plus" }));
+    const idC = pool.addAccount(createValidJwt({ accountId: "qb-filter-c", planType: "plus" }));
+    pool.updateCachedQuota(idA, quota(10));
+    pool.updateCachedQuota(idB, quota(20));
+    pool.updateCachedQuota(idC, quota(30));
+
+    const first = pool.acquire()!;
+    const concurrencyFallback = pool.acquire()!;
+    expect([first.entryId, concurrencyFallback.entryId]).toEqual([idA, idB]);
+    pool.releaseWithoutCounting(first.entryId);
+    pool.releaseWithoutCounting(concurrencyFallback.entryId);
+    pool.markStatus(idB, "disabled");
+    const excluded = pool.acquire({ excludeIds: [idA] })!;
+    expect(excluded.entryId).toBe(idC);
+    pool.release(excluded.entryId);
+    pool.updateCachedQuota(idC, quota(100, { exhausted: true }));
+    expect(pool.acquire({ excludeIds: [idA] })).toBeNull();
+  });
+
+  it("applies model and tier filters before quota batching", () => {
+    vi.mocked(getModelPlanTypes).mockReturnValue(["team", "plus"]);
+    setConfigForTesting(createMockConfig({
+      auth: { rotation_strategy: "quota_batch", quota_batch_percent: 30, tier_priority: ["team", "plus"] },
+    }));
+    const pool = createPool();
+    const plus = pool.addAccount(createValidJwt({ accountId: "qb-plus", planType: "plus" }));
+    const team = pool.addAccount(createValidJwt({ accountId: "qb-team", planType: "team" }));
+    pool.updateCachedQuota(plus, quota(10));
+    pool.updateCachedQuota(team, quota(10));
+    const acquired = pool.acquire({ model: "gpt-5.4" })!;
+    expect(acquired.entryId).toBe(team);
+    pool.release(acquired.entryId);
+  });
+
+  it("does not let model catalog selection advance the request batch", () => {
+    const pool = createPool();
+    const idA = pool.addAccount(createValidJwt({ accountId: "qb-model-a", planType: "plus" }));
+    const idB = pool.addAccount(createValidJwt({ accountId: "qb-model-b", planType: "plus" }));
+    pool.updateCachedQuota(idA, quota(10));
+    pool.updateCachedQuota(idB, quota(20));
+    const first = pool.acquire()!;
+    pool.release(first.entryId);
+    pool.getDistinctPlanAccounts().forEach((account) => pool.releaseWithoutCounting(account.entryId));
+    pool.updateCachedQuota(idA, quota(40));
+    const next = pool.acquire()!;
+    expect(next.entryId).toBe(idB);
+    pool.release(next.entryId);
   });
 });

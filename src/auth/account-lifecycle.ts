@@ -13,6 +13,7 @@ import type { RotationStrategy, RotationState, RotationStrategyName } from "./ro
 import type { AccountRegistry } from "./account-registry.js";
 import type { AccountEntry, AcquiredAccount } from "./types.js";
 import { isCfChallengeCooldownActive } from "./cf-challenge-cooldown.js";
+import { QuotaBatchSelector, type QuotaBatchStateStore } from "./quota-batch-selector.js";
 
 const ACQUIRE_LOCK_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -27,12 +28,20 @@ export class AccountLifecycle {
   /** Per-account active slot timestamps. Each entry = one in-flight request. */
   private acquireLocks: Map<string, number[]> = new Map();
   private strategy: RotationStrategy;
+  private strategyName: RotationStrategyName;
+  private quotaBatchSelector: QuotaBatchSelector;
   private rotationState: RotationState = { roundRobinIndex: 0 };
   private registry: AccountRegistry;
 
-  constructor(registry: AccountRegistry, strategyName: RotationStrategyName) {
+  constructor(
+    registry: AccountRegistry,
+    strategyName: RotationStrategyName,
+    quotaBatchStateStore?: QuotaBatchStateStore,
+  ) {
     this.registry = registry;
+    this.strategyName = strategyName;
     this.strategy = getRotationStrategy(strategyName);
+    this.quotaBatchSelector = new QuotaBatchSelector(quotaBatchStateStore);
   }
 
   private slotCount(entryId: string): number {
@@ -133,9 +142,16 @@ export class AccountLifecycle {
       }
     }
 
-    // Session affinity: prefer the account that owns the conversation
+    // Quota batches intentionally override stale conversation affinity. All
+    // authoritative eligibility filters have already reduced `candidates`.
     let selected: AccountEntry;
-    if (options?.preferredEntryId) {
+    if (this.strategyName === "quota_batch") {
+      selected = this.quotaBatchSelector.select(
+        candidates,
+        config.auth.quota_batch_percent,
+        entries.map((entry) => entry.id),
+      );
+    } else if (options?.preferredEntryId) {
       const preferred = candidates.find((a) => a.id === options.preferredEntryId);
       selected = preferred ?? this.strategy.select(candidates, this.rotationState);
     } else {
@@ -182,6 +198,8 @@ export class AccountLifecycle {
   }
 
   setRotationStrategy(name: RotationStrategyName): void {
+    if (name !== this.strategyName) this.quotaBatchSelector.reset();
+    this.strategyName = name;
     this.strategy = getRotationStrategy(name);
     this.rotationState.roundRobinIndex = 0;
   }
@@ -223,7 +241,10 @@ export class AccountLifecycle {
 
     const result: Array<{ planType: string; entryId: string; token: string; accountId: string | null }> = [];
     for (const [plan, group] of byPlan) {
-      const selected = this.strategy.select(group, this.rotationState);
+      // Model catalog refreshes must not advance the request-routing batch.
+      const selected = this.strategyName === "quota_batch"
+        ? getRotationStrategy("sticky").select(group, this.rotationState)
+        : this.strategy.select(group, this.rotationState);
       this.pushSlot(selected.id);
       result.push({
         planType: plan,
