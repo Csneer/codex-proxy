@@ -5,7 +5,7 @@
 
 import type { AccountEntry } from "./types.js";
 
-export type RotationStrategyName = "least_used" | "round_robin" | "sticky";
+export type RotationStrategyName = "least_used" | "round_robin" | "sticky" | "quota_batch";
 
 export interface RotationState {
   roundRobinIndex: number;
@@ -73,6 +73,9 @@ const strategies: Record<RotationStrategyName, RotationStrategy> = {
   least_used: leastUsed,
   round_robin: roundRobin,
   sticky,
+  // AccountLifecycle replaces this compatibility fallback with the
+  // stateful quota-batch selector after applying its eligibility filters.
+  quota_batch: sticky,
 };
 
 export function getRotationStrategy(name: RotationStrategyName): RotationStrategy {

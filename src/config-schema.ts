@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const ROTATION_STRATEGIES = ["least_used", "round_robin", "sticky"] as const;
+export const ROTATION_STRATEGIES = ["least_used", "round_robin", "sticky", "quota_batch"] as const;
 
 // Note: discriminatedUnion does not accept ZodEffects branches, so the
 // presence-of-secret-material checks are applied at the union level via
@@ -96,6 +96,7 @@ export const ConfigSchema = z.object({
     max_concurrent_per_account: z.number().int().min(1).nullable().default(3),
     request_interval_ms: z.number().int().min(0).nullable().default(50),
     rotation_strategy: z.enum(ROTATION_STRATEGIES).default("least_used"),
+    quota_batch_percent: z.number().int().min(1).max(100).default(30),
     /** Preferred plan-type ordering for account selection (e.g. ["plus","team","free"]). */
     tier_priority: z.array(z.string()).nullable().default(null),
     rate_limit_backoff_seconds: z.number().min(1).default(60),

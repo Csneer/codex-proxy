@@ -11,7 +11,7 @@ import {
 
 describe("ROTATION_STRATEGIES", () => {
   it("contains expected values", () => {
-    expect(ROTATION_STRATEGIES).toEqual(["least_used", "round_robin", "sticky"]);
+    expect(ROTATION_STRATEGIES).toEqual(["least_used", "round_robin", "sticky", "quota_batch"]);
   });
 });
 
@@ -33,6 +33,7 @@ describe("ConfigSchema", () => {
     expect(result.server.host).toBe("0.0.0.0");
     expect(result.server.proxy_api_key).toBeNull();
     expect(result.auth.rotation_strategy).toBe("least_used");
+    expect(result.auth.quota_batch_percent).toBe(30);
     expect(result.auth.refresh_concurrency).toBe(2);
     expect(result.auth.max_concurrent_per_account).toBe(3);
     expect(result.auth.request_interval_ms).toBe(50);
@@ -247,6 +248,21 @@ describe("ConfigSchema", () => {
       api: {}, client: {}, model: {}, auth: { rotation_strategy: "random" }, server: {}, session: {},
     });
     expect(result.success).toBe(false);
+  });
+
+  it("accepts quota_batch rotation and validates its percentage bounds", () => {
+    const base = { api: {}, client: {}, model: {}, server: {}, session: {} };
+
+    expect(ConfigSchema.parse({
+      ...base,
+      auth: { rotation_strategy: "quota_batch", quota_batch_percent: 42 },
+    }).auth).toMatchObject({
+      rotation_strategy: "quota_batch",
+      quota_batch_percent: 42,
+    });
+    expect(ConfigSchema.safeParse({ ...base, auth: { quota_batch_percent: 0 } }).success).toBe(false);
+    expect(ConfigSchema.safeParse({ ...base, auth: { quota_batch_percent: 101 } }).success).toBe(false);
+    expect(ConfigSchema.safeParse({ ...base, auth: { quota_batch_percent: 30.5 } }).success).toBe(false);
   });
 
   it("rejects timeout_seconds < 1", () => {

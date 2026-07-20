@@ -21,6 +21,7 @@ const mockConfig = {
   },
   auth: {
     rotation_strategy: "least_used",
+    quota_batch_percent: 30,
     refresh_enabled: true,
     refresh_margin_seconds: 300,
     refresh_concurrency: 2,
@@ -44,7 +45,7 @@ vi.mock("@src/config.js", () => ({
   getConfig: vi.fn(() => mockConfig),
   reloadAllConfigs: vi.fn(),
   getLocalConfigPath: vi.fn(() => "/tmp/test/local.yaml"),
-  ROTATION_STRATEGIES: ["least_used", "round_robin", "sticky"],
+  ROTATION_STRATEGIES: ["least_used", "round_robin", "sticky", "quota_batch"],
 }));
 
 vi.mock("@src/paths.js", () => ({
@@ -116,6 +117,92 @@ const mockUsageStats = {} as unknown as Parameters<typeof createWebRoutes>[1];
 function makeApp() {
   return createWebRoutes(mockPool, mockUsageStats);
 }
+
+describe("/admin/rotation-settings", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockConfig.auth.rotation_strategy = "least_used";
+    mockConfig.auth.quota_batch_percent = 30;
+  });
+
+  it("returns the current strategy and quota batch percentage", async () => {
+    mockConfig.auth.rotation_strategy = "quota_batch";
+    mockConfig.auth.quota_batch_percent = 42;
+
+    const res = await makeApp().request("/admin/rotation-settings");
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      rotation_strategy: "quota_batch",
+      quota_batch_percent: 42,
+    });
+  });
+
+  it("persists both rotation fields and returns their reloaded values", async () => {
+    mockConfig.auth.rotation_strategy = "quota_batch";
+    mockConfig.auth.quota_batch_percent = 42;
+
+    const res = await makeApp().request("/admin/rotation-settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rotation_strategy: "quota_batch", quota_batch_percent: 42 }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      success: true,
+      rotation_strategy: "quota_batch",
+      quota_batch_percent: 42,
+    });
+    const mutate = vi.mocked(mutateYaml).mock.calls[0]?.[1];
+    const localConfig: Record<string, unknown> = {};
+    mutate?.(localConfig);
+    expect(localConfig).toEqual({
+      auth: { rotation_strategy: "quota_batch", quota_batch_percent: 42 },
+    });
+    expect(reloadAllConfigs).toHaveBeenCalledOnce();
+  });
+
+  it("updates only the supplied strategy and preserves the configured percentage", async () => {
+    mockConfig.auth.rotation_strategy = "sticky";
+    mockConfig.auth.quota_batch_percent = 67;
+
+    const res = await makeApp().request("/admin/rotation-settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rotation_strategy: "sticky" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      rotation_strategy: "sticky",
+      quota_batch_percent: 67,
+    });
+    const mutate = vi.mocked(mutateYaml).mock.calls[0]?.[1];
+    const localConfig: Record<string, unknown> = {};
+    mutate?.(localConfig);
+    expect(localConfig).toEqual({ auth: { rotation_strategy: "sticky" } });
+  });
+
+  it.each([
+    [{}, "at least one"],
+    [{ rotation_strategy: "random" }, "rotation_strategy"],
+    [{ quota_batch_percent: 0 }, "quota_batch_percent"],
+    [{ quota_batch_percent: 101 }, "quota_batch_percent"],
+    [{ quota_batch_percent: 30.5 }, "quota_batch_percent"],
+  ])("rejects invalid rotation settings %#", async (body, message) => {
+    const res = await makeApp().request("/admin/rotation-settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toContain(message);
+    expect(mutateYaml).not.toHaveBeenCalled();
+    expect(reloadAllConfigs).not.toHaveBeenCalled();
+  });
+});
 
 describe("GET /admin/general-settings", () => {
   beforeEach(() => {

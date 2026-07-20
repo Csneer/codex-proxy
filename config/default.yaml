@@ -22,6 +22,7 @@ auth:
   refresh_enabled: true
   refresh_margin_seconds: 300
   rotation_strategy: least_used
+  quota_batch_percent: 30
   rate_limit_backoff_seconds: 60
   oauth_client_id: app_EMoamEEZ73f0CkXaXp7hrann
   oauth_auth_endpoint: https://auth.openai.com/oauth/authorize

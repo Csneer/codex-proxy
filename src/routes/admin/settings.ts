@@ -52,20 +52,40 @@ export function createSettingsRoutes(): Hono {
     const config = getConfig();
     return c.json({
       rotation_strategy: config.auth.rotation_strategy,
+      quota_batch_percent: config.auth.quota_batch_percent,
     });
   });
 
   app.post("/admin/rotation-settings", async (c) => {
-    const body = await c.req.json() as { rotation_strategy?: string };
+    const body = await c.req.json() as {
+      rotation_strategy?: string;
+      quota_batch_percent?: number;
+    };
     const valid: readonly string[] = ROTATION_STRATEGIES;
-    if (!body.rotation_strategy || !valid.includes(body.rotation_strategy)) {
+    if (body.rotation_strategy === undefined && body.quota_batch_percent === undefined) {
+      c.status(400);
+      return c.json({ error: "at least one rotation setting is required" });
+    }
+    if (body.rotation_strategy !== undefined && !valid.includes(body.rotation_strategy)) {
       c.status(400);
       return c.json({ error: `rotation_strategy must be one of: ${ROTATION_STRATEGIES.join(", ")}` });
+    }
+    if (
+      body.quota_batch_percent !== undefined &&
+      (!Number.isInteger(body.quota_batch_percent) || body.quota_batch_percent < 1 || body.quota_batch_percent > 100)
+    ) {
+      c.status(400);
+      return c.json({ error: "quota_batch_percent must be an integer between 1 and 100" });
     }
 
     mutateYaml(getLocalConfigPath(), (data) => {
       if (!data.auth) data.auth = {};
-      (data.auth as Record<string, unknown>).rotation_strategy = body.rotation_strategy;
+      if (body.rotation_strategy !== undefined) {
+        (data.auth as Record<string, unknown>).rotation_strategy = body.rotation_strategy;
+      }
+      if (body.quota_batch_percent !== undefined) {
+        (data.auth as Record<string, unknown>).quota_batch_percent = body.quota_batch_percent;
+      }
     });
     reloadAllConfigs();
 
@@ -73,6 +93,7 @@ export function createSettingsRoutes(): Hono {
     return c.json({
       success: true,
       rotation_strategy: updated.auth.rotation_strategy,
+      quota_batch_percent: updated.auth.quota_batch_percent,
     });
   });
 

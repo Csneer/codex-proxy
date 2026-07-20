@@ -53,6 +53,7 @@ export function createMockConfig(overrides?: MockConfigOverrides): AppConfig {
       max_concurrent_per_account: 3,
       request_interval_ms: 50,
       rotation_strategy: "least_used",
+      quota_batch_percent: 30,
       rate_limit_backoff_seconds: 60,
       oauth_client_id: "app_test",
       oauth_auth_endpoint: "https://auth.openai.com/oauth/authorize",
