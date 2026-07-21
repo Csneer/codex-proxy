@@ -270,6 +270,48 @@ describe("account import/export", () => {
     },
   );
 
+  it("preserves the global proxy sentinel for explicit quota probes", async () => {
+    const id = pool.addAccount("tokenGLOBALPROBE1234567890");
+    pool.markStatus(id, "disabled");
+    const resolveProxyUrl = vi.fn(() => undefined);
+    const routes = createAccountRoutes(
+      pool,
+      mockScheduler as never,
+      undefined,
+      { resolveProxyUrl } as never,
+    );
+    const proxyApp = new Hono();
+    proxyApp.route("/", routes);
+
+    const { CodexApi } = await import("@src/proxy/codex-api.js");
+    const getUsageSpy = vi.spyOn(CodexApi.prototype, "getUsage")
+      .mockImplementationOnce(function (this: CodexApi) {
+        expect((this as unknown as { proxyUrl?: string | null }).proxyUrl).toBeUndefined();
+        return Promise.resolve({
+          plan_type: "plus",
+          rate_limit: {
+            allowed: true,
+            limit_reached: false,
+            primary_window: {
+              used_percent: 30,
+              reset_at: 2_000_000_000,
+              limit_window_seconds: 18_000,
+              reset_after_seconds: 100,
+            },
+            secondary_window: null,
+          },
+          code_review_rate_limit: null,
+          credits: null,
+          promo: null,
+        });
+      });
+
+    const res = await proxyApp.request(`/auth/accounts/${id}/quota?probe_disabled=true`);
+    expect(res.status).toBe(200);
+    expect(resolveProxyUrl).toHaveBeenCalledWith(id, true);
+    getUsageSpy.mockRestore();
+  });
+
   it("keeps a disabled account disabled when the explicit probe fails", async () => {
     const id = pool.addAccount("tokenFAILPROBE1234567890");
     pool.markStatus(id, "disabled");

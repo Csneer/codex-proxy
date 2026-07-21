@@ -40,11 +40,11 @@ interface ProbePool {
 }
 
 interface ProbeDependencies {
-  getUsage(token: string, accountId: string | null, entryId: string, proxyUrl: string | null): Promise<CodexUsageResponse>;
-  refreshAccessToken(refreshToken: string, proxyUrl: string | null): Promise<{ access_token: string; refresh_token?: string | null }>;
+  getUsage(token: string, accountId: string | null, entryId: string, proxyUrl?: string | null): Promise<CodexUsageResponse>;
+  refreshAccessToken(refreshToken: string, proxyUrl?: string | null): Promise<{ access_token: string; refresh_token?: string | null }>;
   tryAcquireRefreshLock(entryId: string): boolean;
   releaseRefreshLock(entryId: string): void;
-  getProxyUrl(entryId: string): string | null;
+  getProxyUrl(entryId: string): string | null | undefined;
   getLowQuotaUsedThreshold(kind: "primary" | "secondary"): number;
 }
 
@@ -201,7 +201,7 @@ export function classifyProbeError(error: unknown): AccountProbeStatus {
   if (isCfChallengeError(error) || isCfPathBlockError(error) || isHtmlError(error)) return "upstream_blocked";
   if (isBanError(error)) return "account_banned";
   const text = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
-  if (/\b(eof|etimedout|timeout|econnreset|econnrefused|enotfound|network|socket hang up|tls)\b/i.test(text)) {
+  if (/\b(eof|etimedout|timeout|timed out|econnreset|econnrefused|enotfound|network|socket hang up|tls)\b/i.test(text)) {
     return "transient_network";
   }
   return "unknown_failure";

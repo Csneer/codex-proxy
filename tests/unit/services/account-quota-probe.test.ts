@@ -107,6 +107,7 @@ describe("AccountQuotaProbeService", () => {
     [codexError(403, "cf_chl challenge"), "upstream_blocked"],
     [new Error("TLS EOF while connecting"), "transient_network"],
     [new Error("request ETIMEDOUT"), "transient_network"],
+    [new Error("operation timed out"), "transient_network"],
     [new Error("socket ECONNRESET"), "transient_network"],
     [new Error("unexpected parser failure"), "unknown_failure"],
   ] as const)("classifies probe failures without changing disabled status", async (error, expected) => {

@@ -199,7 +199,9 @@ export function createAccountRoutes(pool: AccountPool, scheduler: RefreshSchedul
         pool,
         async (token, accountId, entryId, proxyUrl) =>
           new CodexApi(token, accountId, cookieJar, entryId, proxyUrl).getUsage(),
-        (entryId) => proxyPool?.resolveProxyUrl(entryId, true) ?? getConfig().tls?.proxy_url ?? null,
+        (entryId) => proxyPool
+          ? proxyPool.resolveProxyUrl(entryId, true)
+          : getConfig().tls?.proxy_url ?? undefined,
       );
       const result = await service.probe(id);
       const status = result.probe_status;
