@@ -187,6 +187,18 @@ describe("AccountQuotaProbeService", () => {
     expect(h.current.status).toBe("disabled");
   });
 
+  it("classifies an invalidated refresh token as token_invalid", async () => {
+    const h = harness();
+    h.deps.getUsage.mockRejectedValue(codexError(401));
+    h.deps.refreshAccessToken.mockRejectedValue(new Error(
+      'Token refresh failed (401): {"error":{"code":"refresh_token_invalidated"}}',
+    ));
+    const result = await h.service.probe("account-1");
+    expect(result.probe_status).toBe("token_invalid");
+    expect(h.deps.releaseRefreshLock).toHaveBeenCalledOnce();
+    expect(h.current.status).toBe("disabled");
+  });
+
   it.each([
     [new Error("TLS EOF during refresh"), "transient_network"],
     [codexError(403, "<!doctype html>Just a moment"), "upstream_blocked"],

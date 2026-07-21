@@ -192,7 +192,7 @@ export function classifyQuota(
 
 function isRefreshCredentialError(error: unknown): boolean {
   const text = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
-  return /invalid_grant|invalid_token|refresh_token_expired|refresh_token_reused|access_denied/.test(text);
+  return /invalid_grant|invalid_token|refresh_token_expired|refresh_token_reused|refresh_token_invalidated|access_denied/.test(text);
 }
 
 export function classifyProbeError(error: unknown): AccountProbeStatus {
