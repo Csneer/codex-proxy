@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "preact/hooks";
 import type { Account } from "../types";
+import { adminFetch } from "../http/admin-fetch.js";
 import {
   accountExportDownloadName,
   buildAccountExportUrl,
@@ -69,7 +70,7 @@ export function useAccounts() {
     setAddInfo("");
     setAddError("");
     try {
-      const resp = await fetch("/auth/login-start", { method: "POST" });
+      const resp = await adminFetch("/auth/login-start", { method: "POST" });
       const data = await resp.json();
       if (!resp.ok || !data.authUrl) {
         throw new Error(data.error || "failedStartLogin");
@@ -142,7 +143,7 @@ export function useAccounts() {
         return;
       }
       try {
-        const resp = await fetch("/auth/code-relay", {
+        const resp = await adminFetch("/auth/code-relay", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ callbackUrl }),
@@ -168,7 +169,7 @@ export function useAccounts() {
     setAddInfo("");
     setAddError("");
     try {
-      const resp = await fetch("/auth/accounts", {
+      const resp = await adminFetch("/auth/accounts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ refreshToken }),
@@ -192,7 +193,7 @@ export function useAccounts() {
   const deleteAccount = useCallback(
     async (id: string) => {
       try {
-        const resp = await fetch("/auth/accounts/" + encodeURIComponent(id), {
+        const resp = await adminFetch("/auth/accounts/" + encodeURIComponent(id), {
           method: "DELETE",
         });
         if (!resp.ok) {
@@ -237,7 +238,7 @@ export function useAccounts() {
     const prepared = await prepareAccountImportRequest(file);
     if (!prepared.ok) return { success: false, added: 0, updated: 0, failed: 0, errors: [prepared.error] };
 
-    const resp = await fetch("/auth/accounts/import", {
+    const resp = await adminFetch("/auth/accounts/import", {
       method: "POST",
       headers: { "Content-Type": prepared.contentType },
       body: prepared.body,
@@ -251,7 +252,7 @@ export function useAccounts() {
 
   const batchDelete = useCallback(async (ids: string[]): Promise<string | null> => {
     try {
-      const resp = await fetch("/auth/accounts/batch-delete", {
+      const resp = await adminFetch("/auth/accounts/batch-delete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids }),
@@ -269,7 +270,7 @@ export function useAccounts() {
 
   const batchSetStatus = useCallback(async (ids: string[], status: "active" | "disabled"): Promise<string | null> => {
     try {
-      const resp = await fetch("/auth/accounts/batch-status", {
+      const resp = await adminFetch("/auth/accounts/batch-status", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids, status }),
@@ -292,7 +293,7 @@ export function useAccounts() {
 
   const updateLabel = useCallback(async (id: string, label: string | null): Promise<string | null> => {
     try {
-      const resp = await fetch(`/auth/accounts/${encodeURIComponent(id)}/label`, {
+      const resp = await adminFetch(`/auth/accounts/${encodeURIComponent(id)}/label`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ label }),

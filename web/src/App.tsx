@@ -395,7 +395,7 @@ function LoginGate({ children }: { children: ComponentChildren }) {
               <label class="block text-xs font-medium text-slate-600 dark:text-text-dim mb-1.5">{t("dashboardPassword")}</label>
               <input type="password" value={password} onInput={(e) => setPassword((e.target as HTMLInputElement).value)}
                 class="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-border-dark bg-slate-50 dark:bg-bg-dark text-sm text-slate-800 dark:text-text-main focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-colors"
-                placeholder="proxy_api_key" autofocus />
+                placeholder="dashboard.admin_key" autofocus />
             </div>
             {auth.error && (
               <p class="text-xs text-red-500 font-medium">

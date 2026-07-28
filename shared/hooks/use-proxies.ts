@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "preact/hooks";
 import type { ProxyEntry, ProxyAssignment } from "../types";
+import { adminFetch } from "../http/admin-fetch.js";
 
 export interface AddProxyFields {
   name: string;
@@ -56,7 +57,7 @@ export function useProxies(): ProxiesState {
   const addProxy = useCallback(
     async (fields: AddProxyFields): Promise<string | null> => {
       try {
-        const resp = await fetch("/api/proxies", {
+        const resp = await adminFetch("/api/proxies", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(
@@ -86,7 +87,7 @@ export function useProxies(): ProxiesState {
   const removeProxy = useCallback(
     async (id: string): Promise<string | null> => {
       try {
-        const resp = await fetch(`/api/proxies/${encodeURIComponent(id)}`, {
+        const resp = await adminFetch(`/api/proxies/${encodeURIComponent(id)}`, {
           method: "DELETE",
         });
         if (!resp.ok) {
@@ -105,7 +106,7 @@ export function useProxies(): ProxiesState {
   const checkProxy = useCallback(
     async (id: string) => {
       try {
-        await fetch(`/api/proxies/${encodeURIComponent(id)}/check`, {
+        await adminFetch(`/api/proxies/${encodeURIComponent(id)}/check`, {
           method: "POST",
         });
       } catch {
@@ -118,7 +119,7 @@ export function useProxies(): ProxiesState {
 
   const checkAll = useCallback(async () => {
     try {
-      await fetch("/api/proxies/check-all", { method: "POST" });
+      await adminFetch("/api/proxies/check-all", { method: "POST" });
     } catch {
       // network error
     }
@@ -128,7 +129,7 @@ export function useProxies(): ProxiesState {
   const enableProxy = useCallback(
     async (id: string) => {
       try {
-        await fetch(`/api/proxies/${encodeURIComponent(id)}/enable`, {
+        await adminFetch(`/api/proxies/${encodeURIComponent(id)}/enable`, {
           method: "POST",
         });
       } catch {
@@ -142,7 +143,7 @@ export function useProxies(): ProxiesState {
   const disableProxy = useCallback(
     async (id: string) => {
       try {
-        await fetch(`/api/proxies/${encodeURIComponent(id)}/disable`, {
+        await adminFetch(`/api/proxies/${encodeURIComponent(id)}/disable`, {
           method: "POST",
         });
       } catch {
@@ -156,7 +157,7 @@ export function useProxies(): ProxiesState {
   const assignProxy = useCallback(
     async (accountId: string, proxyId: string) => {
       try {
-        await fetch("/api/proxies/assign", {
+        await adminFetch("/api/proxies/assign", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ accountId, proxyId }),
@@ -172,7 +173,7 @@ export function useProxies(): ProxiesState {
   const unassignProxy = useCallback(
     async (accountId: string) => {
       try {
-        await fetch(`/api/proxies/assign/${encodeURIComponent(accountId)}`, {
+        await adminFetch(`/api/proxies/assign/${encodeURIComponent(accountId)}`, {
           method: "DELETE",
         });
       } catch {
@@ -186,7 +187,7 @@ export function useProxies(): ProxiesState {
   const setIntervalMinutes = useCallback(
     async (minutes: number) => {
       try {
-        await fetch("/api/proxies/settings", {
+        await adminFetch("/api/proxies/settings", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ healthCheckIntervalMinutes: minutes }),

@@ -2,6 +2,7 @@ import { useState, useCallback } from "preact/hooks";
 import { useT } from "../../../shared/i18n/context";
 import type { TranslationKey } from "../../../shared/i18n/translations";
 import type { ProxiesState } from "../../../shared/hooks/use-proxies";
+import { adminFetch } from "../../../shared/http/admin-fetch.js";
 
 const PROTOCOLS = ["http", "https", "socks5", "socks5h"] as const;
 
@@ -135,7 +136,7 @@ export function ProxyPool({ proxies }: ProxyPoolProps) {
     setImporting(true);
     setImportStatus(null);
     try {
-      const resp = await fetch("/api/proxies/import", {
+      const resp = await adminFetch("/api/proxies/import", {
         method: "POST",
         headers: { "Content-Type": "text/yaml" },
         body: importYaml,

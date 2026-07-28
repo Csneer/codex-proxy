@@ -5,6 +5,7 @@ import { AccountImportExport } from "./AccountImportExport";
 import type { AccountExportFormat } from "../../../shared/account-transfer-client";
 import type { Account, ProxyEntry, QuotaWarning } from "../../../shared/types";
 import { derivedStatus } from "../lib/accountStatus";
+import { adminFetch } from "../../../shared/http/admin-fetch.js";
 
 const STATUS_FILTER_STORAGE_KEY = "codex-proxy-account-list-status-filter";
 const EXPAND_ALL_STORAGE_KEY = "codex-proxy-account-list-expand-all";
@@ -61,7 +62,7 @@ export function AccountList({ accounts, loading, onDelete, onRefresh, refreshing
     setRefreshingExpired(true);
     setHealthResult(null);
     try {
-      const resp = await fetch("/auth/accounts/health-check", {
+      const resp = await adminFetch("/auth/accounts/health-check", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids: expiredIds }),
@@ -84,7 +85,7 @@ export function AccountList({ accounts, loading, onDelete, onRefresh, refreshing
     if (invalidIds.length === 0) return;
     if (!confirm(t("deleteInvalidConfirm").replace("{count}", String(invalidIds.length)))) return;
     try {
-      const resp = await fetch("/auth/accounts/batch-delete", {
+      const resp = await adminFetch("/auth/accounts/batch-delete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids: invalidIds }),
@@ -101,7 +102,7 @@ export function AccountList({ accounts, loading, onDelete, onRefresh, refreshing
     setHealthChecking(true);
     setHealthResult(null);
     try {
-      const resp = await fetch("/auth/accounts/health-check", {
+      const resp = await adminFetch("/auth/accounts/health-check", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),

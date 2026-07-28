@@ -62,18 +62,34 @@ export function useStatus(accountCount: number) {
   const [selectedEffort, setSelectedEffort] = useState("medium");
   const [selectedSpeed, setSelectedSpeed] = useState<string | null>(null);
 
-  const fetchModels = useCallback(async (isInitial: boolean, serviceKey = apiKey) => {
+  const fetchModels = useCallback(async (
+    isInitial: boolean,
+    serviceKey: string,
+    signal?: AbortSignal,
+  ) => {
     try {
       // Fetch full catalog for effort info
       const headers = serviceKey ? { Authorization: `Bearer ${serviceKey}` } : undefined;
-      const catalogResp = await fetch("/v1/models/catalog", { headers });
-      const catalogData: CatalogModel[] = await catalogResp.json();
-      setModelCatalog(catalogData);
+      const catalogResp = await fetch("/v1/models/catalog", { headers, signal });
+      if (!catalogResp.ok) throw new Error(`Model catalog request failed: HTTP ${catalogResp.status}`);
+      const catalogPayload: unknown = await catalogResp.json();
+      if (!Array.isArray(catalogPayload)) throw new Error("Invalid model catalog response");
+      const catalogData = catalogPayload as CatalogModel[];
 
       // Also fetch flat model list for compatibility with OpenAI clients.
-      const resp = await fetch("/v1/models", { headers });
-      const data = await resp.json();
-      const ids: string[] = data.data.map((m: { id: string }) => m.id);
+      const resp = await fetch("/v1/models", { headers, signal });
+      if (!resp.ok) throw new Error(`Model list request failed: HTTP ${resp.status}`);
+      const payload: unknown = await resp.json();
+      const entries = payload && typeof payload === "object"
+        ? (payload as { data?: unknown }).data
+        : undefined;
+      if (!Array.isArray(entries)) throw new Error("Invalid model list response");
+      const ids = entries
+        .map((entry) => entry && typeof entry === "object" ? (entry as { id?: unknown }).id : undefined)
+        .filter((id): id is string => typeof id === "string");
+      if (signal?.aborted) return;
+
+      setModelCatalog(catalogData);
       setModels(ids);
       if (isInitial) {
         setSelectedModel(selectDefaultModel(catalogData, ids));
@@ -84,32 +100,43 @@ export function useStatus(accountCount: number) {
           return selectDefaultModel(catalogData, ids) || prev;
         });
       }
-    } catch {
+    } catch (err) {
+      if (signal?.aborted) return;
       if (isInitial) setModels([]);
     }
-  }, [apiKey]);
+  }, []);
 
   useEffect(() => {
     let intervalId: ReturnType<typeof setInterval> | null = null;
+    const controller = new AbortController();
 
     async function loadStatus() {
       try {
-        const resp = await fetch("/auth/status");
+        const resp = await fetch("/auth/status", { signal: controller.signal });
+        if (!resp.ok) throw new Error(`Status request failed: HTTP ${resp.status}`);
         const data = await resp.json();
-        if (!data.authenticated) return;
+        if (controller.signal.aborted || !data.authenticated) return;
+        const serviceKey = data.proxy_api_key || "any-string";
         setBaseUrl(`${window.location.origin}/v1`);
-        setApiKey(data.proxy_api_key || "any-string");
-        await fetchModels(true, data.proxy_api_key || "any-string");
+        setApiKey(serviceKey);
+        await fetchModels(true, serviceKey, controller.signal);
+        if (controller.signal.aborted) return;
 
         // Refresh model list every 60s to pick up dynamic backend changes
-        intervalId = setInterval(() => { fetchModels(false); }, 60_000);
+        intervalId = setInterval(() => {
+          void fetchModels(false, serviceKey, controller.signal);
+        }, 60_000);
       } catch (err) {
+        if (controller.signal.aborted) return;
         console.error("Status load error:", err);
       }
     }
-    loadStatus();
+    void loadStatus();
 
-    return () => { if (intervalId) clearInterval(intervalId); };
+    return () => {
+      controller.abort();
+      if (intervalId) clearInterval(intervalId);
+    };
   }, [fetchModels, accountCount]);
 
   // Build model families — group catalog by family, excluding tier variants

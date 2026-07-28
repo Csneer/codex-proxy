@@ -63,6 +63,24 @@ describe("adminFetch", () => {
     expect(sentInit.signal).toBe(init.signal);
   });
 
+  it.each([
+    "/auth/accounts/batch-delete",
+    "/auth/api-keys/key-1/status",
+    "/api/proxies/proxy-1/enable",
+  ])("adds CSRF to a management mutation at %s", async (path) => {
+    const expiresAt = Date.now() + 60_000;
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ token: "csrf-token", expiresAt }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await adminFetch(path, { method: "POST" });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, "/admin/csrf");
+    const sentInit = fetchMock.mock.calls[1][1] as RequestInit;
+    expect((sentInit.headers as Headers).get("X-Codex-Proxy-CSRF")).toBe("csrf-token");
+  });
+
   it("preserves a Request body's method and headers while merging init headers", async () => {
     const expiresAt = Date.now() + 60_000;
     const original = new Request("http://localhost/admin/settings", {

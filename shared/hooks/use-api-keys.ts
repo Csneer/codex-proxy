@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "preact/hooks";
+import { adminFetch } from "../http/admin-fetch.js";
 
 export type ApiKeyProvider = "anthropic" | "openai" | "gemini" | "openrouter" | "custom";
 export type ApiKeyCapability = "chat" | "embeddings";
@@ -81,7 +82,7 @@ export function useApiKeys() {
     wire?: ApiKeyWire;
   }): Promise<{ ok: boolean; error?: string }> => {
     try {
-      const resp = await fetch("/auth/api-keys", {
+      const resp = await adminFetch("/auth/api-keys", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(input),
@@ -97,14 +98,14 @@ export function useApiKeys() {
 
   const deleteKey = useCallback(async (id: string) => {
     try {
-      await fetch(`/auth/api-keys/${id}`, { method: "DELETE" });
+      await adminFetch(`/auth/api-keys/${id}`, { method: "DELETE" });
       await loadKeys();
     } catch { /* ignore */ }
   }, [loadKeys]);
 
   const toggleStatus = useCallback(async (id: string, status: "active" | "disabled") => {
     try {
-      await fetch(`/auth/api-keys/${id}/status`, {
+      await adminFetch(`/auth/api-keys/${id}/status`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
@@ -115,7 +116,7 @@ export function useApiKeys() {
 
   const updateLabel = useCallback(async (id: string, label: string | null) => {
     try {
-      await fetch(`/auth/api-keys/${id}/label`, {
+      await adminFetch(`/auth/api-keys/${id}/label`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ label }),
@@ -127,7 +128,7 @@ export function useApiKeys() {
   const importKeys = useCallback(async (file: File): Promise<{ added: number; failed: number; errors: string[] }> => {
     const text = await file.text();
     const body = JSON.parse(text);
-    const resp = await fetch("/auth/api-keys/import", {
+    const resp = await adminFetch("/auth/api-keys/import", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -139,7 +140,7 @@ export function useApiKeys() {
 
   const fetchProviderModels = useCallback(async (input: FetchProviderModelsInput): Promise<{ ok: true; models: CatalogModel[] } | { ok: false; error: string }> => {
     try {
-      const resp = await fetch("/auth/api-keys/models", {
+      const resp = await adminFetch("/auth/api-keys/models", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

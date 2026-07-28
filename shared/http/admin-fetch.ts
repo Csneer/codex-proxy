@@ -20,12 +20,6 @@ export function clearAdminCsrfCache(): void {
   tokenRequest = null;
 }
 
-function requestPath(input: RequestInfo | URL): string {
-  if (typeof input === "string") return new URL(input, "http://localhost").pathname;
-  if (input instanceof URL) return input.pathname;
-  return new URL(input.url, "http://localhost").pathname;
-}
-
 function requestMethod(input: RequestInfo | URL, init?: RequestInit): string {
   if (init?.method) return init.method.toUpperCase();
   if (typeof Request !== "undefined" && input instanceof Request) return input.method.toUpperCase();
@@ -84,7 +78,7 @@ export async function adminFetch(
   init?: RequestInit,
 ): Promise<Response> {
   const method = requestMethod(input, init);
-  if (SAFE_METHODS.has(method) || !requestPath(input).startsWith("/admin/")) {
+  if (SAFE_METHODS.has(method)) {
     return fetch(input, init);
   }
 
