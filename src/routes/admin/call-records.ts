@@ -150,6 +150,7 @@ export function createCallRecordRoutes(): Hono {
       enabled: config.enabled,
       retentionDays: config.retention_days,
       maxBodyBytes: config.max_body_bytes,
+      maxRows: config.max_rows,
       ...store.getState(),
     });
   });

@@ -149,32 +149,23 @@ describe("createWebSocketResponse — early-stream error rejection", () => {
     }
   });
 
-  it("rejects when codex.response.metadata precedes previous_response_not_found", async () => {
-    const promise = createWebSocketResponse("wss://test/ws", {}, BASE_REQUEST);
-    promise.catch(() => { /* asserted below */ });
-    const ws = await waitForOpen();
-
-    ws.emit("message", JSON.stringify({
-      type: "codex.response.metadata",
-      request_id: "req_1",
-    }));
-    ws.emit("message", JSON.stringify({
-      type: "error",
-      error: {
-        code: "previous_response_not_found",
-        message: "Previous response with id 'resp_stale' not found.",
-      },
-    }));
-
-    try {
-      await promise;
-      throw new Error("expected rejection");
-    } catch (err) {
-      expect(err).toBeInstanceOf(CodexApiError);
-      expect((err as CodexApiError).status).toBe(400);
-      expect((err as CodexApiError).body).toContain("previous_response_not_found");
-    }
-  });
+  it.each(["codex.response.metadata", "response.metadata"])(
+    "keeps %s behind the early barrier so a following previous_response_not_found rejects",
+    async (metadataType) => {
+      const promise = createWebSocketResponse("wss://test/ws", {}, BASE_REQUEST);
+      promise.catch(() => undefined);
+      const ws = await waitForOpen();
+      ws.emit("message", JSON.stringify({ type: "response.created", response: { id: "resp_new" } }));
+      ws.emit("message", JSON.stringify({ type: "response.in_progress", response: { id: "resp_new" } }));
+      ws.emit("message", JSON.stringify({ type: metadataType, headers: { "x-test": "1" } }));
+      ws.emit("message", JSON.stringify({
+        type: "error",
+        status: 400,
+        error: { code: "previous_response_not_found", message: "not found" },
+      }));
+      await expect(promise).rejects.toMatchObject({ status: 400 });
+    },
+  );
 
   it("rejects with CodexApiError(402) when first frame is response.failed quota_exhausted", async () => {
     const promise = createWebSocketResponse("wss://test/ws", {}, BASE_REQUEST);
@@ -283,10 +274,6 @@ describe("createWebSocketResponse — early-stream error rejection", () => {
     const promise = createWebSocketResponse("wss://test/ws", {}, BASE_REQUEST);
     const ws = await waitForOpen();
 
-    ws.emit("message", JSON.stringify({
-      type: "codex.response.metadata",
-      request_id: "req_1",
-    }));
     ws.emit("message", JSON.stringify({ type: "response.created", response: { id: "resp_1" } }));
     ws.emit("message", JSON.stringify({ type: "response.output_text.delta", delta: "partial" }));
     const response = await promise;
@@ -298,7 +285,6 @@ describe("createWebSocketResponse — early-stream error rejection", () => {
     }));
 
     const text = await readAll(response);
-    expect(text).toContain("event: codex.response.metadata");
     expect(text).toContain("event: response.created");
     expect(text).toContain("event: response.output_text.delta");
     expect(text).toContain("event: error");

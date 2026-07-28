@@ -342,22 +342,48 @@ export class CallRecordStore {
     return this.db.prepare(sql).all(params) as T[];
   }
 
-  cleanup(retentionDays: number | null, now = new Date()): number {
-    if (retentionDays === null) return 0;
-    const cutoff = new Date(now.getTime() - retentionDays * 86_400_000).toISOString();
-    return this.transaction(() => {
-      const result = this.db.prepare(`
-        DELETE FROM call_records
-        WHERE rowid IN (
-          SELECT rowid FROM call_records
-          WHERE completed_at < ?
-          ORDER BY completed_at ASC
-          LIMIT ?
-        )
-      `).run(cutoff, CLEANUP_BATCH_SIZE);
+  cleanup(retentionDays: number | null, now = new Date(), maxRows: number | null = null): number {
+    if (retentionDays === null && maxRows === null) return 0;
+    const cutoff = retentionDays === null ? null : new Date(now.getTime() - retentionDays * 86_400_000).toISOString();
+    let deleted = 0;
+    if (cutoff !== null) {
+      const deleteExpired = this.db.prepare(`
+          DELETE FROM call_records
+          WHERE rowid IN (
+            SELECT rowid FROM call_records
+            WHERE completed_at < ?
+            ORDER BY completed_at ASC
+            LIMIT ?
+          )
+        `);
+      for (;;) {
+        const changes = this.transaction(() => Number(deleteExpired.run(cutoff, CLEANUP_BATCH_SIZE).changes));
+        deleted += changes;
+        if (changes < CLEANUP_BATCH_SIZE) break;
+      }
+    }
+    if (maxRows !== null) {
+      const deleteOverflow = this.db.prepare(`
+          DELETE FROM call_records
+          WHERE rowid IN (
+            SELECT rowid FROM call_records
+            ORDER BY completed_at ASC, rowid ASC
+            LIMIT ?
+          )
+        `);
+      for (;;) {
+        const count = Number((this.db.prepare("SELECT COUNT(*) AS total FROM call_records").get() as CountRow).total);
+        const overflow = count - maxRows;
+        if (overflow <= 0) break;
+        const changes = this.transaction(() => Number(deleteOverflow.run(Math.min(CLEANUP_BATCH_SIZE, overflow)).changes));
+        deleted += changes;
+        if (changes === 0) break;
+      }
+    }
+    this.transaction(() => {
       this.db.prepare("DELETE FROM call_contexts WHERE NOT EXISTS (SELECT 1 FROM call_records WHERE context_id = call_contexts.id)").run();
-      return Number(result.changes);
     });
+    return deleted;
   }
 
   clear(): void {
@@ -425,6 +451,7 @@ export class CallRecordStore {
 
   private initializeFts(): "fts5" | "like" {
     try {
+      const existing = this.db.prepare("SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = 'call_records_fts'").get() as { present: number } | undefined;
       this.db.exec(`
         CREATE VIRTUAL TABLE IF NOT EXISTS call_records_fts USING fts5(
           request_json, response_json, content='call_records', content_rowid='rowid'
@@ -443,8 +470,8 @@ export class CallRecordStore {
           INSERT INTO call_records_fts(rowid, request_json, response_json)
           VALUES (new.rowid, new.request_json, new.response_json);
         END;
-        INSERT INTO call_records_fts(call_records_fts) VALUES ('rebuild');
       `);
+      if (!existing) this.db.exec("INSERT INTO call_records_fts(call_records_fts) VALUES ('rebuild')");
       return "fts5";
     } catch {
       return "like";

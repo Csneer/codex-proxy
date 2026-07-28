@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import { extractInputText, extractOutputText, extractToolActivities } from "./semantic.js";
 
 describe("call record semantic extraction", () => {
+  it("extracts input text from the lightweight stored payload", () => {
+    expect(extractInputText({ input_text: "前端需要展示的输入" })).toBe("前端需要展示的输入");
+  });
+
   it("extracts user text from Responses input message content", () => {
     expect(extractInputText({
       model: "gpt-5.6-sol",

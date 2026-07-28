@@ -5,8 +5,8 @@ function textFromContent(value: unknown): string[] {
   if (Array.isArray(value)) return value.flatMap(textFromContent);
   if (!value || typeof value !== "object") return [];
   const object = value as Record<string, unknown>;
-  if (typeof object.text === "string") return [object.text];
   if (typeof object.input_text === "string") return [object.input_text];
+  if (typeof object.text === "string") return [object.text];
   return textFromContent(object.content);
 }
 
@@ -28,6 +28,7 @@ function messageText(value: unknown, role?: string): string[] {
 export function extractInputText(value: unknown): string {
   if (!value || typeof value !== "object") return typeof value === "string" ? value : "";
   const object = value as Record<string, unknown>;
+  if (typeof object.input_text === "string") return object.input_text.trim();
   const text = messageText(object.input ?? object.messages ?? object.prompt ?? object, undefined);
   return text.join("\n").trim();
 }
@@ -190,6 +191,17 @@ export function extractToolActivities(value: unknown): ToolActivity[] {
     : value;
   if (!Array.isArray(entries)) return [];
   const activities = new Map<string, ToolActivity>();
+  if (unwrappedObject && Array.isArray(unwrappedObject.tool_activities)) {
+    for (const entry of unwrappedObject.tool_activities) {
+      if (!entry || typeof entry !== "object") continue;
+      const item = entry as Record<string, unknown>;
+      if (typeof item.name !== "string") continue;
+      activities.set(item.name, {
+        name: item.name,
+        status: item.status === "completed" ? "已完成" : typeof item.status === "string" ? item.status : "已完成",
+      });
+    }
+  }
   const anthropicIndexes = new Map<number, string>();
   for (const entry of entries) {
     if (!entry || typeof entry !== "object") continue;

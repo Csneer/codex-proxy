@@ -72,6 +72,7 @@ export interface CallRecordState {
   enabled: boolean;
   retentionDays: number | null;
   maxBodyBytes: number;
+  maxRows: number;
   path: string;
   rowCount: number;
   contextCount: number;

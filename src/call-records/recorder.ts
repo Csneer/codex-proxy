@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { resolveCallContext } from "./context.js";
 import { redactCallContent, serializeBounded } from "./redact.js";
 import { getStreamResponseCaptureMetadata } from "./stream-response.js";
+import { extractDisplayInput, extractDisplayOutput, extractDisplayTools, serializeDisplayPayload } from "./display.js";
 import type { CallRecordStore } from "./store.js";
 import type {
   CallContextHints,
@@ -64,9 +65,19 @@ export function createCallRecorder(options: CallRecorderOptions): CallRecorder {
       try {
         const completedAtMs = now();
         const maxBodyBytes = pending.maxBodyBytes;
-        const request = serializeBounded(redactCallContent(pending.request), maxBodyBytes);
+        const requestSource = redactCallContent(pending.request);
+        const request = serializeBounded(requestSource, maxBodyBytes);
+        const requestDisplay = serializeDisplayPayload("input", extractDisplayInput(requestSource), maxBodyBytes, request.originalBytes);
         const streamResponseMetadata = getStreamResponseCaptureMetadata(result.response);
-        const response = serializeBounded(redactCallContent(result.response), maxBodyBytes);
+        const responseSource = redactCallContent(result.response);
+        const response = serializeBounded(responseSource, maxBodyBytes);
+        const responseDisplay = serializeDisplayPayload(
+          "output",
+          extractDisplayOutput(responseSource),
+          maxBodyBytes,
+          streamResponseMetadata?.originalBytes ?? response.originalBytes,
+          extractDisplayTools(responseSource),
+        );
         const usage = result.usage ?? {};
         const completed: CompletedCallRecord = {
           id: randomUUID(),
@@ -89,12 +100,12 @@ export function createCallRecorder(options: CallRecorderOptions): CallRecorder {
           reasoningTokens: normalizeToken(usage.reasoning_tokens),
           imageInputTokens: normalizeToken(usage.image_input_tokens),
           imageOutputTokens: normalizeToken(usage.image_output_tokens),
-          requestJson: request.json,
-          responseJson: response.json,
+          requestJson: requestDisplay.json,
+          responseJson: responseDisplay.json,
           requestBytes: request.originalBytes,
           responseBytes: streamResponseMetadata?.originalBytes ?? response.originalBytes,
-          requestTruncated: request.truncated,
-          responseTruncated: response.truncated || streamResponseMetadata?.truncated === true,
+          requestTruncated: requestDisplay.truncated,
+          responseTruncated: responseDisplay.truncated || streamResponseMetadata?.truncated === true,
         };
         return options.store.insert(completed);
       } catch (error) {

@@ -3,6 +3,8 @@ import { dirname, resolve } from "path";
 import { getDataDir } from "../paths.js";
 import type { AccountEntry } from "./types.js";
 
+const REQUEST_BATCH_FALLBACK = 100;
+
 export type QuotaMeterKind = "secondary" | "primary";
 
 export interface EffectiveQuotaMeter {
@@ -12,6 +14,17 @@ export interface EffectiveQuotaMeter {
 }
 
 export interface QuotaBatchCheckpoint {
+  version: 2;
+  strategy: "quota_batch";
+  batchPercent: number;
+  currentEntryId: string;
+  baselineUsedPercent: number | null;
+  baselineRequestCount: number;
+  meter: QuotaMeterKind | null;
+  resetAt: number | null;
+}
+
+interface LegacyQuotaBatchCheckpoint {
   version: 1;
   strategy: "quota_batch";
   batchPercent: number;
@@ -58,7 +71,7 @@ function isCheckpoint(value: unknown): value is QuotaBatchCheckpoint {
   const state = value as Record<string, unknown>;
   const expectedKeys = [
     "version", "strategy", "batchPercent", "currentEntryId",
-    "baselineUsedPercent", "meter", "resetAt",
+    "baselineUsedPercent", "baselineRequestCount", "meter", "resetAt",
   ];
   if (Object.keys(state).length !== expectedKeys.length ||
       !Object.keys(state).every((key) => expectedKeys.includes(key))) return false;
@@ -70,6 +83,28 @@ function isCheckpoint(value: unknown): value is QuotaBatchCheckpoint {
       state.baselineUsedPercent >= 0 && state.baselineUsedPercent <= 100 &&
       (state.resetAt === null ||
         (typeof state.resetAt === "number" && Number.isFinite(state.resetAt) && state.resetAt >= 0));
+  return state.version === 2 &&
+    state.strategy === "quota_batch" &&
+    Number.isInteger(state.batchPercent) &&
+    (state.batchPercent as number) >= 1 &&
+    (state.batchPercent as number) <= 100 &&
+    typeof state.currentEntryId === "string" &&
+    state.currentEntryId.length > 0 &&
+    Number.isInteger(state.baselineRequestCount) &&
+    (state.baselineRequestCount as number) >= 0 &&
+    (state.meter === null || state.meter === "secondary" || state.meter === "primary") &&
+    baselineIsValid;
+}
+
+function isLegacyCheckpoint(value: unknown): value is LegacyQuotaBatchCheckpoint {
+  if (!value || typeof value !== "object") return false;
+  const state = value as Record<string, unknown>;
+  const expectedKeys = [
+    "version", "strategy", "batchPercent", "currentEntryId",
+    "baselineUsedPercent", "meter", "resetAt",
+  ];
+  if (Object.keys(state).length !== expectedKeys.length ||
+      !Object.keys(state).every((key) => expectedKeys.includes(key))) return false;
   return state.version === 1 &&
     state.strategy === "quota_batch" &&
     Number.isInteger(state.batchPercent) &&
@@ -77,8 +112,13 @@ function isCheckpoint(value: unknown): value is QuotaBatchCheckpoint {
     (state.batchPercent as number) <= 100 &&
     typeof state.currentEntryId === "string" &&
     state.currentEntryId.length > 0 &&
+    (state.baselineUsedPercent === null ||
+      (typeof state.baselineUsedPercent === "number" &&
+        Number.isFinite(state.baselineUsedPercent) &&
+        state.baselineUsedPercent >= 0 && state.baselineUsedPercent <= 100)) &&
     (state.meter === null || state.meter === "secondary" || state.meter === "primary") &&
-    baselineIsValid;
+    (state.resetAt === null ||
+      (typeof state.resetAt === "number" && Number.isFinite(state.resetAt) && state.resetAt >= 0));
 }
 
 export class FileQuotaBatchStateStore implements QuotaBatchStateStore {
@@ -133,6 +173,7 @@ export class FileQuotaBatchStateStore implements QuotaBatchStateStore {
 
 export class QuotaBatchSelector {
   private checkpoint: QuotaBatchCheckpoint | null;
+  private legacyCheckpoint: LegacyQuotaBatchCheckpoint | null = null;
 
   constructor(private readonly store: QuotaBatchStateStore = new FileQuotaBatchStateStore()) {
     const loaded = store.load();
@@ -140,6 +181,9 @@ export class QuotaBatchSelector {
       this.checkpoint = null;
     } else if (isCheckpoint(loaded)) {
       this.checkpoint = loaded;
+    } else if (isLegacyCheckpoint(loaded)) {
+      this.checkpoint = null;
+      this.legacyCheckpoint = loaded;
     } else {
       console.warn("[QuotaBatch] Ignoring invalid rotation checkpoint");
       this.checkpoint = null;
@@ -157,6 +201,20 @@ export class QuotaBatchSelector {
     }
 
     const prior = this.checkpoint;
+    if (!prior && this.legacyCheckpoint) {
+      const legacyEntryId = this.legacyCheckpoint.currentEntryId;
+      const legacyCurrent = candidates.find(
+        (candidate) => candidate.id === legacyEntryId,
+      );
+      this.legacyCheckpoint = null;
+      if (legacyCurrent) {
+        this.updateCheckpoint(checkpointFor(legacyCurrent, batchPercent));
+        return legacyCurrent;
+      }
+      const selected = nextEligibleCandidate(legacyEntryId, candidates, registryOrder);
+      this.updateCheckpoint(checkpointFor(selected, batchPercent));
+      return selected;
+    }
     const current = prior
       ? candidates.find((candidate) => candidate.id === prior.currentEntryId)
       : undefined;
@@ -170,13 +228,30 @@ export class QuotaBatchSelector {
     }
 
     const meter = effectiveQuotaMeter(current);
-    if (needsRebaseline(prior, meter, batchPercent)) {
-      this.updateCheckpoint(checkpointFor(current, batchPercent));
+    const rebaseline = rebaselineKind(prior, current, meter, batchPercent);
+    if (rebaseline !== null) {
+      if (rebaseline === "quota" &&
+          current.usage.request_count - prior.baselineRequestCount >= REQUEST_BATCH_FALLBACK) {
+        const selected = nextEligibleCandidate(current.id, candidates, registryOrder);
+        this.updateCheckpoint(checkpointFor(selected, batchPercent));
+        return selected;
+      }
+      this.updateCheckpoint(
+        rebaseline === "all"
+          ? checkpointFor(current, batchPercent)
+          : checkpointForQuota(current, prior, batchPercent),
+      );
       return current;
     }
 
-    if (meter === null || prior.baselineUsedPercent === null ||
-        meter.usedPercent - prior.baselineUsedPercent < batchPercent) {
+    // Quota signals remain the preferred batch boundary. Completed requests
+    // provide a deterministic upper bound when upstream quota is missing,
+    // stale, rounded, or backed by a slow-moving weekly window.
+    const quotaBatchComplete = meter !== null && prior.baselineUsedPercent !== null &&
+      meter.usedPercent - prior.baselineUsedPercent >= batchPercent;
+    const requestBatchComplete =
+      current.usage.request_count - prior.baselineRequestCount >= REQUEST_BATCH_FALLBACK;
+    if (!quotaBatchComplete && !requestBatchComplete) {
       return current;
     }
 
@@ -187,6 +262,7 @@ export class QuotaBatchSelector {
 
   reset(): void {
     this.checkpoint = null;
+    this.legacyCheckpoint = null;
     this.store.clear();
   }
 
@@ -200,26 +276,46 @@ export class QuotaBatchSelector {
 function checkpointFor(entry: AccountEntry, batchPercent: number): QuotaBatchCheckpoint {
   const meter = effectiveQuotaMeter(entry);
   return {
-    version: 1,
+    version: 2,
     strategy: "quota_batch",
     batchPercent,
     currentEntryId: entry.id,
+    baselineUsedPercent: meter?.usedPercent ?? null,
+    baselineRequestCount: entry.usage.request_count,
+    meter: meter?.kind ?? null,
+    resetAt: meter?.resetAt ?? null,
+  };
+}
+
+function checkpointForQuota(
+  entry: AccountEntry,
+  checkpoint: QuotaBatchCheckpoint,
+  batchPercent: number,
+): QuotaBatchCheckpoint {
+  const meter = effectiveQuotaMeter(entry);
+  return {
+    ...checkpoint,
+    batchPercent,
     baselineUsedPercent: meter?.usedPercent ?? null,
     meter: meter?.kind ?? null,
     resetAt: meter?.resetAt ?? null,
   };
 }
 
-function needsRebaseline(
+function rebaselineKind(
   checkpoint: QuotaBatchCheckpoint,
+  entry: AccountEntry,
   meter: EffectiveQuotaMeter | null,
   batchPercent: number,
-): boolean {
-  if (checkpoint.batchPercent !== batchPercent) return true;
-  if (checkpoint.meter !== (meter?.kind ?? null)) return true;
-  if (checkpoint.resetAt !== (meter?.resetAt ?? null)) return true;
-  if (meter && checkpoint.baselineUsedPercent !== null && meter.usedPercent < checkpoint.baselineUsedPercent) return true;
-  return false;
+): "all" | "quota" | null {
+  if (entry.usage.request_count < checkpoint.baselineRequestCount) return "all";
+  if (checkpoint.batchPercent !== batchPercent) return "quota";
+  if (checkpoint.meter !== (meter?.kind ?? null)) return "quota";
+  // A sliding window may move reset_at on every response. Re-baseline only
+  // when the observed usage actually decreases, which is the reliable reset
+  // signal and preserves accumulated progress across timestamp drift.
+  if (meter && checkpoint.baselineUsedPercent !== null && meter.usedPercent < checkpoint.baselineUsedPercent) return "quota";
+  return null;
 }
 
 function nextEligibleCandidate(

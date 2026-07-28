@@ -2,7 +2,7 @@ import type { Context } from "hono";
 import { stream } from "hono/streaming";
 import type { AccountPool } from "../../auth/account-pool.js";
 import { clearCfChallengeCooldown } from "../../auth/cf-challenge-cooldown.js";
-import type { SessionAffinityMap } from "../../auth/session-affinity.js";
+import type { ChainAdvanceTicket, SessionAffinityMap } from "../../auth/session-affinity.js";
 import type { CodexApi } from "../../proxy/codex-api.js";
 import { recordStreamCloseEvent } from "../../logs/stream-close-event.js";
 import type { UsageInfo } from "../../translation/codex-event-extractor.js";
@@ -33,6 +33,7 @@ export interface HandleStreamingOptions {
   turnState?: string;
   usageHint?: UsageHint;
   variantHash: string;
+  chainAdvanceTicket: ChainAdvanceTicket;
   /** Whether this attempt was sent with an implicit-resume
    *  `previous_response_id`. Needed to break the dead-chain retry loop:
    *  if the upstream stream ends without response.completed while resume was
@@ -60,6 +61,7 @@ export function handleStreaming(options: HandleStreamingOptions): Response {
     turnState,
     usageHint,
     variantHash,
+    chainAdvanceTicket,
     implicitResumeActive = false,
   } = options;
 
@@ -112,6 +114,7 @@ export function handleStreaming(options: HandleStreamingOptions): Response {
         usageInfo?.input_tokens,
         Array.from(metadataCollector.responseFunctionCallIds),
         variantHash,
+        chainAdvanceTicket,
       );
       if (!metadataCollector.invalidReasoningReplay && metadataCollector.reasoningReplayItems.length > 0) {
         reasoningReplayCache.record({

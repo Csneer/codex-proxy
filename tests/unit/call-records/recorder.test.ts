@@ -58,7 +58,7 @@ describe("createCallRecorder", () => {
     })).toBeUndefined();
   });
 
-  it("finalizes once with enriched context, normalized usage, and bounded redacted bodies", () => {
+  it("finalizes once with enriched context and lightweight display bodies", () => {
     const insert = vi.fn((_record: CompletedCallRecord) => true);
     let now = Date.parse("2026-07-11T10:00:00.000Z");
     const recorder = createCallRecorder({
@@ -111,9 +111,18 @@ describe("createCallRecorder", () => {
       requestTruncated: true,
       responseTruncated: false,
     });
+    expect(JSON.parse(persisted.requestJson)).toEqual(expect.objectContaining({
+      input_text: expect.any(String),
+      truncated: true,
+    }));
+    expect(JSON.parse(persisted.responseJson)).toEqual(expect.objectContaining({
+      output_text: "ok",
+    }));
     expect(Buffer.byteLength(persisted.requestJson)).toBeLessThanOrEqual(1024);
     expect(persisted.requestJson).not.toContain("secret-token-value");
     expect(persisted.responseJson).not.toContain("person@example.com");
+    expect(persisted.requestJson).not.toContain("authorization");
+    expect(persisted.responseJson).not.toContain("owner");
   });
 
   it("swallows store failures and reports them without refinalizing", () => {

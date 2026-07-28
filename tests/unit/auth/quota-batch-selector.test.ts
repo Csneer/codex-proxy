@@ -150,6 +150,108 @@ describe("QuotaBatchSelector", () => {
     expect(selector.select([a, b], 30)).toBe(b);
   });
 
+  it("keeps accumulated quota progress when a sliding window moves reset_at", () => {
+    const a = entry("a", 10);
+    const b = entry("b", 0);
+    selector.select([a, b], 10);
+
+    a.cachedQuota = quota(15, null, 1005);
+    expect(selector.select([a, b], 10)).toBe(a);
+    a.cachedQuota = quota(20, null, 1010);
+    expect(selector.select([a, b], 10)).toBe(b);
+  });
+
+  it("keeps accumulated quota progress across long-running sliding-window drift", () => {
+    const a = entry("a", 10);
+    const b = entry("b", 0);
+    selector.select([a, b], 10);
+
+    a.cachedQuota = quota(15, null, 10_000);
+    expect(selector.select([a, b], 10)).toBe(a);
+    a.cachedQuota = quota(20, null, 20_000);
+    expect(selector.select([a, b], 10)).toBe(b);
+  });
+
+  it("advances after 100 completed requests when quota is stale", () => {
+    const a = entry("a", 10);
+    const b = entry("b", 10);
+    selector.select([a, b], 10);
+
+    for (let completed = 1; completed < 100; completed++) {
+      a.usage.request_count = completed;
+      expect(selector.select([a, b], 10)).toBe(a);
+    }
+    a.usage.request_count = 100;
+    expect(selector.select([a, b], 10)).toBe(b);
+  });
+
+  it("re-baselines the request fallback when local usage counters are reset", () => {
+    const a = entry("a", 10);
+    const b = entry("b", 10);
+    a.usage.request_count = 100;
+    selector.select([a, b], 10);
+
+    a.usage.request_count = 0;
+    expect(selector.select([a, b], 10)).toBe(a);
+    expect(store.state?.baselineRequestCount).toBe(0);
+    a.usage.request_count = 100;
+    expect(selector.select([a, b], 10)).toBe(b);
+  });
+
+  it("preserves completed-request progress when the quota meter changes", () => {
+    const a = entry("a", 10);
+    const b = entry("b", 10);
+    selector.select([a, b], 10);
+    a.usage.request_count = 99;
+
+    a.cachedQuota = quota(20, 5);
+    expect(selector.select([a, b], 10)).toBe(a);
+    expect(store.state?.baselineRequestCount).toBe(0);
+    a.usage.request_count = 100;
+    expect(selector.select([a, b], 10)).toBe(b);
+  });
+
+  it("switches immediately when the request limit and meter change happen together", () => {
+    const a = entry("a", 10);
+    const b = entry("b", 10);
+    selector.select([a, b], 10);
+
+    a.usage.request_count = 100;
+    a.cachedQuota = quota(20, 5);
+    expect(selector.select([a, b], 10)).toBe(b);
+  });
+
+  it("preserves completed-request progress when quota usage decreases", () => {
+    const a = entry("a", 40);
+    const b = entry("b", 10);
+    selector.select([a, b], 10);
+    a.usage.request_count = 99;
+
+    a.cachedQuota = quota(5);
+    expect(selector.select([a, b], 10)).toBe(a);
+    expect(store.state?.baselineRequestCount).toBe(0);
+    a.usage.request_count = 100;
+    expect(selector.select([a, b], 10)).toBe(b);
+  });
+
+  it("shares unknown-quota traffic across every eligible account", () => {
+    const a = entry("a", null);
+    const b = entry("b", null);
+    const c = entry("c", null);
+
+    expect(selector.select([a, b, c], 10)).toBe(a);
+    a.usage.request_count = 99;
+    expect(selector.select([a, b, c], 10)).toBe(a);
+    a.usage.request_count = 100;
+    expect(selector.select([a, b, c], 10)).toBe(b);
+    b.usage.request_count = 99;
+    expect(selector.select([a, b, c], 10)).toBe(b);
+    b.usage.request_count = 100;
+    expect(selector.select([a, b, c], 10)).toBe(c);
+    c.usage.request_count = 100;
+    expect(selector.select([a, b, c], 10)).toBe(a);
+  });
+
   it("keeps the current account when quota is unknown", () => {
     const a = entry("a", null);
     const b = entry("b", 0);
@@ -160,7 +262,6 @@ describe("QuotaBatchSelector", () => {
 
   it.each([
     ["usage decrease", quota(10)],
-    ["window reset", quota(45, null, 9999)],
     ["meter change", quota(45, 7)],
   ])("re-baselines on %s", (_label, changedQuota) => {
     const a = entry("a", 40);
@@ -180,6 +281,31 @@ describe("QuotaBatchSelector", () => {
 
     expect(selector.select([a, b], 40)).toBe(a);
     expect(store.state).toMatchObject({ batchPercent: 40, baselineUsedPercent: 30 });
+  });
+
+  it("preserves request fallback progress when the configured percentage changes", () => {
+    const a = entry("a", 10);
+    const b = entry("b", 0);
+    selector.select([a, b], 10);
+    a.usage.request_count = 99;
+    a.cachedQuota = quota(15);
+
+    expect(selector.select([a, b], 20)).toBe(a);
+    expect(store.state).toMatchObject({
+      batchPercent: 20,
+      baselineUsedPercent: 15,
+      baselineRequestCount: 0,
+    });
+  });
+
+  it("switches immediately when percentage changes at the request fallback boundary", () => {
+    const a = entry("a", 10);
+    const b = entry("b", 0);
+    selector.select([a, b], 10);
+    a.usage.request_count = 100;
+    a.cachedQuota = quota(15);
+
+    expect(selector.select([a, b], 20)).toBe(b);
   });
 
   it("advances in registry order when the current account becomes ineligible", () => {
@@ -212,6 +338,48 @@ describe("QuotaBatchSelector", () => {
     expect(JSON.stringify(store.state)).not.toContain("@test.invalid");
   });
 
+  it("upgrades a v1 checkpoint without jumping back to the first account", () => {
+    store.state = {
+      version: 1,
+      strategy: "quota_batch",
+      batchPercent: 10,
+      currentEntryId: "b",
+      baselineUsedPercent: 20,
+      meter: "primary",
+      resetAt: 1000,
+    } as unknown as QuotaBatchCheckpoint;
+    const restored = new QuotaBatchSelector(store);
+    const a = entry("a", 10);
+    const b = entry("b", 25);
+    b.usage.request_count = 50;
+
+    expect(restored.select([a, b], 10)).toBe(b);
+    expect(store.state).toMatchObject({
+      version: 2,
+      currentEntryId: "b",
+      baselineUsedPercent: 25,
+      baselineRequestCount: 50,
+    });
+  });
+
+  it("advances from an ineligible v1 checkpoint in registry order", () => {
+    store.state = {
+      version: 1,
+      strategy: "quota_batch",
+      batchPercent: 10,
+      currentEntryId: "b",
+      baselineUsedPercent: 20,
+      meter: "primary",
+      resetAt: 1000,
+    } as unknown as QuotaBatchCheckpoint;
+    const restored = new QuotaBatchSelector(store);
+    const a = entry("a", 10);
+    const c = entry("c", 10);
+
+    expect(restored.select([a, c], 10, ["a", "b", "c"])).toBe(c);
+    expect(store.state).toMatchObject({ version: 2, currentEntryId: "c" });
+  });
+
   it("fails open when persisted state is corrupt", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     store.state = { version: 99 } as unknown as QuotaBatchCheckpoint;
@@ -219,16 +387,17 @@ describe("QuotaBatchSelector", () => {
     const a = entry("a", 10);
 
     expect(fresh.select([a], 30)).toBe(a);
-    expect(store.state).toMatchObject({ version: 1, currentEntryId: "a" });
+    expect(store.state).toMatchObject({ version: 2, currentEntryId: "a" });
     expect(warn).toHaveBeenCalled();
   });
 
   it.each([
-    { version: 1, strategy: "quota_batch", batchPercent: 30, currentEntryId: "a", baselineUsedPercent: 10, meter: "primary", resetAt: 1000, token: "secret" },
-    { version: 1, strategy: "quota_batch", batchPercent: 30, currentEntryId: "a", baselineUsedPercent: -1, meter: "primary", resetAt: 1000 },
-    { version: 1, strategy: "quota_batch", batchPercent: 30, currentEntryId: "a", baselineUsedPercent: 101, meter: "primary", resetAt: 1000 },
-    { version: 1, strategy: "quota_batch", batchPercent: 30, currentEntryId: "a", baselineUsedPercent: 10, meter: null, resetAt: null },
-    { version: 1, strategy: "quota_batch", batchPercent: 30, currentEntryId: "a", baselineUsedPercent: 10, meter: "primary", resetAt: -1 },
+    { version: 2, strategy: "quota_batch", batchPercent: 30, currentEntryId: "a", baselineUsedPercent: 10, baselineRequestCount: 0, meter: "primary", resetAt: 1000, token: "secret" },
+    { version: 2, strategy: "quota_batch", batchPercent: 30, currentEntryId: "a", baselineUsedPercent: -1, baselineRequestCount: 0, meter: "primary", resetAt: 1000 },
+    { version: 2, strategy: "quota_batch", batchPercent: 30, currentEntryId: "a", baselineUsedPercent: 101, baselineRequestCount: 0, meter: "primary", resetAt: 1000 },
+    { version: 2, strategy: "quota_batch", batchPercent: 30, currentEntryId: "a", baselineUsedPercent: 10, baselineRequestCount: 0, meter: null, resetAt: null },
+    { version: 2, strategy: "quota_batch", batchPercent: 30, currentEntryId: "a", baselineUsedPercent: 10, baselineRequestCount: 0, meter: "primary", resetAt: -1 },
+    { version: 2, strategy: "quota_batch", batchPercent: 30, currentEntryId: "a", baselineUsedPercent: 10, baselineRequestCount: -1, meter: "primary", resetAt: 1000 },
   ])("rejects semantically invalid or credential-bearing checkpoints", (invalid) => {
     vi.spyOn(console, "warn").mockImplementation(() => undefined);
     store.state = invalid as unknown as QuotaBatchCheckpoint;

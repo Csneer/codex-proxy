@@ -25,7 +25,7 @@ describe("call record service", () => {
     const dir = mkdtempSync(join(tmpdir(), "call-record-service-"));
     dirs.push(dir);
     const config = ConfigSchema.parse({
-      api: {}, client: {}, model: {}, auth: {}, server: {}, session: {},
+      api: {}, client: {}, model: {}, auth: {}, server: {}, dashboard: { admin_key: "test-admin-key" }, session: {},
       call_records: { enabled: true, max_body_bytes: 4096 },
     });
 
@@ -44,13 +44,13 @@ describe("call record service", () => {
     const dir = mkdtempSync(join(tmpdir(), "call-record-retention-"));
     dirs.push(dir);
     const config = ConfigSchema.parse({
-      api: {}, client: {}, model: {}, auth: {}, server: {}, session: {},
-      call_records: { enabled: true, retention_days: 7, max_body_bytes: 4096 },
+      api: {}, client: {}, model: {}, auth: {}, server: {}, dashboard: { admin_key: "test-admin-key" }, session: {},
+      call_records: { enabled: true, retention_days: 7, max_body_bytes: 4096, max_rows: 10000 },
     });
 
     initializeCallRecordService(config, join(dir, "calls.sqlite"));
     expect(cleanup).toHaveBeenCalledTimes(1);
-    expect(cleanup).toHaveBeenLastCalledWith(7);
+    expect(cleanup).toHaveBeenLastCalledWith(7, expect.any(Date), 10000);
 
     vi.advanceTimersByTime(86_400_000);
     expect(cleanup).toHaveBeenCalledTimes(2);
@@ -68,8 +68,8 @@ describe("call record service", () => {
     const dir = mkdtempSync(join(tmpdir(), "call-record-retention-failure-"));
     dirs.push(dir);
     const config = ConfigSchema.parse({
-      api: {}, client: {}, model: {}, auth: {}, server: {}, session: {},
-      call_records: { enabled: true, retention_days: 7, max_body_bytes: 4096 },
+      api: {}, client: {}, model: {}, auth: {}, server: {}, dashboard: { admin_key: "test-admin-key" }, session: {},
+      call_records: { enabled: true, retention_days: 7, max_body_bytes: 4096, max_rows: 10000 },
     });
 
     initializeCallRecordService(config, join(dir, "calls.sqlite"));

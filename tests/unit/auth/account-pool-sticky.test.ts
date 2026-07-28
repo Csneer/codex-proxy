@@ -211,6 +211,30 @@ describe("account-pool quota_batch strategy", () => {
     expect(switched.entryId).toBe(idB);
   });
 
+  it("uses 100-request fallback batches when cached quota does not move", () => {
+    setConfigForTesting(createMockConfig({
+      auth: { rotation_strategy: "quota_batch", quota_batch_percent: 10 },
+    }));
+    const pool = createPool();
+    const idA = pool.addAccount(createValidJwt({ accountId: "qb-even-a", planType: "plus" }));
+    const idB = pool.addAccount(createValidJwt({ accountId: "qb-even-b", planType: "plus" }));
+    const idC = pool.addAccount(createValidJwt({ accountId: "qb-even-c", planType: "plus" }));
+    pool.updateCachedQuota(idA, quota(10));
+    pool.updateCachedQuota(idB, quota(10));
+    pool.updateCachedQuota(idC, quota(10));
+
+    const selected: string[] = [];
+    for (let request = 0; request < 202; request++) {
+      const acquired = pool.acquire()!;
+      selected.push(acquired.entryId);
+      pool.release(acquired.entryId);
+    }
+
+    expect(selected.slice(0, 100)).toEqual(Array(100).fill(idA));
+    expect(selected.slice(100, 200)).toEqual(Array(100).fill(idB));
+    expect(selected.slice(200)).toEqual([idC, idC]);
+  });
+
   it("overrides stale conversation affinity", () => {
     const pool = createPool();
     const idA = pool.addAccount(createValidJwt({ accountId: "qb-aff-a", planType: "plus" }));

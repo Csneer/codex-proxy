@@ -82,6 +82,7 @@ interface InFlightSession {
   abortListener: (() => void) | null;
   signal: AbortSignal | undefined;
   streamClosed: boolean;
+  responseStartTimer: ReturnType<typeof setTimeout> | undefined;
 }
 
 /** Subset of the `ws` module's WebSocket interface that PersistentWs needs.
@@ -146,21 +147,33 @@ function isTerminalWsEvent(type: string): boolean {
 }
 
 function isEarlyMetadataWsEvent(type: string): boolean {
-  // `codex.response.metadata` is an upstream control frame and may be
-  // followed by a classified terminal error (for example,
-  // previous_response_not_found). Keep it buffered so that error can reject
-  // the send-level promise before HTTP 200/SSE is exposed downstream.
+  // Metadata frames are provisional and may be followed by a classified
+  // terminal error. Keep them behind the early barrier so the send-level
+  // promise can reject before HTTP 200/SSE is exposed downstream.
   return type === "response.created" ||
     type === "response.in_progress" ||
+    type === "response.metadata" ||
     type === "codex.response.metadata";
+}
+
+function completedResponseId(msg: Record<string, unknown>, type: string): string | null {
+  if (type !== "response.completed") return null;
+  const response = typeof msg.response === "object" && msg.response !== null
+    ? msg.response as Record<string, unknown>
+    : null;
+  const id = response?.id ?? msg.response_id;
+  return typeof id === "string" && id.length > 0 ? id : null;
 }
 
 // ── PersistentWs ───────────────────────────────────────────────────
 
 export interface PersistentWsHooks {
   /** Called when this WS becomes unusable (close, error, eviction).
-   *  The pool uses this to remove the entry from its map. */
+   *  The pool uses this to remove the entry and all response owners. */
   onDead(): void;
+  /** Called only after a response.completed frame establishes the newest
+   *  connection-local previous-response anchor. */
+  onResponseCompleted?(responseId: string): void;
 }
 
 /** Default keepalive cadence. 25s sits comfortably under the typical 30-60s
@@ -173,6 +186,11 @@ export const DEFAULT_PING_INTERVAL_MS = 25_000;
  *  third would tick — at which point the connection is almost certainly dead
  *  and re-using it would cost a real-request cache miss. */
 export const DEFAULT_LIVENESS_TIMEOUT_MULTIPLIER = 2.5;
+
+/** Maximum time to wait for the first non-metadata response event. This keeps
+ *  an upstream that sends only provisional metadata from occupying a pooled
+ *  connection indefinitely. */
+export const DEFAULT_WS_RESPONSE_START_TIMEOUT_MS = 180_000;
 
 export class PersistentWs {
   readonly id: string;
@@ -292,6 +310,7 @@ export class PersistentWs {
     signal: AbortSignal | undefined;
     onRateLimits: ((rl: ParsedRateLimit) => void) | undefined;
     reused: boolean;
+    responseStartTimeoutMs?: number;
   }): Promise<Response> {
     if (!this.busy) {
       throw new Error("PersistentWs.send called without prior tryAcquire");
@@ -326,7 +345,18 @@ export class PersistentWs {
             abortListener: null,
             signal: opts.signal,
             streamClosed: false,
+            responseStartTimer: undefined,
           };
+
+          const responseStartTimeoutMs =
+            opts.responseStartTimeoutMs ?? DEFAULT_WS_RESPONSE_START_TIMEOUT_MS;
+          if (responseStartTimeoutMs > 0) {
+            this.currentSession.responseStartTimer = setTimeout(
+              () => this.handleResponseStartTimeout(responseStartTimeoutMs),
+              responseStartTimeoutMs,
+            );
+            this.currentSession.responseStartTimer.unref?.();
+          }
 
           if (opts.signal) {
             const listener = () => this.handleAbort();
@@ -370,14 +400,31 @@ export class PersistentWs {
       this.pingTimer = undefined;
     }
     try { this.ws.close(1000, reason.slice(0, 120)); } catch { /* already closing */ }
-    if (this.currentSession && !this.currentSession.streamClosed) {
-      try { this.currentSession.controller.close(); } catch { /* already closed */ }
-      this.currentSession.streamClosed = true;
+    if (this.currentSession) {
+      this.clearResponseStartTimer(this.currentSession);
+      if (!this.currentSession.streamClosed) {
+        try { this.currentSession.controller.close(); } catch { /* already closed */ }
+        this.currentSession.streamClosed = true;
+      }
     }
     this.detachAbortListener();
     this.busy = false;
     this.currentSession = null;
     try { this.hooks.onDead(); } catch { /* hook errors must not propagate */ }
+  }
+
+  private handleResponseStartTimeout(timeoutMs: number): void {
+    const sess = this.currentSession;
+    if (!sess || sess.earlyDecisionMade) return;
+    sess.earlyDecisionMade = true;
+    sess.reject(new Error(`WebSocket response start timeout after ${timeoutMs}ms`));
+    this.markDead("response start timeout");
+  }
+
+  private clearResponseStartTimer(sess: InFlightSession): void {
+    if (!sess.responseStartTimer) return;
+    clearTimeout(sess.responseStartTimer);
+    sess.responseStartTimer = undefined;
   }
 
   private detachAbortListener(): void {
@@ -405,6 +452,7 @@ export class PersistentWs {
   private resolveSessionResponse(sess: InFlightSession): void {
     if (sess.earlyDecisionMade) return;
     sess.earlyDecisionMade = true;
+    this.clearResponseStartTimer(sess);
     sess.resolveResponse();
     for (const chunk of sess.earlyMetadataChunks.splice(0)) {
       this.enqueueSessionChunk(sess, chunk);
@@ -462,6 +510,8 @@ export class PersistentWs {
 
       if (isTerminalWsEvent(type)) {
         sess.sawTerminalEvent = true;
+        const responseId = completedResponseId(msg, type);
+        if (responseId) this.hooks.onResponseCompleted?.(responseId);
         queueMicrotask(() => this.releaseAfterTerminalFrame());
       }
     } else {
@@ -546,6 +596,7 @@ export class PersistentWs {
    *  treat early errors as account-level and keep the WS open only if the
    *  error wasn't connection-fatal. */
   private releaseAfterEarlyError(): void {
+    if (this.currentSession) this.clearResponseStartTimer(this.currentSession);
     this.detachAbortListener();
     this.currentSession = null;
     this.busy = false;
@@ -572,10 +623,24 @@ export interface AcquireResult {
   reused: boolean;
 }
 
-export type AcquireBypassReason = "busy" | "cap" | "dead" | "disabled" | "no_key";
+export type AcquireBypassReason =
+  | "busy"
+  | "cap"
+  | "dead"
+  | "expired"
+  | "disabled"
+  | "no_key"
+  | "missing_owner"
+  | "account_mismatch";
 
 export interface AcquireBypass {
   bypass: AcquireBypassReason;
+}
+
+export type ResponseOwnerBypassReason = Exclude<AcquireBypassReason, "cap">;
+
+export interface ResponseOwnerBypass {
+  bypass: ResponseOwnerBypassReason;
 }
 
 export interface PersistentWsFactory {
@@ -587,6 +652,12 @@ export interface PersistentWsFactory {
 export class WsConnectionPool {
   private readonly map = new Map<string, PersistentWs>();
   private readonly byEntry = new Map<string, Set<string>>();
+  /** In-progress factories count against the per-account cap. */
+  private readonly pendingCreatesByEntry = new Map<string, number>();
+  /** Response IDs are valid only on the physical WS that completed them. */
+  private readonly ownerByResponse = new Map<string, string>();
+  /** The upstream keeps only the most recent response per physical WS. */
+  private readonly responseByPoolKey = new Map<string, string>();
   private readonly config: WsPoolConfig;
   private gcInterval: NodeJS.Timeout | undefined;
   private shuttingDown = false;
@@ -622,7 +693,8 @@ export class WsConnectionPool {
     }
 
     let existing = this.map.get(poolKey);
-    if (existing && !existing.isAlive()) {
+    if (existing && (!existing.isAlive() || existing.isExpired(this.config.maxAgeMs))) {
+      existing.closeGracefully();
       this.removeEntry(existing);
       existing = undefined;
     }
@@ -633,22 +705,40 @@ export class WsConnectionPool {
       return { bypass: "busy" };
     }
 
-    // Miss: enforce per-account cap before creating.
+    // Miss: reserve capacity before awaiting the factory so concurrent
+    // different-key acquires cannot all pass the same per-account cap check.
     const keys = this.byEntry.get(entryId);
-    if (keys && keys.size >= this.config.maxPerAccount) {
+    const pendingCreates = this.pendingCreatesByEntry.get(entryId) ?? 0;
+    if ((keys?.size ?? 0) + pendingCreates >= this.config.maxPerAccount) {
       return { bypass: "cap" };
     }
+    this.pendingCreatesByEntry.set(entryId, pendingCreates + 1);
 
-    const fresh = await factory({
-      entryId,
-      poolKey,
-      hooks: {
-        onDead: () => {
-          // Pool-side cleanup. PersistentWs already marked itself dead.
-          this.removeEntryByKey(poolKey);
+    let freshRef: PersistentWs | undefined;
+    let fresh: PersistentWs;
+    try {
+      fresh = await factory({
+        entryId,
+        poolKey,
+        hooks: {
+          onDead: () => {
+            // A same-key connection may have won the factory race. Never let a
+            // discarded fresh connection remove that winner from the pool.
+            if (freshRef && this.map.get(poolKey) === freshRef) {
+              this.removeEntryByKey(poolKey);
+            }
+          },
+          onResponseCompleted: (responseId) => {
+            if (freshRef && this.map.get(poolKey) === freshRef) {
+              this.registerResponseOwner(poolKey, responseId);
+            }
+          },
         },
-      },
-    });
+      });
+      freshRef = fresh;
+    } finally {
+      this.releasePendingCreate(entryId);
+    }
 
     // Race: another acquire for the same key may have completed during
     // factory() await. If so, prefer the one already in the map.
@@ -678,6 +768,50 @@ export class WsConnectionPool {
     }
     entryKeys.add(poolKey);
     return { ws: fresh, reused: false };
+  }
+
+  /** Atomically acquire the physical WS that owns `previousResponseId`.
+   *  This method never creates a connection: a response ID must not cross a
+   *  physical WebSocket boundary when store=false. */
+  acquireForResponse(entryId: string, previousResponseId: string): AcquireResult | ResponseOwnerBypass {
+    if (!this.config.enabled || this.shuttingDown) return { bypass: "disabled" };
+    if (!entryId || !previousResponseId) return { bypass: "no_key" };
+
+    const poolKey = this.ownerByResponse.get(previousResponseId);
+    if (!poolKey) return { bypass: "missing_owner" };
+    const owner = this.map.get(poolKey);
+    if (!owner) {
+      this.forgetResponseOwner(previousResponseId);
+      return { bypass: "missing_owner" };
+    }
+    if (owner.entryId !== entryId) return { bypass: "account_mismatch" };
+    if (!owner.isAlive()) {
+      this.removeEntry(owner);
+      return { bypass: "dead" };
+    }
+    if (owner.isExpired(this.config.maxAgeMs)) {
+      owner.closeGracefully();
+      this.removeEntry(owner);
+      return { bypass: "expired" };
+    }
+    if (!owner.tryAcquire()) return { bypass: "busy" };
+    return { ws: owner, reused: true };
+  }
+
+  /** Test/diagnostic helper: return the owning physical WS id. */
+  ownerWsId(previousResponseId: string): string | null {
+    const poolKey = this.ownerByResponse.get(previousResponseId);
+    return poolKey ? this.map.get(poolKey)?.id ?? null : null;
+  }
+
+  /** Remove a stale response owner without evicting an otherwise healthy WS. */
+  forgetResponseOwner(previousResponseId: string): void {
+    const poolKey = this.ownerByResponse.get(previousResponseId);
+    if (!poolKey) return;
+    this.ownerByResponse.delete(previousResponseId);
+    if (this.responseByPoolKey.get(poolKey) === previousResponseId) {
+      this.responseByPoolKey.delete(poolKey);
+    }
   }
 
   /** Evict every WS for the given entryId. Used when the account is
@@ -721,6 +855,9 @@ export class WsConnectionPool {
     // acquires would fail the disabled check anyway.
     this.map.clear();
     this.byEntry.clear();
+    this.pendingCreatesByEntry.clear();
+    this.ownerByResponse.clear();
+    this.responseByPoolKey.clear();
   }
 
   /** Periodic sweep: drop dead/expired idle entries. Skips busy ones. */
@@ -733,6 +870,27 @@ export class WsConnectionPool {
     }
   }
 
+  private releasePendingCreate(entryId: string): void {
+    const pendingCreates = this.pendingCreatesByEntry.get(entryId);
+    if (!pendingCreates || pendingCreates <= 1) {
+      this.pendingCreatesByEntry.delete(entryId);
+      return;
+    }
+    this.pendingCreatesByEntry.set(entryId, pendingCreates - 1);
+  }
+
+  private registerResponseOwner(poolKey: string, responseId: string): void {
+    if (!this.map.has(poolKey)) return;
+    const previous = this.responseByPoolKey.get(poolKey);
+    if (previous && previous !== responseId) this.ownerByResponse.delete(previous);
+    const previousPoolKey = this.ownerByResponse.get(responseId);
+    if (previousPoolKey && previousPoolKey !== poolKey) {
+      this.responseByPoolKey.delete(previousPoolKey);
+    }
+    this.responseByPoolKey.set(poolKey, responseId);
+    this.ownerByResponse.set(responseId, poolKey);
+  }
+
   private removeEntry(ws: PersistentWs): void {
     this.removeEntryByKey(ws.poolKey);
   }
@@ -741,6 +899,11 @@ export class WsConnectionPool {
     const ws = this.map.get(poolKey);
     if (!ws) return;
     this.map.delete(poolKey);
+    const ownedResponse = this.responseByPoolKey.get(poolKey);
+    if (ownedResponse) {
+      this.responseByPoolKey.delete(poolKey);
+      this.ownerByResponse.delete(ownedResponse);
+    }
     const entryKeys = this.byEntry.get(ws.entryId);
     if (entryKeys) {
       entryKeys.delete(poolKey);

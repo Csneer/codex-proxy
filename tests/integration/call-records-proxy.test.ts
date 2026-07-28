@@ -30,7 +30,7 @@ function initialize(maxBodyBytes = 4096) {
   const dir = mkdtempSync(join(tmpdir(), "call-record-proxy-"));
   dirs.push(dir);
   const config = ConfigSchema.parse({
-    api: {}, client: {}, model: {}, auth: {}, server: {}, session: {},
+    api: {}, client: {}, model: {}, auth: {}, server: {}, dashboard: { admin_key: "test-admin-key" }, session: {},
     call_records: { enabled: true, max_body_bytes: maxBodyBytes },
   });
   initializeCallRecordService(config, join(dir, "calls.sqlite"));

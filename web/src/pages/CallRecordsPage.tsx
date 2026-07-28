@@ -121,7 +121,7 @@ function DetailPanel({ selected }: { selected: CallRecordDetail | null }) {
         contentId={`call-${selected.id}-output`}
       />
       <details class="rounded-xl border border-slate-200/70 dark:border-border-dark p-3">
-        <summary class="cursor-pointer text-control font-semibold">查看原始证据</summary>
+        <summary class="cursor-pointer text-control font-semibold">查看处理后的内容</summary>
         <div class="mt-3 space-y-3">
           <pre class="whitespace-pre-wrap break-all rounded-md bg-slate-50 dark:bg-[#11161d] p-2 text-control">{prettyJson(selected.requestJson)}</pre>
           <pre class="whitespace-pre-wrap break-all rounded-md bg-slate-50 dark:bg-[#11161d] p-2 text-control">{prettyJson(selected.responseJson)}</pre>

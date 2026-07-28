@@ -297,6 +297,35 @@ describe("CallRecordStore queries", () => {
     store.clear();
     expect(store.getState()).toMatchObject({ rowCount: 0, contextCount: 0 });
   });
+
+  it("removes every expired row in one cleanup run instead of one fixed batch", () => {
+    const { store } = createStore();
+    for (let index = 0; index < 1005; index++) {
+      expect(store.insert(record({
+        requestId: `expired-${index}`,
+        completedAt: "2026-07-01T00:00:00.000Z",
+      }))).toBe(true);
+    }
+
+    expect(store.cleanup(7, new Date("2026-07-11T00:00:00.000Z"))).toBe(1005);
+    expect(store.getState().rowCount).toBe(0);
+  }, 15_000);
+
+  it("enforces a maximum row count while retaining the newest records", () => {
+    const { store } = createStore();
+    for (let index = 0; index < 4; index++) {
+      expect(store.insert(record({
+        requestId: `bounded-${index}`,
+        completedAt: `2026-07-${String(10 + index).padStart(2, "0")}T00:00:00.000Z`,
+      }))).toBe(true);
+    }
+
+    expect(store.cleanup(null, new Date("2026-07-20T00:00:00.000Z"), 2)).toBe(2);
+    expect(store.list({ sort: "completed_at", order: "asc" }).records.map((item) => item.requestId)).toEqual([
+      "bounded-2",
+      "bounded-3",
+    ]);
+  });
 });
 
 describe("CallRecordStore search", () => {

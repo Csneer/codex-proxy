@@ -18,9 +18,10 @@ function stopRetentionTimer(): void {
 
 function runRetentionCleanup(): void {
   const retentionDays = serviceConfig?.retention_days ?? null;
-  if (!store || retentionDays === null) return;
+  const maxRows = serviceConfig?.max_rows ?? null;
+  if (!store || (retentionDays === null && maxRows === null)) return;
   try {
-    store.cleanup(retentionDays);
+    store.cleanup(retentionDays, new Date(), maxRows);
   } catch (error) {
     console.error("[CallRecords] Retention cleanup failed:", error);
   }
@@ -28,7 +29,7 @@ function runRetentionCleanup(): void {
 
 function startRetentionTimer(): void {
   stopRetentionTimer();
-  if (!store || serviceConfig?.retention_days === null) return;
+  if (!store || (serviceConfig?.retention_days === null && serviceConfig?.max_rows === null)) return;
   runRetentionCleanup();
   retentionTimer = setInterval(runRetentionCleanup, RETENTION_INTERVAL_MS);
   retentionTimer.unref();
