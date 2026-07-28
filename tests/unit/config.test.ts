@@ -7,6 +7,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 vi.mock("fs", () => ({
   readFileSync: vi.fn(),
   existsSync: vi.fn(() => false),
+  writeFileSync: vi.fn(),
+  mkdirSync: vi.fn(),
 }));
 
 vi.mock("@src/paths.js", () => ({
@@ -53,6 +55,8 @@ server:
   host: "0.0.0.0"
   port: 8080
   proxy_api_key: null
+dashboard:
+  admin_key: "test-admin-key"
 session:
   ttl_minutes: 60
   cleanup_interval_minutes: 5
@@ -99,6 +103,7 @@ describe("config", () => {
       enabled: false,
       retention_days: null,
       max_body_bytes: 1_048_576,
+      max_rows: 10_000,
     });
   });
 

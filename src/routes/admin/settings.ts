@@ -1,9 +1,8 @@
 import { Hono } from "hono";
-import { getConnInfo } from "@hono/node-server/conninfo";
 import { getConfig, getLocalConfigPath, reloadAllConfigs, ROTATION_STRATEGIES } from "../../config.js";
 import { logStore } from "../../logs/store.js";
 import { mutateYaml } from "../../utils/yaml-mutate.js";
-import { isLocalhostRequest } from "../../utils/is-localhost.js";
+import { revokeAllSessions } from "../../auth/dashboard-session.js";
 import { updateCallRecordServiceConfig } from "../../call-records/service.js";
 import type { AccountPool } from "../../auth/account-pool.js";
 
@@ -111,31 +110,47 @@ export function createSettingsRoutes(accountPool?: Pick<AccountPool, "setRotatio
 
   app.get("/admin/settings", (c) => {
     const config = getConfig();
-    return c.json({ proxy_api_key: config.server.proxy_api_key });
+    return c.json({
+      proxy_api_key: config.server.proxy_api_key,
+      admin_key_configured: true,
+    });
   });
 
   app.post("/admin/settings", async (c) => {
     const config = getConfig();
     const currentKey = config.server.proxy_api_key;
-    const body = await c.req.json() as { proxy_api_key?: string | null };
-    const newKey = body.proxy_api_key === undefined ? currentKey : (body.proxy_api_key || null);
-
-    // Prevent remote sessions from clearing the key (would disable login gate)
-    if (currentKey && !newKey) {
-      const remoteAddr = getConnInfo(c).remote.address ?? "";
-      if (!isLocalhostRequest(remoteAddr)) {
-        c.status(403);
-        return c.json({ error: "Cannot clear API key from remote session — this would disable the login gate" });
-      }
+    let body: { proxy_api_key?: string | null; admin_key?: string };
+    try {
+      body = await c.req.json();
+    } catch {
+      c.status(400);
+      return c.json({ error: "settings must be valid JSON" });
     }
+    const newKey = body.proxy_api_key === undefined ? currentKey : (body.proxy_api_key || null);
+    const nextAdminKey = body.admin_key?.trim();
+    if (body.admin_key !== undefined && !nextAdminKey) {
+      c.status(400);
+      return c.json({ error: "admin_key must be a non-empty string" });
+    }
+    const adminKeyChanged = nextAdminKey !== undefined && nextAdminKey !== config.dashboard.admin_key;
 
     mutateYaml(getLocalConfigPath(), (data) => {
       if (!data.server) data.server = {};
       (data.server as Record<string, unknown>).proxy_api_key = newKey;
+      if (nextAdminKey !== undefined) {
+        if (!data.dashboard) data.dashboard = {};
+        (data.dashboard as Record<string, unknown>).admin_key = nextAdminKey;
+      }
     });
     reloadAllConfigs();
+    if (adminKeyChanged) revokeAllSessions();
 
-    return c.json({ success: true, proxy_api_key: newKey });
+    return c.json({
+      success: true,
+      proxy_api_key: newKey,
+      admin_key_configured: true,
+      reauth_required: adminKeyChanged,
+    });
   });
 
   // --- General (server/tls) settings ---
@@ -168,6 +183,7 @@ export function createSettingsRoutes(accountPool?: Pick<AccountPool, "setRotatio
       call_records_enabled: config.call_records.enabled,
       call_records_retention_days: config.call_records.retention_days,
       call_records_max_body_bytes: config.call_records.max_body_bytes,
+      call_records_max_rows: config.call_records.max_rows,
     });
   });
 
@@ -199,6 +215,7 @@ export function createSettingsRoutes(accountPool?: Pick<AccountPool, "setRotatio
       call_records_enabled?: boolean;
       call_records_retention_days?: number | null;
       call_records_max_body_bytes?: number;
+      call_records_max_rows?: number;
     };
 
     // --- validation ---
@@ -306,6 +323,12 @@ export function createSettingsRoutes(accountPool?: Pick<AccountPool, "setRotatio
         return c.json({ error: "call_records_max_body_bytes must be an integer >= 1024" });
       }
     }
+    if (body.call_records_max_rows !== undefined) {
+      if (!Number.isInteger(body.call_records_max_rows) || body.call_records_max_rows < 1) {
+        c.status(400);
+        return c.json({ error: "call_records_max_rows must be an integer >= 1" });
+      }
+    }
 
     const oldPort = config.server.port;
     const oldDefaultModel = config.model.default;
@@ -403,12 +426,14 @@ export function createSettingsRoutes(accountPool?: Pick<AccountPool, "setRotatio
         body.call_records_enabled !== undefined ||
         body.call_records_retention_days !== undefined ||
         body.call_records_max_body_bytes !== undefined
+        || body.call_records_max_rows !== undefined
       ) {
         if (!data.call_records) data.call_records = {};
         const callRecords = data.call_records as Record<string, unknown>;
         if (body.call_records_enabled !== undefined) callRecords.enabled = body.call_records_enabled;
         if (body.call_records_retention_days !== undefined) callRecords.retention_days = body.call_records_retention_days;
         if (body.call_records_max_body_bytes !== undefined) callRecords.max_body_bytes = body.call_records_max_body_bytes;
+        if (body.call_records_max_rows !== undefined) callRecords.max_rows = body.call_records_max_rows;
       }
     });
     reloadAllConfigs();
@@ -452,6 +477,7 @@ export function createSettingsRoutes(accountPool?: Pick<AccountPool, "setRotatio
       call_records_enabled: updated.call_records.enabled,
       call_records_retention_days: updated.call_records.retention_days,
       call_records_max_body_bytes: updated.call_records.max_body_bytes,
+      call_records_max_rows: updated.call_records.max_rows,
       restart_required: restartRequired,
     });
   });

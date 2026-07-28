@@ -1,14 +1,12 @@
 import { useMemo } from "preact/hooks";
 import { useT } from "../../../shared/i18n/context";
 import { useLogs } from "../../../shared/hooks/use-logs";
-import { useSettings } from "../../../shared/hooks/use-settings";
 import { useGeneralSettings } from "../../../shared/hooks/use-general-settings";
 
 export function LogsPage({ embedded = false }: { embedded?: boolean }) {
   const t = useT();
   const logs = useLogs();
-  const settings = useSettings();
-  const gs = useGeneralSettings(settings.apiKey);
+  const gs = useGeneralSettings();
   const logsLlmOnly = gs.data?.logs_llm_only ?? true;
 
   const toggleLogsMode = async () => {

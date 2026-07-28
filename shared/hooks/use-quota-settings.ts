@@ -9,7 +9,7 @@ export interface QuotaSettingsData {
   concurrency: number;
 }
 
-export function useQuotaSettings(apiKey: string | null) {
+export function useQuotaSettings() {
   const [data, setData] = useState<QuotaSettingsData | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,13 +32,9 @@ export function useQuotaSettings(apiKey: string | null) {
     setSaved(false);
     setError(null);
     try {
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (apiKey) {
-        headers["Authorization"] = `Bearer ${apiKey}`;
-      }
       const resp = await adminFetch("/admin/quota-settings", {
         method: "POST",
-        headers,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patch),
       });
       if (!resp.ok) {
@@ -59,7 +55,7 @@ export function useQuotaSettings(apiKey: string | null) {
     } finally {
       setSaving(false);
     }
-  }, [apiKey]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
 

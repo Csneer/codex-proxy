@@ -3,8 +3,8 @@ api:
   timeout_seconds: 600
 client:
   originator: Codex Desktop
-  app_version: 26.609.30741
-  build_number: "3808"
+  app_version: 26.721.41059
+  build_number: "5848"
   platform: darwin
   arch: arm64
   chromium_version: "146"
@@ -28,12 +28,12 @@ auth:
   oauth_auth_endpoint: https://auth.openai.com/oauth/authorize
   oauth_token_endpoint: https://auth.openai.com/oauth/token
 server:
-  # Listen on all interfaces so trusted LAN devices can reach the dashboard.
-  # Set server.host to 127.0.0.1 in data/local.yaml for localhost-only mode.
   host: 0.0.0.0
   port: 8080
   proxy_api_key: null
   trust_proxy: false
+dashboard:
+  admin_key: null
 logs:
   enabled: false
   capacity: 2000
@@ -44,8 +44,9 @@ usage_stats:
   history_retention_days: null
 call_records:
   enabled: false
-  retention_days: null
-  max_body_bytes: 1048576
+  retention_days: 7
+  max_body_bytes: 65536
+  max_rows: 10000
 session:
   ttl_minutes: 60
   cleanup_interval_minutes: 5

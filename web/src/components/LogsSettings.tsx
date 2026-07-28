@@ -1,12 +1,10 @@
 import { useState, useCallback } from "preact/hooks";
 import { useT } from "../../../shared/i18n/context";
 import { useGeneralSettings } from "../../../shared/hooks/use-general-settings";
-import { useSettings } from "../../../shared/hooks/use-settings";
 
 export function LogsSettings() {
   const t = useT();
-  const settings = useSettings();
-  const gs = useGeneralSettings(settings.apiKey);
+  const gs = useGeneralSettings();
 
   const [draftLogsEnabled, setDraftLogsEnabled] = useState<boolean | null>(null);
   const [draftLogsCapacity, setDraftLogsCapacity] = useState<string | null>(null);

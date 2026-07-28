@@ -152,7 +152,7 @@ function Dashboard() {
   const accounts = useAccounts();
   const proxies = useProxies();
   const status = useStatus(accounts.list.length);
-  const generalSettings = useGeneralSettings(null);
+  const generalSettings = useGeneralSettings();
   const update = useUpdateMessage();
   const { onLogout } = useDashboardAuthCtx();
   const [showModal, setShowModal] = useState(false);

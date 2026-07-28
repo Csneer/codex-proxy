@@ -3,6 +3,7 @@ import { Hono } from "hono";
 
 const mockConfig = {
   server: { proxy_api_key: "test-key" as string | null, trust_proxy: false },
+  dashboard: { admin_key: "admin-key" },
   session: { ttl_minutes: 60, cleanup_interval_minutes: 5 },
 };
 
@@ -44,11 +45,18 @@ describe("admin mutation guard", () => {
     dashboardCsrf.clear();
   });
 
-  it("passes safe requests and non-admin mutations", async () => {
+  it("passes safe requests and service mutations", async () => {
     const app = createApp();
     expect((await app.request("/admin/settings")).status).toBe(200);
     expect((await app.request("/v1/chat/completions", { method: "POST" })).status).toBe(200);
   });
+
+  it.each(["/auth/accounts", "/auth/api-keys/import", "/api/proxies/import", "/debug/action"])(
+    "guards management mutations outside /admin: %s",
+    async (path) => {
+      expect((await createApp().request(path, { method: "POST" })).status).toBe(403);
+    },
+  );
 
   it("allows an exact-origin request with a valid session-bound token", async () => {
     const session = createSession();
@@ -102,27 +110,36 @@ describe("admin mutation guard", () => {
     expect(res.status).toBe(403);
   });
 
-  it("still guards localhost mutations", async () => {
+  it("requires a session-bound token for localhost browser mutations", async () => {
     mockGetConnInfo.mockReturnValue({ remote: { address: "127.0.0.1" } });
     const app = createApp();
     const denied = await app.request("/admin/settings", { method: "POST" });
     expect(denied.status).toBe(403);
 
-    const { token } = dashboardCsrf.issue("local:127.0.0.1");
+    const session = createSession();
+    const { token } = dashboardCsrf.issue(`session:${session.id}`);
     const allowed = await app.request("/admin/settings", {
       method: "POST",
-      headers: csrfHeaders(token),
+      headers: csrfHeaders(token, { Cookie: `_codex_session=${session.id}` }),
     });
     expect(allowed.status).toBe(200);
   });
 
-  it("allows the exact configured bearer only when no cookie header is present", async () => {
+  it("allows only the exact dashboard bearer when no cookie header is present", async () => {
     const app = createApp();
     const res = await app.request("/admin/settings", {
       method: "POST",
-      headers: { Authorization: "Bearer test-key" },
+      headers: { Authorization: "Bearer admin-key" },
     });
     expect(res.status).toBe(200);
+  });
+
+  it("rejects the service bearer on management mutations", async () => {
+    const res = await createApp().request("/admin/settings", {
+      method: "POST",
+      headers: { Authorization: "Bearer test-key" },
+    });
+    expect(res.status).toBe(403);
   });
 
   it.each(["Bearer wrong", "bearer test-key", "Bearer  test-key"])(

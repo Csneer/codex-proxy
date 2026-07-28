@@ -1,13 +1,11 @@
 import { useState, useCallback } from "preact/hooks";
 import { useT } from "../../../shared/i18n/context";
 import { useOllamaSettings } from "../../../shared/hooks/use-ollama-settings";
-import { useSettings } from "../../../shared/hooks/use-settings";
 import { isNetworkExposedHost } from "../../../shared/utils/host";
 
 export function OllamaBridgeSettings() {
   const t = useT();
-  const settings = useSettings();
-  const ollama = useOllamaSettings(settings.apiKey);
+  const ollama = useOllamaSettings();
 
   const [draftEnabled, setDraftEnabled] = useState<boolean | null>(null);
   const [draftHost, setDraftHost] = useState<string | null>(null);

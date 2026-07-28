@@ -24,6 +24,7 @@ describe("ConfigSchema", () => {
       model: {},
       auth: {},
       server: {},
+      dashboard: { admin_key: "admin-secret" },
       session: {},
     });
 
@@ -32,6 +33,7 @@ describe("ConfigSchema", () => {
     expect(result.server.port).toBe(8080);
     expect(result.server.host).toBe("0.0.0.0");
     expect(result.server.proxy_api_key).toBeNull();
+    expect(result.dashboard.admin_key).toBe("admin-secret");
     expect(result.auth.rotation_strategy).toBe("least_used");
     expect(result.auth.quota_batch_percent).toBe(30);
     expect(result.auth.refresh_concurrency).toBe(2);
@@ -50,6 +52,7 @@ describe("ConfigSchema", () => {
       enabled: false,
       retention_days: null,
       max_body_bytes: 1_048_576,
+      max_rows: 10_000,
     });
     expect(result.quota.refresh_interval_minutes).toBe(5);
     expect(result.quota.warning_thresholds.primary).toEqual([80, 90]);
@@ -104,6 +107,7 @@ describe("ConfigSchema", () => {
       },
       auth: { rotation_strategy: "round_robin", max_concurrent_per_account: null },
       server: { port: 3000, proxy_api_key: "sk-test" },
+      dashboard: { admin_key: "admin-test" },
       session: { ttl_minutes: 120 },
       tls: { force_http11: true, health_check_url: "https://my-health.org" },
       providers: {
@@ -115,7 +119,7 @@ describe("ConfigSchema", () => {
       update: { auto_update: false, show_update_dialog: true, allow_prerelease: true },
       ollama: {
         enabled: true,
-        host: "0.0.0.0",
+        host: "localhost",
         port: 11435,
         version: "0.20.1",
         disable_vision: true,
@@ -157,6 +161,7 @@ describe("ConfigSchema", () => {
     expect(result.auth.max_concurrent_per_account).toBeNull();
     expect(result.server.port).toBe(3000);
     expect(result.server.proxy_api_key).toBe("sk-test");
+    expect(result.dashboard.admin_key).toBe("admin-test");
     expect(result.tls.force_http11).toBe(true);
     expect(result.tls.health_check_url).toBe("https://my-health.org");
     expect(result.providers?.anthropic?.base_url).toBe("https://my-anthropic.com/v1");
@@ -167,7 +172,7 @@ describe("ConfigSchema", () => {
     expect(result.update.allow_prerelease).toBe(true);
     expect(result.ollama).toEqual({
       enabled: true,
-      host: "0.0.0.0",
+      host: "localhost",
       port: 11435,
       version: "0.20.1",
       disable_vision: true,
@@ -226,9 +231,16 @@ describe("ConfigSchema", () => {
     expect(result2.success).toBe(false);
   });
 
+  it.each(["0.0.0.0", "192.168.1.20", "proxy.example"])("rejects non-loopback Ollama host %s", (host) => {
+    const result = ConfigSchema.safeParse({
+      api: {}, client: {}, model: {}, auth: {}, server: {}, dashboard: { admin_key: "admin" }, session: {}, ollama: { host },
+    });
+    expect(result.success).toBe(false);
+  });
+
   it("trims and validates Ollama bridge version", () => {
     const result = ConfigSchema.parse({
-      api: {}, client: {}, model: {}, auth: {}, server: {}, session: {}, ollama: { version: " 0.20.1 " },
+      api: {}, client: {}, model: {}, auth: {}, server: {}, dashboard: { admin_key: "admin" }, session: {}, ollama: { version: " 0.20.1 " },
     });
     expect(result.ollama.version).toBe("0.20.1");
 
@@ -251,7 +263,7 @@ describe("ConfigSchema", () => {
   });
 
   it("accepts quota_batch rotation and validates its percentage bounds", () => {
-    const base = { api: {}, client: {}, model: {}, server: {}, session: {} };
+    const base = { api: {}, client: {}, model: {}, server: {}, dashboard: { admin_key: "admin" }, session: {} };
 
     for (const value of [20, 30, 40]) {
       expect(ConfigSchema.parse({
@@ -282,20 +294,20 @@ describe("ConfigSchema", () => {
   });
 
   it("validates call record retention and body bounds", () => {
-    const base = { api: {}, client: {}, model: {}, auth: {}, server: {}, session: {} };
+    const base = { api: {}, client: {}, model: {}, auth: {}, server: {}, dashboard: { admin_key: "admin" }, session: {} };
 
     expect(ConfigSchema.safeParse({ ...base, call_records: { retention_days: 0 } }).success).toBe(false);
     expect(ConfigSchema.safeParse({ ...base, call_records: { retention_days: -1 } }).success).toBe(false);
     expect(ConfigSchema.safeParse({ ...base, call_records: { max_body_bytes: 1023 } }).success).toBe(false);
     expect(ConfigSchema.parse({
       ...base,
-      call_records: { enabled: true, retention_days: 30, max_body_bytes: 2048 },
-    }).call_records).toEqual({ enabled: true, retention_days: 30, max_body_bytes: 2048 });
+      call_records: { enabled: true, retention_days: 30, max_body_bytes: 2048, max_rows: 500 },
+    }).call_records).toEqual({ enabled: true, retention_days: 30, max_body_bytes: 2048, max_rows: 500 });
   });
 
   it("accepts tls/quota/update as optional (uses defaults)", () => {
     const result = ConfigSchema.parse({
-      api: {}, client: {}, model: {}, auth: {}, server: {}, session: {},
+      api: {}, client: {}, model: {}, auth: {}, server: {}, dashboard: { admin_key: "admin" }, session: {},
     });
     expect(result.quota.concurrency).toBe(10);
     expect(result.update.auto_update).toBe(true);

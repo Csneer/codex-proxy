@@ -1,8 +1,7 @@
 /**
  * Dashboard Session Store — in-memory session management for web dashboard login gate.
  *
- * Sessions are cookie-based and protect the dashboard when proxy_api_key is set
- * and requests come from non-localhost origins. TTL is configured via session.ttl_minutes.
+ * Sessions are cookie-based and protect the dashboard for every client address.
  *
  * Sessions are NOT persisted — server restart requires re-login, which is acceptable.
  */
@@ -60,6 +59,10 @@ export function getSessionCount(): number {
   return sessions.size;
 }
 
+export function revokeAllSessions(): void {
+  for (const id of [...sessions.keys()]) removeSession(id);
+}
+
 function cleanupExpired(): void {
   const now = Date.now();
   for (const [id, session] of sessions) {
@@ -86,7 +89,7 @@ export function stopSessionCleanup(): void {
 
 /** Reset all sessions — for tests only. */
 export function _resetForTest(): void {
-  for (const id of sessions.keys()) removeSession(id);
+  revokeAllSessions();
   stopSessionCleanup();
   dashboardCsrf.clear();
 }

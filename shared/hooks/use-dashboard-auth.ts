@@ -6,6 +6,10 @@ export type DashboardAuthStatus = "loading" | "login" | "authenticated";
 /** Custom event fired when any fetch receives a 401 from dashboard endpoints. */
 const AUTH_EXPIRED_EVENT = "codex:auth-expired";
 
+export function notifyDashboardAuthExpired(): void {
+  window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
+}
+
 /**
  * Install a one-time global fetch wrapper that detects 401 responses
  * from dashboard-protected endpoints and dispatches an auth-expired event.

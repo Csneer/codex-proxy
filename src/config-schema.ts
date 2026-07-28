@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isLoopbackHostname } from "./utils/host.js";
 
 export const ROTATION_STRATEGIES = ["least_used", "round_robin", "sticky", "quota_batch"] as const;
 
@@ -124,6 +125,9 @@ export const ConfigSchema = z.object({
       message: "Invalid hostname format. Use bare hostnames like 'example.com' or '192.168.1.1'",
     })).default([]),
   }),
+  dashboard: z.object({
+    admin_key: z.string().trim().min(1),
+  }),
   logs: z.object({
     enabled: z.boolean().default(false),
     capacity: z.number().int().min(1).default(2000),
@@ -150,6 +154,7 @@ export const ConfigSchema = z.object({
     enabled: z.boolean().default(false),
     retention_days: z.number().int().positive().nullable().default(null),
     max_body_bytes: z.number().int().min(1024).default(1_048_576),
+    max_rows: z.number().int().positive().default(10_000),
   }).default({}),
   session: z.object({
     ttl_minutes: z.number().min(1).default(1440),
@@ -189,7 +194,9 @@ export const ConfigSchema = z.object({
   }).default({}),
   ollama: z.object({
     enabled: z.boolean().default(false),
-    host: z.string().default("127.0.0.1"),
+    host: z.string().trim().refine(isLoopbackHostname, {
+      message: "ollama.host must be a loopback hostname or address",
+    }).default("127.0.0.1"),
     port: z.number().min(1).max(65535).default(11434),
     version: z.string().trim().min(1).max(64).default("0.18.3"),
     disable_vision: z.boolean().default(false),

@@ -182,7 +182,7 @@ describe("Ollama admin settings routes", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         enabled: true,
-        host: " 0.0.0.0 ",
+        host: " localhost ",
         port: 11435,
         version: " 0.20.1 ",
         disable_vision: true,
@@ -195,7 +195,7 @@ describe("Ollama admin settings routes", () => {
     expect(restartOllamaBridge).toHaveBeenCalledWith(state.config);
     expect(state.config.ollama).toEqual({
       enabled: true,
-      host: "0.0.0.0",
+      host: "localhost",
       port: 11435,
       version: "0.20.1",
       disable_vision: true,
@@ -205,13 +205,13 @@ describe("Ollama admin settings routes", () => {
     expect(JSON.parse(responseText) as Record<string, unknown>).toMatchObject({
       success: true,
       enabled: true,
-      host: "0.0.0.0",
+      host: "localhost",
       port: 11435,
       version: "0.20.1",
       disable_vision: true,
       status: {
         running: true,
-        endpoint: "http://127.0.0.1:11435",
+        endpoint: "http://localhost:11435",
       },
     });
   });
@@ -224,8 +224,10 @@ describe("Ollama admin settings routes", () => {
   it("validates host, port, and version before writing config", async () => {
     const app = createApp();
     const cases = [
-      { body: { host: "" }, error: "host must be a non-empty hostname or IP address" },
-      { body: { host: "bad host" }, error: "host must be a non-empty hostname or IP address" },
+      { body: { host: "" }, error: "host must be a loopback hostname or IP address" },
+      { body: { host: "bad host" }, error: "host must be a loopback hostname or IP address" },
+      { body: { host: "0.0.0.0" }, error: "host must be a loopback hostname or IP address" },
+      { body: { host: "192.168.1.20" }, error: "host must be a loopback hostname or IP address" },
       { body: { port: 0 }, error: "port must be an integer between 1 and 65535" },
       { body: { port: 65536 }, error: "port must be an integer between 1 and 65535" },
       { body: { port: 11434.5 }, error: "port must be an integer between 1 and 65535" },

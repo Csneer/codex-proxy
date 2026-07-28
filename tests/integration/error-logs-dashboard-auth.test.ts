@@ -11,6 +11,9 @@ const mockConfig = {
     proxy_api_key: "secret-key" as string | null,
     trust_proxy: true,
   },
+  dashboard: {
+    admin_key: "admin-secret",
+  },
   session: {
     ttl_minutes: 60,
     cleanup_interval_minutes: 5,
@@ -98,7 +101,7 @@ async function loginDashboard(app: Hono): Promise<string> {
       "Content-Type": "application/json",
       "X-Forwarded-For": "8.8.8.8",
     },
-    body: JSON.stringify({ password: "secret-key" }),
+    body: JSON.stringify({ password: "admin-secret" }),
   });
   expect(res.status).toBe(200);
   return extractSessionCookie(res.headers.get("set-cookie"));
@@ -212,7 +215,12 @@ describe("dashboard-authenticated error-log admin actions", () => {
     });
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ success: true, proxy_api_key: "secret-key" });
+    expect(await res.json()).toEqual({
+      success: true,
+      proxy_api_key: "secret-key",
+      admin_key_configured: true,
+      reauth_required: false,
+    });
   });
 
   it("protects every call record retrieval and deletion endpoint", async () => {

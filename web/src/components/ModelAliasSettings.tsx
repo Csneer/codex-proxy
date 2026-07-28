@@ -1,7 +1,6 @@
 import { useCallback, useMemo, useState } from "preact/hooks";
 import { useT } from "../../../shared/i18n/context";
 import { useGeneralSettings } from "../../../shared/hooks/use-general-settings";
-import { useSettings } from "../../../shared/hooks/use-settings";
 
 interface AliasRow {
   alias: string;
@@ -39,8 +38,7 @@ function rowsToAliases(rows: AliasRow[]): {
 
 export function ModelAliasSettings() {
   const t = useT();
-  const settings = useSettings();
-  const gs = useGeneralSettings(settings.apiKey);
+  const gs = useGeneralSettings();
 
   const currentRows = useMemo(
     () => aliasesToRows(gs.data?.model_aliases),

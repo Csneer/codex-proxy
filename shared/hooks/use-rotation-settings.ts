@@ -9,7 +9,7 @@ export interface RotationSettingsData {
   quota_batch_percent: number;
 }
 
-export function useRotationSettings(apiKey: string | null) {
+export function useRotationSettings() {
   const [data, setData] = useState<RotationSettingsData | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,13 +32,9 @@ export function useRotationSettings(apiKey: string | null) {
     setSaved(false);
     setError(null);
     try {
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (apiKey) {
-        headers["Authorization"] = `Bearer ${apiKey}`;
-      }
       const resp = await adminFetch("/admin/rotation-settings", {
         method: "POST",
-        headers,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patch),
       });
       if (!resp.ok) {
@@ -54,7 +50,7 @@ export function useRotationSettings(apiKey: string | null) {
     } finally {
       setSaving(false);
     }
-  }, [apiKey]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
 

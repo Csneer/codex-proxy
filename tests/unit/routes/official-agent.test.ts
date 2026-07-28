@@ -74,7 +74,7 @@ describe("official agent routes", () => {
   function enableCapture() {
     const config = ConfigSchema.parse({
       api: {}, client: {}, model: { default: "gpt-5.4" }, auth: {}, session: {},
-      server: { proxy_api_key: "proxy-key" },
+      server: { proxy_api_key: "proxy-key" }, dashboard: { admin_key: "admin-key" },
       official_agent: { enabled: true, api_key: "agent-key" },
       call_records: { enabled: true, max_body_bytes: 4096 },
     });
@@ -85,7 +85,7 @@ describe("official agent routes", () => {
   }
 
   it("returns 503 when official agent bridge is disabled", async () => {
-    setConfigForTesting(ConfigSchema.parse({ api: {}, client: {}, model: {}, auth: {}, server: {}, session: {} }));
+    setConfigForTesting(ConfigSchema.parse({ api: {}, client: {}, model: {}, auth: {}, server: {}, dashboard: { admin_key: "admin-key" }, session: {} }));
     const res = await makeApp(new FakeBridge()).request("/official-agent/apps");
 
     expect(res.status).toBe(503);
@@ -97,7 +97,7 @@ describe("official agent routes", () => {
   it("requires official-agent API key when configured", async () => {
     setConfigForTesting(ConfigSchema.parse({
       api: {}, client: {}, model: {}, auth: {}, session: {},
-      server: { proxy_api_key: "proxy-key" },
+      server: { proxy_api_key: "proxy-key" }, dashboard: { admin_key: "admin-key" },
       official_agent: { enabled: true, api_key: "agent-key" },
     }));
 
@@ -108,7 +108,7 @@ describe("official agent routes", () => {
 
   it("rejects official agent requests when the official-agent API key is not configured", async () => {
     setConfigForTesting(ConfigSchema.parse({
-      api: {}, client: {}, model: {}, auth: {}, server: { proxy_api_key: "proxy-key" }, session: {},
+      api: {}, client: {}, model: {}, auth: {}, server: { proxy_api_key: "proxy-key" }, dashboard: { admin_key: "admin-key" }, session: {},
       official_agent: { enabled: true },
     }));
 
@@ -126,7 +126,7 @@ describe("official agent routes", () => {
   it("does not accept the general proxy API key for official-agent requests", async () => {
     setConfigForTesting(ConfigSchema.parse({
       api: {}, client: {}, model: {}, auth: {}, session: {},
-      server: { proxy_api_key: "proxy-key" },
+      server: { proxy_api_key: "proxy-key" }, dashboard: { admin_key: "admin-key" },
       official_agent: { enabled: true, api_key: "agent-key" },
     }));
 
@@ -140,7 +140,7 @@ describe("official agent routes", () => {
   it("lists apps through the app-server bridge", async () => {
     setConfigForTesting(ConfigSchema.parse({
       api: {}, client: {}, model: {}, auth: {}, session: {},
-      server: { proxy_api_key: "proxy-key" },
+      server: { proxy_api_key: "proxy-key" }, dashboard: { admin_key: "admin-key" },
       official_agent: { enabled: true, api_key: "agent-key" },
     }));
 
@@ -158,7 +158,7 @@ describe("official agent routes", () => {
   it("starts a thread", async () => {
     setConfigForTesting(ConfigSchema.parse({
       api: {}, client: {}, model: {}, auth: {}, session: {},
-      server: { proxy_api_key: "proxy-key" },
+      server: { proxy_api_key: "proxy-key" }, dashboard: { admin_key: "admin-key" },
       official_agent: { enabled: true, api_key: "agent-key" },
     }));
 
@@ -175,7 +175,7 @@ describe("official agent routes", () => {
   it("starts a turn and streams app-server notifications as SSE", async () => {
     setConfigForTesting(ConfigSchema.parse({
       api: {}, client: {}, model: {}, auth: {}, session: {},
-      server: { proxy_api_key: "proxy-key" },
+      server: { proxy_api_key: "proxy-key" }, dashboard: { admin_key: "admin-key" },
       official_agent: { enabled: true, api_key: "agent-key" },
     }));
     const bridge = new FakeBridge();
@@ -239,7 +239,8 @@ describe("official agent routes", () => {
       cachedTokens: 4,
     });
     expect(detail.requestJson).toContain("Inspect the app");
-    expect(detail.responseJson).toContain("item/agentMessage/delta");
+    expect(JSON.parse(detail.responseJson)).toMatchObject({ output_text: "done" });
+    expect(detail.responseJson).not.toContain("item/agentMessage/delta");
     expect(detail.responseJson).not.toContain("event:");
   });
 
@@ -264,7 +265,7 @@ describe("official agent routes", () => {
   it("rejects unsupported approval policies", async () => {
     setConfigForTesting(ConfigSchema.parse({
       api: {}, client: {}, model: {}, auth: {}, session: {},
-      server: { proxy_api_key: "proxy-key" },
+      server: { proxy_api_key: "proxy-key" }, dashboard: { admin_key: "admin-key" },
       official_agent: { enabled: true, api_key: "agent-key" },
     }));
     const bridge = new FakeBridge();

@@ -6,6 +6,7 @@ export function SettingsPanel() {
   const t = useT();
   const settings = useSettings();
   const [draft, setDraft] = useState<string | null>(null);
+  const [adminDraft, setAdminDraft] = useState("");
   const [revealed, setRevealed] = useState(false);
   const [collapsed, setCollapsed] = useState(true);
 
@@ -14,15 +15,21 @@ export function SettingsPanel() {
 
   const handleSave = useCallback(async () => {
     const newKey = (draft ?? settings.apiKey ?? "").trim() || null;
-    await settings.save(newKey);
+    await settings.saveServiceKey(newKey);
     setDraft(null);
   }, [draft, settings]);
 
   const handleClear = useCallback(async () => {
-    await settings.save(null);
+    await settings.saveServiceKey(null);
     setDraft(null);
     setRevealed(false);
   }, [settings]);
+
+  const handleAdminRotate = useCallback(async () => {
+    if (!adminDraft.trim()) return;
+    await settings.rotateAdminKey(adminDraft);
+    setAdminDraft("");
+  }, [adminDraft, settings]);
 
   const isDirty = draft !== null && draft !== (settings.apiKey ?? "");
 
@@ -49,7 +56,8 @@ export function SettingsPanel() {
       {!collapsed && (
         <div class="px-5 pb-5 border-t border-slate-100 dark:border-border-dark pt-4">
           <div class="space-y-1.5">
-            <label class="text-xs font-semibold text-slate-700 dark:text-text-main">{t("apiKeyLabel")}</label>
+            <label class="text-xs font-semibold text-slate-700 dark:text-text-main">Service API Key</label>
+            <p class="text-xs text-slate-400 dark:text-text-dim">Used only by SDK, CLI, and proxy requests. The default remains <code>pwd</code> until you replace it.</p>
             <div class="flex items-center gap-2">
               <div class="relative flex-1">
                 <div class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-text-dim">
@@ -63,7 +71,7 @@ export function SettingsPanel() {
                   value={displayValue}
                   onInput={(e) => setDraft((e.target as HTMLInputElement).value)}
                   onFocus={() => setRevealed(true)}
-                  placeholder={t("apiKeyLabel")}
+                  placeholder="Service API Key"
                 />
                 {/* Toggle visibility */}
                 <button
@@ -115,6 +123,32 @@ export function SettingsPanel() {
                   {t("apiKeyClear")}
                 </button>
               )}
+            </div>
+          </div>
+          <div class="mt-6 pt-5 border-t border-slate-100 dark:border-border-dark space-y-2">
+            <div class="flex items-center justify-between gap-3">
+              <label class="text-xs font-semibold text-slate-700 dark:text-text-main">Dashboard/Admin Key</label>
+              <span class="text-[0.68rem] text-green-600 dark:text-green-400">
+                {settings.adminKeyConfigured ? "Configured" : "Required"}
+              </span>
+            </div>
+            <p class="text-xs text-slate-400 dark:text-text-dim">Management only. The current value is never displayed. Replacing it signs out every Dashboard session.</p>
+            <div class="flex items-center gap-2">
+              <input
+                type="password"
+                class="flex-1 px-3 py-2.5 bg-white dark:bg-bg-dark border border-gray-200 dark:border-border-dark rounded-lg text-[0.78rem] font-mono text-slate-700 dark:text-text-main outline-none focus:ring-1 focus:ring-primary"
+                value={adminDraft}
+                onInput={(e) => setAdminDraft((e.target as HTMLInputElement).value)}
+                placeholder="Enter a new Dashboard/Admin key"
+                autocomplete="new-password"
+              />
+              <button
+                onClick={handleAdminRotate}
+                disabled={settings.saving || !adminDraft.trim()}
+                class={`px-4 py-2.5 text-sm font-medium rounded-lg transition-colors whitespace-nowrap ${adminDraft.trim() && !settings.saving ? "bg-primary-action text-white hover:bg-primary-action-hover" : "bg-slate-100 dark:bg-[#21262d] text-slate-400 dark:text-text-dim cursor-not-allowed"}`}
+              >
+                Replace
+              </button>
             </div>
           </div>
         </div>

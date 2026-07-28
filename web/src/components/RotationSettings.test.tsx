@@ -36,15 +36,16 @@ afterEach(() => {
 describe("RotationSettings quota batch", () => {
   it("reveals the percentage input only after selecting quota batch", () => {
     renderSettings();
-    expect(screen.queryByLabelText("Additional usage before switching")).toBeNull();
+    expect(screen.queryByLabelText("Quota points per batch")).toBeNull();
     fireEvent.click(screen.getByText("Quota batch"));
-    expect(screen.getByLabelText("Additional usage before switching")).toBeTruthy();
+    expect(screen.getByText("Switch when quota grows by this many points; 100 completed requests is the fallback when quota is stale.")).toBeTruthy();
+    expect(screen.getByLabelText("Quota points per batch")).toBeTruthy();
   });
 
   it.each([20, 30, 40])("saves %i with the quota_batch strategy", (percent) => {
     renderSettings();
     fireEvent.click(screen.getByText("Quota batch"));
-    fireEvent.input(screen.getByLabelText("Additional usage before switching"), { target: { value: String(percent) } });
+    fireEvent.input(screen.getByLabelText("Quota points per batch"), { target: { value: String(percent) } });
     fireEvent.click(screen.getByText("Submit"));
     expect(mock.save).toHaveBeenCalledWith({
       rotation_strategy: "quota_batch",
@@ -55,7 +56,7 @@ describe("RotationSettings quota batch", () => {
   it.each([0, 101, 30.5])("prevents invalid value %s from being saved", (percent) => {
     renderSettings();
     fireEvent.click(screen.getByText("Quota batch"));
-    fireEvent.input(screen.getByLabelText("Additional usage before switching"), { target: { value: String(percent) } });
+    fireEvent.input(screen.getByLabelText("Quota points per batch"), { target: { value: String(percent) } });
     const submit = screen.getByText("Submit") as HTMLButtonElement;
     expect(submit.disabled).toBe(true);
     fireEvent.click(submit);

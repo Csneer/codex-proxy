@@ -1,12 +1,10 @@
 import { useState, useCallback } from "preact/hooks";
 import { useT } from "../../../shared/i18n/context";
 import { useQuotaSettings } from "../../../shared/hooks/use-quota-settings";
-import { useSettings } from "../../../shared/hooks/use-settings";
 
 export function QuotaSettings() {
   const t = useT();
-  const settings = useSettings();
-  const qs = useQuotaSettings(settings.apiKey);
+  const qs = useQuotaSettings();
 
   const [draftInterval, setDraftInterval] = useState<string | null>(null);
   const [draftPrimary, setDraftPrimary] = useState<string | null>(null);

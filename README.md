@@ -132,7 +132,7 @@ npm run dev                        # 开发模式（热重载）
 curl http://localhost:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer your-api-key" \
-  -d '{"model":"gpt-5.4","messages":[{"role":"user","content":"Hello!"}],"stream":true}'
+  -d '{"model":"gpt-5.6-sol","messages":[{"role":"user","content":"Hello!"}],"stream":true}'
 ```
 
 看到 AI 回复的文字流即部署成功。如果返回 401，请检查 API Key 是否正确。
@@ -216,8 +216,11 @@ curl http://localhost:8080/v1/chat/completions \
 
 | 模型 ID | 推理等级 | 当前上下文 | 最大上下文 | 最大输出 | 输出 | 说明 |
 |---------|---------|------------|------------|----------|------|------|
-| `gpt-5.5` | low / medium / high / xhigh | 272,000 | 272,000 | 128,000 | 文本 | 复杂编码、研究和真实工作流旗舰模型 |
-| `gpt-5.4` | low / medium / high / xhigh | 272,000 | 1,000,000 | 128,000 | 文本 | 日常编码强模型（默认） |
+| `gpt-5.6-sol` | low / medium / high / xhigh | 1,050,000 | 1,050,000 | 128,000 | 文本 | GPT-5.6 旗舰：复杂推理与编码（默认；`gpt-5.6` 为其别名） |
+| `gpt-5.6-terra` | low / medium / high / xhigh | 1,050,000 | 1,050,000 | 128,000 | 文本 | GPT-5.6 智能与成本平衡 |
+| `gpt-5.6-luna` | low / medium / high / xhigh | 1,050,000 | 1,050,000 | 128,000 | 文本 | GPT-5.6 高性价比 / 高吞吐 |
+| `gpt-5.5` | low / medium / high / xhigh | 272,000 | 272,000 | 128,000 | 文本 | 复杂编码、研究和真实工作流 |
+| `gpt-5.4` | low / medium / high / xhigh | 272,000 | 1,000,000 | 128,000 | 文本 | 日常编码强模型 |
 | `gpt-5.4-mini` | low / medium / high / xhigh | 400,000 | — | 128,000 | 文本 | 5.4 轻量版 |
 | `gpt-5.3-codex` | low / medium / high / xhigh | 400,000 | — | 128,000 | 文本 | 5.3 编程优化模型 |
 | `gpt-5.2` | low / medium / high / xhigh | 400,000 | — | 128,000 | 文本 | 专业工作 + 长时间代理 |
@@ -227,7 +230,7 @@ curl http://localhost:8080/v1/chat/completions \
 | `gpt-oss-20b` | low / medium / high | 131,072 | — | — | 文本 | 开源 20B 模型 |
 | `gpt-image-2` | — | — | — | — | 图像 | 图像生成工具后端（通过 `image_generation` 调用） |
 
-> **后缀**：任意 chat 模型名后追加 `-fast` 启用 Fast 模式，`-high`/`-low` 切换推理等级。例如：`gpt-5.4-fast`、`gpt-5.4-high-fast`。图像模型（`gpt-image-2`）不支持后缀。
+> **后缀**：任意 chat 模型名后追加 `-fast` 启用 Fast 模式，`-high`/`-low` 切换推理等级。例如：`gpt-5.6-sol-fast`、`gpt-5.6-sol-high-fast`。图像模型（`gpt-image-2`）不支持后缀。
 >
 > **Plan Routing**：不同 plan（free/plus/team/business）的账号自动路由到各自支持的模型，模型可用性以登录账号对应的 Codex 后端返回为准，不要按旧的 Plus-only 表理解。模型列表由后端动态获取，自动同步；只要模型出现在 Dashboard / `/v1/models/catalog` 中，就可以作为请求里的 `model` 使用。
 >
@@ -246,7 +249,7 @@ curl -N http://localhost:8080/v1/responses \
   -H "Authorization: Bearer $PROXY_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "gpt-5.5",
+    "model": "gpt-5.6-sol",
     "stream": true,
     "input": [{"role":"user","content":"Draw a red circle on white background."}],
     "tools": [{"type":"image_generation","size":"3840x2160"}]
@@ -263,20 +266,20 @@ curl -N http://localhost:8080/v1/responses \
 
 ## 🔗 客户端接入
 
-> 所有客户端的 API Key 均从控制面板 (`http://localhost:8080`) 获取。模型名填具体 ID（默认 `gpt-5.4`）或任意 [可用模型](#-可用模型) ID。
+> 所有客户端的 API Key 均从控制面板 (`http://localhost:8080`) 获取。模型名填具体 ID（默认 `gpt-5.6-sol`）或任意 [可用模型](#-可用模型) ID。
 
 ### Claude Code (CLI)
 
 ```bash
 export ANTHROPIC_BASE_URL=http://localhost:8080
 export ANTHROPIC_API_KEY=your-api-key
-# 切换模型: export ANTHROPIC_MODEL=gpt-5.4 / gpt-5.4-fast / gpt-5.4-mini ...
+# 切换模型: export ANTHROPIC_MODEL=gpt-5.6-sol / gpt-5.6-terra / gpt-5.6-luna / gpt-5.6-sol-fast ...
 claude
 ```
 
 > 控制面板的 **Anthropic SDK Setup** 卡片可一键复制环境变量（含 Opus / Sonnet / Haiku 层级模型配置）。
 >
-> 推荐模型：Opus → `gpt-5.5`，Sonnet → `gpt-5.4`，Haiku → `gpt-5.3-codex`。
+> 推荐模型：Opus → `gpt-5.6-sol`，Sonnet → `gpt-5.6-terra`，Haiku → `gpt-5.6-luna`。
 >
 > ⚠️ 配置不生效？请参考 **[Claude Code 配置避坑指南](.github/guides/claude-code-setup.md)**（AUTH_TOKEN 劫持、API Key 黑名单等常见问题）。
 
@@ -294,7 +297,7 @@ wire_api = "responses"
 Authorization = "Bearer your-api-key"
 
 [profiles.default]
-model = "gpt-5.4"
+model = "gpt-5.6-sol"
 model_provider = "proxy_codex"
 ```
 
@@ -329,9 +332,9 @@ model_provider = "proxy_codex"
 ```yaml
 model:
   aliases:
-    claude-opus-4-7: gpt-5.5
-    claude-sonnet-4-6: gpt-5.4
-    claude-haiku-4-5: gpt-5.3-codex
+    claude-opus-4-7: gpt-5.6-sol
+    claude-sonnet-4-6: gpt-5.6-terra
+    claude-haiku-4-5: gpt-5.6-luna
     my-openai: openai:gpt-4o
     my-deepseek: deepseek-chat
 ```
@@ -359,7 +362,7 @@ wire_api = "responses"
 Authorization = "Bearer your-api-key"
 
 [profiles.default]
-model = "gpt-5.4"
+model = "gpt-5.6-sol"
 model_provider = "proxy_codex"
 ```
 
@@ -388,7 +391,7 @@ model_provider = "proxy_codex"
 2. 选择 OpenAI API
 3. 设置 **Base URL**: `http://localhost:8080/v1`
 4. 设置 **API Key**: 你的 API Key
-5. 添加模型名 `gpt-5.4`（或其他模型 ID）
+5. 添加模型名 `gpt-5.6-sol`（或其他模型 ID）
 
 ### Windsurf
 
@@ -396,7 +399,7 @@ model_provider = "proxy_codex"
 2. 选择 **OpenAI Compatible**
 3. **API Base URL**: `http://localhost:8080/v1`
 4. **API Key**: 你的 API Key
-5. **Model**: `gpt-5.4`
+5. **Model**: `gpt-5.6-sol`
 
 ### Cline (VSCode 扩展)
 
@@ -404,7 +407,7 @@ model_provider = "proxy_codex"
 2. **API Provider**: 选择 OpenAI Compatible
 3. **Base URL**: `http://localhost:8080/v1`
 4. **API Key**: 你的 API Key
-5. **Model ID**: `gpt-5.4`
+5. **Model ID**: `gpt-5.6-sol`
 
 ### Continue (VSCode 扩展)
 
@@ -414,7 +417,7 @@ model_provider = "proxy_codex"
   "models": [{
     "title": "Codex",
     "provider": "openai",
-    "model": "gpt-5.4",
+    "model": "gpt-5.6-sol",
     "apiBase": "http://localhost:8080/v1",
     "apiKey": "your-api-key"
   }]
@@ -426,14 +429,14 @@ model_provider = "proxy_codex"
 ```bash
 aider --openai-api-base http://localhost:8080/v1 \
       --openai-api-key your-api-key \
-      --model openai/gpt-5.4
+      --model openai/gpt-5.6-sol
 ```
 
 或设置环境变量：
 ```bash
 export OPENAI_API_BASE=http://localhost:8080/v1
 export OPENAI_API_KEY=your-api-key
-aider --model openai/gpt-5.4
+aider --model openai/gpt-5.6-sol
 ```
 
 ### Cherry Studio
@@ -442,7 +445,7 @@ aider --model openai/gpt-5.4
 2. **类型**: OpenAI
 3. **API 地址**: `http://localhost:8080/v1`
 4. **API Key**: 你的 API Key
-5. 添加模型 `gpt-5.4`
+5. 添加模型 `gpt-5.6-sol`
 
 ### Ollama 兼容客户端
 
@@ -452,14 +455,14 @@ aider --model openai/gpt-5.4
 |--------|-----|
 | Base URL | `http://localhost:11434` |
 | API Key | 不需要，Bridge 内部会使用 Codex Proxy 的密钥访问主服务 |
-| Model | `gpt-5.4`（或其他模型 ID） |
+| Model | `gpt-5.6-sol`（或其他模型 ID） |
 
 ```bash
 curl http://localhost:11434/api/tags
 
 curl http://localhost:11434/api/chat \
   -H "Content-Type: application/json" \
-  -d '{"model":"gpt-5.4","messages":[{"role":"user","content":"Hello!"}],"stream":true}'
+  -d '{"model":"gpt-5.6-sol","messages":[{"role":"user","content":"Hello!"}],"stream":true}'
 ```
 
 > Ollama API 本身没有鉴权。默认仅监听 `127.0.0.1`，不建议暴露到公网或未信任的局域网。
@@ -472,7 +475,7 @@ curl http://localhost:11434/api/chat \
 |--------|-----|
 | Base URL | `http://localhost:8080/v1` |
 | API Key | 控制面板获取 |
-| Model | `gpt-5.4`（或其他模型 ID） |
+| Model | `gpt-5.6-sol`（或其他模型 ID） |
 
 <details>
 <summary>SDK 代码示例（Python / Node.js）</summary>
@@ -482,7 +485,7 @@ curl http://localhost:11434/api/chat \
 from openai import OpenAI
 client = OpenAI(base_url="http://localhost:8080/v1", api_key="your-api-key")
 for chunk in client.chat.completions.create(
-    model="gpt-5.4", messages=[{"role": "user", "content": "Hello!"}], stream=True
+    model="gpt-5.6-sol", messages=[{"role": "user", "content": "Hello!"}], stream=True
 ):
     print(chunk.choices[0].delta.content or "", end="")
 ```
@@ -492,7 +495,7 @@ for chunk in client.chat.completions.create(
 import OpenAI from "openai";
 const client = new OpenAI({ baseURL: "http://localhost:8080/v1", apiKey: "your-api-key" });
 const stream = await client.chat.completions.create({
-  model: "gpt-5.4", messages: [{ role: "user", content: "Hello!" }], stream: true,
+  model: "gpt-5.6-sol", messages: [{ role: "user", content: "Hello!" }], stream: true,
 });
 for await (const chunk of stream) {
   process.stdout.write(chunk.choices[0]?.delta?.content || "");
@@ -565,8 +568,8 @@ call_records:
 ```yaml
 model:
   aliases:
-    claude-opus-4-7: gpt-5.5
-    sonnet-local: gpt-5.4
+    claude-opus-4-7: gpt-5.6-sol
+    sonnet-local: gpt-5.6-terra
     openai-fast: openai:gpt-4o
     deepseek-local: deepseek-chat
 
@@ -625,7 +628,7 @@ Electron 桌面版的 `data/local.yaml` 路径：
 | Windows | `%APPDATA%/Codex Proxy/data/local.yaml` |
 | Linux | `~/.config/Codex Proxy/data/local.yaml` |
 
-> ⚠️ 绑定 `0.0.0.0` 会将服务暴露到局域网，务必在 Dashboard → 密钥设置中配置强密钥，并在防火墙中限制可信网络。
+> ⚠️ 绑定 `0.0.0.0` 会将主服务暴露到局域网，务必分别设置强服务密钥和强管理密钥，并在防火墙中限制可信网络。Ollama Bridge 仍只能绑定 loopback。
 
 ### TLS 配置
 
@@ -637,15 +640,20 @@ tls:
 
 > 内置 Rust native addon（reqwest + rustls），TLS 指纹与真实 Codex Desktop 完全一致。源码运行需先编译：`cd native && npm install && npm run build`。
 
-### API 密钥
+### 服务密钥与管理密钥
 
 ```yaml
 server:
-  proxy_api_key: "pwd"    # 自定义密钥，客户端用 Bearer pwd 访问
+  proxy_api_key: "pwd"    # 服务密钥：客户端用 Bearer pwd 访问推理接口
   # proxy_api_key: null   # null = 不配置全局密钥；已登录账号仍会生成 account-level codex-proxy-xxxx 密钥
+
+dashboard:
+  admin_key: "使用首次启动生成的随机密钥"  # 管理密钥：仅用于 Dashboard 登录和管理 API
 ```
 
-首次启动如果缺少 `data/local.yaml`，程序会自动创建 `server.proxy_api_key: pwd`。当前可用密钥显示在控制面板的 API Configuration 区域。
+首次启动会保留 `server.proxy_api_key: pwd`，并另外生成 64 位十六进制 `dashboard.admin_key`，写入 `data/local.yaml` 并在生成当次输出一次。两把密钥严格隔离：服务密钥不能登录或调用管理 API，管理密钥不能调用推理接口；localhost、Electron、`127.0.0.1` 和 `::1` 也不绕过管理登录。
+
+这是严格迁移：旧配置中的 `server.proxy_api_key` **不会**回退或复制为管理密钥；缺少 `dashboard.admin_key` 时程序会生成并持久化一把新密钥。Dashboard 不会回显现有管理密钥。替换管理密钥会立即撤销全部 Dashboard session 和 CSRF token，所有已登录页面都必须用新密钥重新登录。服务密钥仍显示在 API Configuration/设置区域，并可由管理员按需修改或清空。
 
 ### Ollama Bridge 配置
 
@@ -668,13 +676,7 @@ ollama:
 | `http://localhost:11434/api/chat` | POST | 聊天补全，支持流式 NDJSON |
 | `http://localhost:11434/v1/*` | 任意 | OpenAI `/v1` 直通 |
 
-Docker 部署时，如果希望宿主机访问 `11434`：
-
-1. 在 Dashboard 或 `data/local.yaml` 中设置 `ollama.enabled: true` 和 `ollama.host: 0.0.0.0`。
-2. 取消 `docker-compose.yml` 中 `127.0.0.1:${OLLAMA_BRIDGE_PORT:-11434}:11434` 端口映射的注释。
-3. 保持宿主机绑定 `127.0.0.1`，除非你明确知道自己要把无鉴权 Ollama API 暴露到网络。
-
-浏览器 CORS 访问仅允许 `localhost`、`127.x.x.x`、`::1` 等 loopback origin；非本机网页来源不能读取桥接响应。Bridge 会为 `/v1/*` 直通请求注入已配置的 Codex Proxy API Key，因此暴露到 localhost 之外时，相当于也把主代理 API 以无鉴权方式暴露出去。
+Ollama Bridge 入站无独立鉴权，并会在内部为 `/v1/*` 直通请求注入服务密钥，因此配置和管理 API 只接受 `localhost`、`127.x.x.x` 或 `::1`。浏览器 CORS 同样只允许 loopback origin。Docker 中如需宿主机访问，请使用 host networking 或仅本机端口转发，不要将 bridge 发布到局域网。
 
 ### Official Agent Bridge 配置
 
@@ -743,6 +745,8 @@ curl -N http://localhost:8080/official-agent/threads/{threadId}/turns \
 |---------|---------|
 | `PORT` | `server.port` |
 | `CODEX_PROXY_HOST` | `server.host`（仅当 `data/local.yaml` 未显式设置 `server.host` 时生效） |
+| `CODEX_PROXY_API_KEY` | `server.proxy_api_key`（服务/推理密钥） |
+| `CODEX_DASHBOARD_ADMIN_KEY` | `dashboard.admin_key`（管理密钥；设置后不写入本地文件） |
 | `CODEX_PLATFORM` | `client.platform` |
 | `CODEX_ARCH` | `client.arch` |
 | `HTTPS_PROXY` | `tls.proxy_url` |

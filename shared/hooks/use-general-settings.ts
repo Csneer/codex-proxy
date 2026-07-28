@@ -28,6 +28,7 @@ export interface GeneralSettingsData {
   call_records_enabled: boolean;
   call_records_retention_days: number | null;
   call_records_max_body_bytes: number;
+  call_records_max_rows: number;
 }
 
 interface GeneralSettingsSaveResponse extends GeneralSettingsData {
@@ -35,7 +36,7 @@ interface GeneralSettingsSaveResponse extends GeneralSettingsData {
   restart_required: boolean;
 }
 
-export function useGeneralSettings(apiKey: string | null) {
+export function useGeneralSettings() {
   const [data, setData] = useState<GeneralSettingsData | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -59,13 +60,9 @@ export function useGeneralSettings(apiKey: string | null) {
     setSaved(false);
     setError(null);
     try {
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (apiKey) {
-        headers["Authorization"] = `Bearer ${apiKey}`;
-      }
       const resp = await adminFetch("/admin/general-settings", {
         method: "POST",
-        headers,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patch),
       });
       if (!resp.ok) {
@@ -99,6 +96,7 @@ export function useGeneralSettings(apiKey: string | null) {
         call_records_enabled: result.call_records_enabled,
         call_records_retention_days: result.call_records_retention_days,
         call_records_max_body_bytes: result.call_records_max_body_bytes,
+        call_records_max_rows: result.call_records_max_rows,
       });
       setRestartRequired(result.restart_required);
       setSaved(true);
@@ -108,7 +106,7 @@ export function useGeneralSettings(apiKey: string | null) {
     } finally {
       setSaving(false);
     }
-  }, [apiKey]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
 

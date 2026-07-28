@@ -11,8 +11,9 @@ import {
   type CodexModelInfo,
 } from "../models/model-store.js";
 import { triggerImmediateRefresh } from "../models/model-fetcher.js";
-import { getConfig } from "../config.js";
 import type { ApiKeyPool } from "../auth/api-key-pool.js";
+import type { AccountPool } from "../auth/account-pool.js";
+import { apiKeyAuth } from "../middleware/api-key-auth.js";
 
 // --- Routes ---
 
@@ -70,8 +71,10 @@ function toRuntimeOpenAIModel(id: string): OpenAIModel {
   };
 }
 
-export function createModelRoutes(apiKeyPool?: ApiKeyPool): Hono {
+export function createModelRoutes(apiKeyPool?: ApiKeyPool, accountPool?: AccountPool): Hono {
   const app = new Hono();
+  if (accountPool) app.use("/v1/models/*", apiKeyAuth(accountPool));
+  if (accountPool) app.use("/v1/models", apiKeyAuth(accountPool));
 
   app.get("/v1/models", (c) => {
     const catalog = getModelCatalog();
@@ -143,16 +146,6 @@ export function createModelRoutes(apiKeyPool?: ApiKeyPool): Hono {
 
   // Admin endpoint: trigger immediate model refresh
   app.post("/admin/refresh-models", (c) => {
-    const config = getConfig();
-    const configKey = config.server.proxy_api_key;
-    if (configKey) {
-      const authHeader = c.req.header("Authorization") ?? "";
-      const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-      if (token !== configKey) {
-        c.status(401);
-        return c.json({ error: "Unauthorized" });
-      }
-    }
     triggerImmediateRefresh();
     return c.json({ ok: true, message: "Model refresh triggered" });
   });

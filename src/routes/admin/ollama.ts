@@ -16,12 +16,13 @@ interface OllamaSettingsBody {
 }
 
 import { isRecord } from "../../translation/shared-utils.js";
+import { isLoopbackHostname } from "../../utils/host.js";
 
 function validateBody(body: OllamaSettingsBody): string | null {
   if (body.host !== undefined) {
     const host = body.host.trim();
-    if (!host || /\s/.test(host)) {
-      return "host must be a non-empty hostname or IP address";
+    if (!isLoopbackHostname(host)) {
+      return "host must be a loopback hostname or IP address";
     }
   }
   if (body.port !== undefined) {

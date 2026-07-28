@@ -47,6 +47,7 @@ function createConfig(patch: Partial<AppConfig["ollama"]> = {}): AppConfig {
       oauth_token_endpoint: "https://token.example.test",
     },
     server: { host: "127.0.0.1", port: 8080, proxy_api_key: "secret", trust_proxy: false },
+    dashboard: { admin_key: "admin-secret" },
     logs: { enabled: false, capacity: 2000, capture_body: false, llm_only: true },
     session: { ttl_minutes: 60, cleanup_interval_minutes: 5 },
     tls: { proxy_url: null, force_http11: false },
@@ -120,7 +121,7 @@ describe("Ollama bridge server lifecycle", () => {
   it("starts the listener and reports the externally usable endpoint", async () => {
     mockServe.mockReturnValueOnce(createFakeServer(49152));
     const { startOllamaBridge, getOllamaBridgeStatusForConfig, stopOllamaBridge } = await loadModule();
-    const config = createConfig({ host: "0.0.0.0", port: 0, disable_vision: true });
+    const config = createConfig({ host: "127.0.0.1", port: 0, disable_vision: true });
 
     const status = await startOllamaBridge(config, {
       upstreamBaseUrl: "http://127.0.0.1:8080",
@@ -128,13 +129,13 @@ describe("Ollama bridge server lifecycle", () => {
 
     expect(mockServe).toHaveBeenCalledOnce();
     expect(mockServe.mock.calls[0][0]).toMatchObject({
-      hostname: "0.0.0.0",
+      hostname: "127.0.0.1",
       port: 0,
     });
     expect(status).toMatchObject({
       enabled: true,
       running: true,
-      host: "0.0.0.0",
+      host: "127.0.0.1",
       port: 49152,
       endpoint: "http://127.0.0.1:49152",
       disable_vision: true,

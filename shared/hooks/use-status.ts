@@ -62,15 +62,16 @@ export function useStatus(accountCount: number) {
   const [selectedEffort, setSelectedEffort] = useState("medium");
   const [selectedSpeed, setSelectedSpeed] = useState<string | null>(null);
 
-  const fetchModels = useCallback(async (isInitial: boolean) => {
+  const fetchModels = useCallback(async (isInitial: boolean, serviceKey = apiKey) => {
     try {
       // Fetch full catalog for effort info
-      const catalogResp = await fetch("/v1/models/catalog");
+      const headers = serviceKey ? { Authorization: `Bearer ${serviceKey}` } : undefined;
+      const catalogResp = await fetch("/v1/models/catalog", { headers });
       const catalogData: CatalogModel[] = await catalogResp.json();
       setModelCatalog(catalogData);
 
       // Also fetch flat model list for compatibility with OpenAI clients.
-      const resp = await fetch("/v1/models");
+      const resp = await fetch("/v1/models", { headers });
       const data = await resp.json();
       const ids: string[] = data.data.map((m: { id: string }) => m.id);
       setModels(ids);
@@ -86,7 +87,7 @@ export function useStatus(accountCount: number) {
     } catch {
       if (isInitial) setModels([]);
     }
-  }, []);
+  }, [apiKey]);
 
   useEffect(() => {
     let intervalId: ReturnType<typeof setInterval> | null = null;
@@ -98,7 +99,7 @@ export function useStatus(accountCount: number) {
         if (!data.authenticated) return;
         setBaseUrl(`${window.location.origin}/v1`);
         setApiKey(data.proxy_api_key || "any-string");
-        await fetchModels(true);
+        await fetchModels(true, data.proxy_api_key || "any-string");
 
         // Refresh model list every 60s to pick up dynamic backend changes
         intervalId = setInterval(() => { fetchModels(false); }, 60_000);

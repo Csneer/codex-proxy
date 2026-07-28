@@ -3,6 +3,7 @@ import { Hono } from "hono";
 
 const mockConfig = {
   server: { proxy_api_key: "secret-key" as string | null, trust_proxy: false },
+  dashboard: { admin_key: "admin-secret" },
   session: { ttl_minutes: 60, cleanup_interval_minutes: 5 },
   auth: { rotation_strategy: "least_used" as string },
   quota: {
@@ -90,6 +91,7 @@ describe("dashboard auth endpoints", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockConfig.server.proxy_api_key = "secret-key";
+    mockConfig.dashboard.admin_key = "admin-secret";
     mockConfig.server.trust_proxy = false;
     mockGetConnInfo.mockReturnValue({ remote: { address: "192.168.1.100" } });
     _resetForTest();
@@ -103,7 +105,7 @@ describe("dashboard auth endpoints", () => {
       const res = await app.request("/auth/dashboard-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: "secret-key" }),
+        body: JSON.stringify({ password: "admin-secret" }),
       });
       expect(res.status).toBe(200);
       const body = await res.json();
@@ -115,6 +117,15 @@ describe("dashboard auth endpoints", () => {
       expect(cookie).toContain("SameSite=Strict");
       expect(cookie).toContain("Path=/");
       expect(cookie).toContain("Max-Age=");
+    });
+
+    it("rejects the service API key as a dashboard password", async () => {
+      const res = await createApp().request("/auth/dashboard-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: "secret-key" }),
+      });
+      expect(res.status).toBe(401);
     });
 
     it("returns 401 with wrong password", async () => {
@@ -147,7 +158,7 @@ describe("dashboard auth endpoints", () => {
           "Content-Type": "application/json",
           "X-Forwarded-Proto": "https",
         },
-        body: JSON.stringify({ password: "secret-key" }),
+        body: JSON.stringify({ password: "admin-secret" }),
       });
       expect(res.status).toBe(200);
       const cookie = res.headers.get("set-cookie");
@@ -159,7 +170,7 @@ describe("dashboard auth endpoints", () => {
       const res = await app.request("/auth/dashboard-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: "secret-key" }),
+        body: JSON.stringify({ password: "admin-secret" }),
       });
       expect(res.status).toBe(200);
       const cookie = res.headers.get("set-cookie");
@@ -191,7 +202,7 @@ describe("dashboard auth endpoints", () => {
       const loginRes = await app.request("/auth/dashboard-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: "secret-key" }),
+        body: JSON.stringify({ password: "admin-secret" }),
       });
       const cookie = loginRes.headers.get("set-cookie")!;
       const sessionId = cookie.match(/_codex_session=([^;]+)/)![1];
@@ -214,7 +225,7 @@ describe("dashboard auth endpoints", () => {
       const loginRes = await app.request("/auth/dashboard-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: "secret-key" }),
+        body: JSON.stringify({ password: "admin-secret" }),
       });
       const sessionId = loginRes.headers.get("set-cookie")!.match(/_codex_session=([^;]+)/)![1];
       const csrfRes = await app.request("/admin/csrf", {
@@ -239,7 +250,7 @@ describe("dashboard auth endpoints", () => {
       const loginRes = await app.request("/auth/dashboard-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: "secret-key" }),
+        body: JSON.stringify({ password: "admin-secret" }),
       });
       const sessionId = loginRes.headers.get("set-cookie")!.match(/_codex_session=([^;]+)/)![1];
 
@@ -254,14 +265,11 @@ describe("dashboard auth endpoints", () => {
       expect(dashboardCsrf.verify(`session:${sessionId}`, body.token)).toBe(true);
     });
 
-    it("issues a token bound to the stable localhost principal", async () => {
+    it("does not mint a CSRF token for unauthenticated localhost", async () => {
       mockGetConnInfo.mockReturnValue({ remote: { address: "127.0.0.1" } });
       const res = await createApp().request("/admin/csrf");
 
-      expect(res.status).toBe(200);
-      const body = await res.json();
-      expect(body.expiresAt).toBeGreaterThan(Date.now());
-      expect(dashboardCsrf.verify("local:127.0.0.1", body.token)).toBe(true);
+      expect(res.status).toBe(403);
     });
 
     it("does not mint a token for a remote bearer-only request", async () => {
@@ -276,22 +284,22 @@ describe("dashboard auth endpoints", () => {
   });
 
   describe("GET /auth/dashboard-status", () => {
-    it("returns required=false when no key configured", async () => {
+    it("still requires dashboard auth when the service key is cleared", async () => {
       mockConfig.server.proxy_api_key = null;
       const app = createApp();
       const res = await app.request("/auth/dashboard-status");
       const body = await res.json();
-      expect(body.required).toBe(false);
-      expect(body.authenticated).toBe(true);
+      expect(body.required).toBe(true);
+      expect(body.authenticated).toBe(false);
     });
 
-    it("returns required=false for localhost", async () => {
+    it("requires dashboard auth for localhost", async () => {
       mockGetConnInfo.mockReturnValue({ remote: { address: "127.0.0.1" } });
       const app = createApp();
       const res = await app.request("/auth/dashboard-status");
       const body = await res.json();
-      expect(body.required).toBe(false);
-      expect(body.authenticated).toBe(true);
+      expect(body.required).toBe(true);
+      expect(body.authenticated).toBe(false);
     });
 
     it("returns required=true, authenticated=false for remote without session", async () => {
@@ -314,14 +322,14 @@ describe("dashboard auth endpoints", () => {
       expect(body.authenticated).toBe(false);
     });
 
-    it("returns required=false when trust_proxy=true but no XFF (direct localhost)", async () => {
+    it("requires auth when trust_proxy=true but no XFF (direct localhost)", async () => {
       mockConfig.server.trust_proxy = true;
       mockGetConnInfo.mockReturnValue({ remote: { address: "127.0.0.1" } });
       const app = createApp();
       const res = await app.request("/auth/dashboard-status");
       const body = await res.json();
-      expect(body.required).toBe(false);
-      expect(body.authenticated).toBe(true);
+      expect(body.required).toBe(true);
+      expect(body.authenticated).toBe(false);
     });
 
     it("returns required=true, authenticated=true for remote with valid session", async () => {
@@ -330,7 +338,7 @@ describe("dashboard auth endpoints", () => {
       const loginRes = await app.request("/auth/dashboard-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: "secret-key" }),
+        body: JSON.stringify({ password: "admin-secret" }),
       });
       const cookie = loginRes.headers.get("set-cookie")!;
       const sessionId = cookie.match(/_codex_session=([^;]+)/)![1];
@@ -344,20 +352,19 @@ describe("dashboard auth endpoints", () => {
     });
   });
 
-  describe("POST /admin/settings — remote clear protection", () => {
-    it("blocks remote session from clearing proxy_api_key", async () => {
+  describe("POST /admin/settings — separated credentials", () => {
+    it("allows an authenticated administrator to clear the service key", async () => {
       const app = createApp();
       const res = await app.request("/admin/settings", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: "Bearer secret-key",
+          Authorization: "Bearer admin-secret",
         },
         body: JSON.stringify({ proxy_api_key: null }),
       });
-      expect(res.status).toBe(403);
-      const body = await res.json();
-      expect(body.error).toContain("Cannot clear");
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({ proxy_api_key: null, reauth_required: false });
     });
 
     it("allows localhost to clear proxy_api_key", async () => {
@@ -367,7 +374,7 @@ describe("dashboard auth endpoints", () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: "Bearer secret-key",
+          Authorization: "Bearer admin-secret",
         },
         body: JSON.stringify({ proxy_api_key: null }),
       });
@@ -380,11 +387,49 @@ describe("dashboard auth endpoints", () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: "Bearer secret-key",
+          Authorization: "Bearer admin-secret",
         },
         body: JSON.stringify({ proxy_api_key: "new-key" }),
       });
       expect(res.status).toBe(200);
+    });
+
+    it("never returns the current administration key", async () => {
+      const body = await (await createApp().request("/admin/settings")).json();
+      expect(body).toEqual({ proxy_api_key: "secret-key", admin_key_configured: true });
+      expect(body).not.toHaveProperty("admin_key");
+    });
+
+    it("rejects an empty administration-key replacement", async () => {
+      const res = await createApp().request("/admin/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer admin-secret" },
+        body: JSON.stringify({ admin_key: "   " }),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it("revokes every session and CSRF token after administration-key replacement", async () => {
+      const app = createApp();
+      const loginRes = await app.request("/auth/dashboard-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: "admin-secret" }),
+      });
+      const sessionId = loginRes.headers.get("set-cookie")!.match(/_codex_session=([^;]+)/)![1];
+      const { token } = await (await app.request("/admin/csrf", {
+        headers: { Cookie: `_codex_session=${sessionId}` },
+      })).json();
+
+      const res = await app.request("/admin/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer admin-secret" },
+        body: JSON.stringify({ admin_key: "next-admin-secret" }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({ admin_key_configured: true, reauth_required: true });
+      expect(dashboardCsrf.verify(`session:${sessionId}`, token)).toBe(false);
     });
   });
 });

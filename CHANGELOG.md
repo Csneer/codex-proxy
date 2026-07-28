@@ -10,6 +10,8 @@
 
 ### Changed
 
+- 服务调用密钥与管理密钥严格解耦：保留 `server.proxy_api_key` 首次启动默认值 `pwd`，新增必需且独立生成的 `dashboard.admin_key`；Dashboard、本机/Electron 管理访问及管理自动化统一要求管理凭据，服务密钥不再具有管理权限。管理密钥轮换会撤销全部 session/CSRF，前端拆分两类密钥且不回显管理密钥；Ollama Bridge 强制仅监听 loopback。
+- 修正 `quota_batch` 在滑动额度窗口下因 `reset_at` 漂移反复重建基线、长期粘住同一账号的问题；现在额度增量会稳定累计，并以固定 100 个已完成请求作为陈旧/未知额度的安全兜底。配置值仍只表示额度百分点，例如 10 表示额度增加 10 个百分点时切换；若额度长期不动，则当前账号完成 100 个请求后切到下一个合格账号。
 - 账号持久化从 `accounts.json` 主存储迁移到 `accounts.sqlite`，启动时自动从旧 JSON 迁移并继续保留 `accounts.json` 镜像用于降级/回滚；批量导入改为持久化批处理，避免每个账号同步重写整份 JSON 导致大批量导入卡死。（#657）
 - 重构：消除类型守卫 `isRecord` 的多处重复声明（收拢翻译层与路由层到 `shared-utils.ts`）
 - 重构：合并推理预算映射表 `REASONING_EFFORT_BUDGET`（提取为 `shared-utils.ts` 的公共常量）
@@ -20,7 +22,7 @@
 
 ### Added
 
-- 新增额度批次账号调度与停用账号安全探测：`quota_batch` 会沿用现有缓存额度刷新，优先按周额度、无周额度时按主额度，在相对基线增加约 1–100 个百分点后切到下一个合格账号，不新增轮询探测；显式 `GET /auth/accounts/:id/quota?probe_disabled=true` 可实时探测 active/disabled 账号并返回结构化健康分类，disabled 状态始终保留，401 最多在现有跨进程锁内刷新一次且响应不包含原始上游正文或凭据。Dashboard 可直接配置批次百分比。
+- 新增额度批次账号调度与停用账号安全探测：`quota_batch` 会沿用现有缓存额度刷新，优先按周额度、无周额度时按主额度，在相对基线增加约 1–100 个百分点后切到下一个合格账号；陈旧或未知额度使用固定 100 个已完成请求作为安全兜底，不新增轮询探测。显式 `GET /auth/accounts/:id/quota?probe_disabled=true` 可实时探测 active/disabled 账号并返回结构化健康分类，disabled 状态始终保留，401 最多在现有跨进程锁内刷新一次且响应不包含原始上游正文或凭据。Dashboard 可直接配置额度批次百分点。
 
 - 新增默认关闭的本地成功调用记录 MVP：仅在 OpenAI / Anthropic / Gemini / Responses / Official Agent 调用语义完成且客户端输出成功后写入 `data/call-records.sqlite`，失败、取消、中断和客户端写失败不留存；请求/响应正文在递归脱敏、二进制替换和独立大小上限后保存，支持会话/任务/执行目录分组、FTS5/LIKE 检索、保留期清理和 Dashboard “调用记录”平铺/分组查询页。管理 API 复用 Dashboard 鉴权，列表只返回预览、详情按需加载完整脱敏正文；当前版本明确不评分、不评估调用质量。
 

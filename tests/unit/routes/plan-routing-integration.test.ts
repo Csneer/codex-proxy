@@ -455,30 +455,15 @@ describe("POST /admin/refresh-models", () => {
     expect(triggerImmediateRefresh).toHaveBeenCalledOnce();
   });
 
-  it("requires auth when proxy_api_key is set", async () => {
+  it("leaves authorization to the unified management middleware", async () => {
     mockConfig.server.proxy_api_key = "test-secret";
     const app = createModelRoutes();
 
-    // No auth → 401
+    // Route-local proxy-key authentication was removed.
     const res1 = await app.request("/admin/refresh-models", {
       method: "POST",
     });
-    expect(res1.status).toBe(401);
-    expect(triggerImmediateRefresh).not.toHaveBeenCalled();
-
-    // Wrong auth → 401
-    const res2 = await app.request("/admin/refresh-models", {
-      method: "POST",
-      headers: { Authorization: "Bearer wrong-key" },
-    });
-    expect(res2.status).toBe(401);
-
-    // Correct auth → 200
-    const res3 = await app.request("/admin/refresh-models", {
-      method: "POST",
-      headers: { Authorization: "Bearer test-secret" },
-    });
-    expect(res3.status).toBe(200);
+    expect(res1.status).toBe(200);
     expect(triggerImmediateRefresh).toHaveBeenCalledOnce();
   });
 });

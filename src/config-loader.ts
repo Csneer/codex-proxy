@@ -1,4 +1,5 @@
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from "fs";
+import { randomBytes } from "crypto";
 import { resolve } from "path";
 import yaml from "js-yaml";
 import { getConfigDir, getDataDir } from "./paths.js";
@@ -145,27 +146,51 @@ export function loadMergedConfig(configDir?: string): {
   // otherwise use the standard data directory.
   const dataDir = configDir ? resolve(configDir, "..", "data") : getDataDir();
   const localPath = resolve(dataDir, "local.yaml");
-  if (!existsSync(localPath)) {
-    try {
-      mkdirSync(dataDir, { recursive: true });
-      writeFileSync(localPath, "server:\n  proxy_api_key: pwd\n", "utf-8");
-      console.log("[Config] Created data/local.yaml with default proxy_api_key");
-    } catch (err) {
-      console.warn(`[Config] Failed to create data/local.yaml: ${err instanceof Error ? err.message : err}`);
-    }
-  }
   let local: Record<string, unknown> | null = null;
   if (existsSync(localPath)) {
     try {
       const loaded = loadYaml(localPath) as Record<string, unknown> | null;
       if (loaded && typeof loaded === "object") {
         local = loaded;
-        deepMerge(raw, loaded);
-        console.log("[Config] Merged local overrides from data/local.yaml");
       }
     } catch (err) {
       console.warn(`[Config] Failed to load data/local.yaml: ${err instanceof Error ? err.message : err}`);
     }
+  }
+  const envAdminKey = process.env.CODEX_DASHBOARD_ADMIN_KEY?.trim();
+  const localDashboard = local?.dashboard;
+  const persistedAdminKey = isRecord(localDashboard)
+    ? asNonEmptyString(localDashboard.admin_key)
+    : null;
+  if (!envAdminKey && !persistedAdminKey) {
+    const adminKey = randomBytes(32).toString("hex");
+    const nextLocal = local ?? {};
+    if (!isRecord(nextLocal.server)) nextLocal.server = {};
+    if (!("proxy_api_key" in (nextLocal.server as Record<string, unknown>))) {
+      (nextLocal.server as Record<string, unknown>).proxy_api_key = "pwd";
+    }
+    nextLocal.dashboard = { admin_key: adminKey };
+    try {
+      mkdirSync(dataDir, { recursive: true });
+      writeFileSync(localPath, yaml.dump(nextLocal, { noRefs: true, lineWidth: -1 }), "utf-8");
+    } catch (err) {
+      throw new Error(`[Config] Failed to persist dashboard admin key: ${err instanceof Error ? err.message : err}`);
+    }
+    local = nextLocal;
+    console.log(`[Config] Generated Dashboard/Admin key (save it now): ${adminKey}`);
+  } else if (!local && !existsSync(localPath)) {
+    const nextLocal = { server: { proxy_api_key: "pwd" } };
+    try {
+      mkdirSync(dataDir, { recursive: true });
+      writeFileSync(localPath, yaml.dump(nextLocal, { noRefs: true, lineWidth: -1 }), "utf-8");
+    } catch (err) {
+      throw new Error(`[Config] Failed to create data/local.yaml: ${err instanceof Error ? err.message : err}`);
+    }
+    local = nextLocal;
+  }
+  if (local) {
+    deepMerge(raw, local);
+    console.log("[Config] Merged local overrides from data/local.yaml");
   }
   applyPersistedClientVersionState(raw, local, dataDir);
   return { raw, local };
@@ -175,6 +200,16 @@ export function applyEnvOverrides(
   raw: Record<string, unknown>,
   localOverrides: Record<string, unknown> | null,
 ): Record<string, unknown> {
+  const serviceKeyEnv = process.env.CODEX_PROXY_API_KEY?.trim();
+  if (serviceKeyEnv) {
+    if (!raw.server) raw.server = {};
+    (raw.server as Record<string, unknown>).proxy_api_key = serviceKeyEnv;
+  }
+  const adminKeyEnv = process.env.CODEX_DASHBOARD_ADMIN_KEY?.trim();
+  if (adminKeyEnv) {
+    if (!raw.dashboard) raw.dashboard = {};
+    (raw.dashboard as Record<string, unknown>).admin_key = adminKeyEnv;
+  }
   const jwtEnv = process.env.CODEX_JWT_TOKEN?.trim();
   if (jwtEnv && jwtEnv.startsWith("eyJ")) {
     (raw.auth as Record<string, unknown>).jwt_token = jwtEnv;

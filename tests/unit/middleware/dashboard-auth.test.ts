@@ -3,6 +3,7 @@ import { Hono } from "hono";
 
 const mockConfig = {
   server: { proxy_api_key: "test-key" as string | null, trust_proxy: false },
+  dashboard: { admin_key: "admin-key" },
   session: { ttl_minutes: 60, cleanup_interval_minutes: 5 },
 };
 
@@ -49,25 +50,35 @@ describe("dashboard-auth middleware", () => {
     sessionMod._clearTestSessions();
   });
 
-  it("passes through when proxy_api_key is not set", async () => {
+  it("still requires dashboard auth when proxy_api_key is not set", async () => {
     mockConfig.server.proxy_api_key = null;
     const app = createApp();
     const res = await app.request("/auth/accounts");
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(401);
   });
 
-  it("passes through for localhost requests", async () => {
+  it("requires authentication for localhost requests", async () => {
     mockGetConnInfo.mockReturnValue({ remote: { address: "127.0.0.1" } });
     const app = createApp();
     const res = await app.request("/auth/accounts");
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(401);
   });
 
-  it("passes through for ::1 localhost", async () => {
+  it("requires authentication for ::1 localhost", async () => {
     mockGetConnInfo.mockReturnValue({ remote: { address: "::1" } });
     const app = createApp();
     const res = await app.request("/admin/rotation-settings");
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(401);
+  });
+
+  it("rejects the service key and accepts the dashboard key on management routes", async () => {
+    const app = createApp();
+    expect((await app.request("/auth/accounts", {
+      headers: { Authorization: "Bearer test-key" },
+    })).status).toBe(401);
+    expect((await app.request("/auth/accounts", {
+      headers: { Authorization: "Bearer admin-key" },
+    })).status).toBe(200);
   });
 
   it("passes through for GET / (HTML shell)", async () => {
@@ -108,8 +119,12 @@ describe("dashboard-auth middleware", () => {
 
   it("passes through for dashboard auth endpoints", async () => {
     const app = createApp();
-    for (const path of ["/auth/dashboard-login", "/auth/dashboard-logout", "/auth/dashboard-status"]) {
-      const res = await app.request(path);
+    for (const [method, path] of [
+      ["POST", "/auth/dashboard-login"],
+      ["POST", "/auth/dashboard-logout"],
+      ["GET", "/auth/dashboard-status"],
+    ] as const) {
+      const res = await app.request(path, { method });
       expect(res.status).toBe(200);
     }
   });
@@ -152,14 +167,14 @@ describe("dashboard-auth middleware", () => {
   });
 
   describe("trust_proxy", () => {
-    it("bypasses auth for localhost socket even with X-Forwarded-For when trust_proxy=false", async () => {
+    it("requires auth for localhost socket even with X-Forwarded-For when trust_proxy=false", async () => {
       mockConfig.server.trust_proxy = false;
       mockGetConnInfo.mockReturnValue({ remote: { address: "127.0.0.1" } });
       const app = createApp();
       const res = await app.request("/auth/accounts", {
         headers: { "X-Forwarded-For": "8.8.8.8" },
       });
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(401);
     });
 
     it("requires auth when trust_proxy=true and X-Forwarded-For reveals remote IP", async () => {
@@ -172,12 +187,12 @@ describe("dashboard-auth middleware", () => {
       expect(res.status).toBe(401);
     });
 
-    it("still bypasses for localhost when trust_proxy=true and no forwarded headers", async () => {
+    it("still requires auth for localhost when trust_proxy=true and no forwarded headers", async () => {
       mockConfig.server.trust_proxy = true;
       mockGetConnInfo.mockReturnValue({ remote: { address: "127.0.0.1" } });
       const app = createApp();
       const res = await app.request("/auth/accounts");
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(401);
     });
   });
 });

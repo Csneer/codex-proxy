@@ -1,12 +1,10 @@
 import { useState, useCallback } from "preact/hooks";
 import { useT } from "../../../shared/i18n/context";
 import { useGeneralSettings } from "../../../shared/hooks/use-general-settings";
-import { useSettings } from "../../../shared/hooks/use-settings";
 
 export function GeneralSettings() {
   const t = useT();
-  const settings = useSettings();
-  const gs = useGeneralSettings(settings.apiKey);
+  const gs = useGeneralSettings();
 
   const [draftPort, setDraftPort] = useState<string | null>(null);
   const [draftProxyUrl, setDraftProxyUrl] = useState<string | null>(null);
@@ -24,6 +22,7 @@ export function GeneralSettings() {
   const [draftCallRecordsEnabled, setDraftCallRecordsEnabled] = useState<boolean | null>(null);
   const [draftCallRecordsRetention, setDraftCallRecordsRetention] = useState<string | null>(null);
   const [draftCallRecordsMaxBytes, setDraftCallRecordsMaxBytes] = useState<string | null>(null);
+  const [draftCallRecordsMaxRows, setDraftCallRecordsMaxRows] = useState<string | null>(null);
   const [draftAutoUpdate, setDraftAutoUpdate] = useState<boolean | null>(null);
   const [draftAutoDownload, setDraftAutoDownload] = useState<boolean | null>(null);
   const [draftShowUpdateDialog, setDraftShowUpdateDialog] = useState<boolean | null>(null);
@@ -45,6 +44,7 @@ export function GeneralSettings() {
   const currentCallRecordsEnabled = gs.data?.call_records_enabled ?? false;
   const currentCallRecordsRetention = gs.data?.call_records_retention_days ?? null;
   const currentCallRecordsMaxBytes = gs.data?.call_records_max_body_bytes ?? 1_048_576;
+  const currentCallRecordsMaxRows = gs.data?.call_records_max_rows ?? 10_000;
   const currentAutoUpdate = gs.data?.auto_update ?? true;
   const currentAutoDownload = gs.data?.auto_download ?? false;
   const currentShowUpdateDialog = gs.data?.show_update_dialog ?? false;
@@ -65,6 +65,7 @@ export function GeneralSettings() {
   const displayCallRecordsEnabled = draftCallRecordsEnabled ?? currentCallRecordsEnabled;
   const displayCallRecordsRetention = draftCallRecordsRetention ?? (currentCallRecordsRetention === null ? "" : String(currentCallRecordsRetention));
   const displayCallRecordsMaxBytes = draftCallRecordsMaxBytes ?? String(currentCallRecordsMaxBytes);
+  const displayCallRecordsMaxRows = draftCallRecordsMaxRows ?? String(currentCallRecordsMaxRows);
   const displayAutoUpdate = draftAutoUpdate ?? currentAutoUpdate;
   const displayAutoDownload = draftAutoDownload ?? currentAutoDownload;
   const displayShowUpdateDialog = draftShowUpdateDialog ?? currentShowUpdateDialog;
@@ -86,6 +87,7 @@ export function GeneralSettings() {
     draftCallRecordsEnabled !== null ||
     draftCallRecordsRetention !== null ||
     draftCallRecordsMaxBytes !== null ||
+    draftCallRecordsMaxRows !== null ||
     draftAutoUpdate !== null ||
     draftAutoDownload !== null ||
     draftShowUpdateDialog !== null;
@@ -182,6 +184,11 @@ export function GeneralSettings() {
       if (!Number.isInteger(val) || val < 1024) return;
       patch.call_records_max_body_bytes = val;
     }
+    if (draftCallRecordsMaxRows !== null) {
+      const val = Number(draftCallRecordsMaxRows);
+      if (!Number.isInteger(val) || val < 1) return;
+      patch.call_records_max_rows = val;
+    }
 
     if (draftAutoUpdate !== null) {
       patch.auto_update = draftAutoUpdate;
@@ -212,10 +219,11 @@ export function GeneralSettings() {
     setDraftCallRecordsEnabled(null);
     setDraftCallRecordsRetention(null);
     setDraftCallRecordsMaxBytes(null);
+    setDraftCallRecordsMaxRows(null);
     setDraftAutoUpdate(null);
     setDraftAutoDownload(null);
     setDraftShowUpdateDialog(null);
-  }, [draftPort, draftProxyUrl, draftForceHttp11, draftInjectContext, draftSuppressDirectives, draftDefaultModel, draftReasoningEffort, draftRefreshEnabled, draftRefreshMargin, draftRefreshConcurrency, draftMaxConcurrent, draftRequestInterval, draftUsageHistoryRetention, draftCallRecordsEnabled, draftCallRecordsRetention, draftCallRecordsMaxBytes, draftAutoUpdate, draftAutoDownload, draftShowUpdateDialog, gs]);
+  }, [draftPort, draftProxyUrl, draftForceHttp11, draftInjectContext, draftSuppressDirectives, draftDefaultModel, draftReasoningEffort, draftRefreshEnabled, draftRefreshMargin, draftRefreshConcurrency, draftMaxConcurrent, draftRequestInterval, draftUsageHistoryRetention, draftCallRecordsEnabled, draftCallRecordsRetention, draftCallRecordsMaxBytes, draftCallRecordsMaxRows, draftAutoUpdate, draftAutoDownload, draftShowUpdateDialog, gs]);
 
   const inputCls =
     "w-full px-3 py-2 bg-white dark:bg-bg-dark border border-gray-200 dark:border-border-dark rounded-lg text-[0.78rem] font-mono text-slate-700 dark:text-text-main outline-none focus:ring-1 focus:ring-primary";
@@ -555,6 +563,18 @@ export function GeneralSettings() {
                   value={displayCallRecordsRetention}
                   onInput={(e) => setDraftCallRecordsRetention((e.target as HTMLInputElement).value)}
                   placeholder={t("unlimited")}
+                  class={inputCls}
+                />
+              </div>
+              <div class="space-y-1">
+                <label for="call-records-max-rows" class="text-xs font-semibold text-slate-700 dark:text-text-main">最大记录数</label>
+                <input
+                  id="call-records-max-rows"
+                  aria-label="最大记录数"
+                  type="number"
+                  min="1"
+                  value={displayCallRecordsMaxRows}
+                  onInput={(e) => setDraftCallRecordsMaxRows((e.target as HTMLInputElement).value)}
                   class={inputCls}
                 />
               </div>

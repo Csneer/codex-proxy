@@ -2,13 +2,11 @@ import type { Context, Next } from "hono";
 import { getConfig } from "../config.js";
 import {
   dashboardCsrf,
-  localDashboardPrincipal,
   sessionDashboardPrincipal,
 } from "../auth/dashboard-csrf.js";
 import { validateSession } from "../auth/dashboard-session.js";
-import { getRealClientIp } from "../utils/get-real-client-ip.js";
-import { isLocalhostRequest } from "../utils/is-localhost.js";
 import { parseSessionCookie } from "../utils/parse-cookie.js";
+import { classifyRequestPath } from "../auth/route-auth-policy.js";
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
@@ -35,7 +33,7 @@ function expectedOrigin(c: Context, trustProxy: boolean): string | null {
 
 export async function adminMutationGuard(c: Context, next: Next): Promise<Response | void> {
   const path = c.req.path;
-  if (SAFE_METHODS.has(c.req.method) || (path !== "/admin" && !path.startsWith("/admin/"))) {
+  if (SAFE_METHODS.has(c.req.method) || classifyRequestPath(path, c.req.method) !== "management") {
     return next();
   }
 
@@ -50,16 +48,9 @@ export async function adminMutationGuard(c: Context, next: Next): Promise<Respon
     }
     principal = sessionDashboardPrincipal(sessionId);
   } else {
-    const expectedBearer = config.server.proxy_api_key
-      ? `Bearer ${config.server.proxy_api_key}`
-      : undefined;
-    if (expectedBearer && c.req.header("authorization") === expectedBearer) {
+    const expectedBearer = `Bearer ${config.dashboard.admin_key}`;
+    if (c.req.header("authorization") === expectedBearer) {
       return next();
-    }
-
-    const remoteAddr = getRealClientIp(c, config.server.trust_proxy);
-    if (isLocalhostRequest(remoteAddr)) {
-      principal = localDashboardPrincipal(remoteAddr);
     }
   }
 

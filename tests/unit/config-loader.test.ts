@@ -80,8 +80,9 @@ describe("loadMergedConfig", () => {
     mockExistsSync.mockReturnValue(false);
 
     const { raw, local } = loadMergedConfig();
-    expect(raw).toEqual({ server: { port: 8080 } });
-    expect(local).toBeNull();
+    expect(raw.server).toMatchObject({ port: 8080, proxy_api_key: "pwd" });
+    expect((raw.dashboard as Record<string, unknown>).admin_key).toMatch(/^[a-f0-9]{64}$/);
+    expect(local).toMatchObject({ server: { proxy_api_key: "pwd" } });
   });
 
   it("merges local.yaml when it exists", () => {
@@ -95,8 +96,8 @@ describe("loadMergedConfig", () => {
     mockExistsSync.mockReturnValue(true);
 
     const { raw, local } = loadMergedConfig();
-    expect(raw.server).toEqual({ port: 9090, host: "0.0.0.0" });
-    expect(local).toEqual({ server: { port: 9090 } });
+    expect(raw.server).toMatchObject({ port: 9090, host: "0.0.0.0", proxy_api_key: "pwd" });
+    expect(local).toMatchObject({ server: { port: 9090, proxy_api_key: "pwd" } });
   });
 
   it("creates local.yaml when it does not exist", () => {
@@ -110,6 +111,24 @@ describe("loadMergedConfig", () => {
       expect.stringContaining("proxy_api_key"),
       "utf-8",
     );
+    const written = String(vi.mocked(writeFileSync).mock.calls[0]?.[1]);
+    expect(written).toContain("proxy_api_key: pwd");
+    expect(written).toMatch(/admin_key: [a-f0-9]{64}/);
+    expect(written).not.toContain("admin_key: pwd");
+  });
+
+  it("strictly migrates an existing service-only config with a distinct admin key", () => {
+    mockExistsSync.mockReturnValue(true);
+    mockReadFileSync.mockImplementation((path) => String(path).endsWith("default.yaml")
+      ? "server:\n  proxy_api_key: null\ndashboard:\n  admin_key: null\n"
+      : "server:\n  proxy_api_key: legacy-service\n");
+
+    const { raw } = loadMergedConfig();
+
+    expect((raw.server as Record<string, unknown>).proxy_api_key).toBe("legacy-service");
+    expect((raw.dashboard as Record<string, unknown>).admin_key).toMatch(/^[a-f0-9]{64}$/);
+    expect((raw.dashboard as Record<string, unknown>).admin_key).not.toBe("legacy-service");
+    expect(writeFileSync).toHaveBeenCalledOnce();
   });
 
   it("applies persisted Codex version state on cold config load", () => {
@@ -321,6 +340,8 @@ describe("applyEnvOverrides", () => {
     savedEnv.CODEX_PLATFORM = process.env.CODEX_PLATFORM;
     savedEnv.CODEX_ARCH = process.env.CODEX_ARCH;
     savedEnv.CODEX_PROXY_HOST = process.env.CODEX_PROXY_HOST;
+    savedEnv.CODEX_PROXY_API_KEY = process.env.CODEX_PROXY_API_KEY;
+    savedEnv.CODEX_DASHBOARD_ADMIN_KEY = process.env.CODEX_DASHBOARD_ADMIN_KEY;
     savedEnv.PORT = process.env.PORT;
     savedEnv.HTTPS_PROXY = process.env.HTTPS_PROXY;
     savedEnv.https_proxy = process.env.https_proxy;
@@ -334,6 +355,8 @@ describe("applyEnvOverrides", () => {
     delete process.env.CODEX_PLATFORM;
     delete process.env.CODEX_ARCH;
     delete process.env.CODEX_PROXY_HOST;
+    delete process.env.CODEX_PROXY_API_KEY;
+    delete process.env.CODEX_DASHBOARD_ADMIN_KEY;
     delete process.env.PORT;
     delete process.env.HTTPS_PROXY;
     delete process.env.https_proxy;
@@ -378,6 +401,21 @@ describe("applyEnvOverrides", () => {
     const raw = { server: { host: "127.0.0.1" }, auth: {} } as Record<string, unknown>;
     applyEnvOverrides(raw, null);
     expect((raw.server as Record<string, unknown>).host).toBe("0.0.0.0");
+  });
+
+  it("applies independent service and dashboard credential overrides", () => {
+    process.env.CODEX_PROXY_API_KEY = "env-service";
+    process.env.CODEX_DASHBOARD_ADMIN_KEY = "env-admin";
+    const raw = {
+      auth: {},
+      server: { proxy_api_key: "file-service" },
+      dashboard: { admin_key: "file-admin" },
+    } as Record<string, unknown>;
+
+    applyEnvOverrides(raw, null);
+
+    expect((raw.server as Record<string, unknown>).proxy_api_key).toBe("env-service");
+    expect((raw.dashboard as Record<string, unknown>).admin_key).toBe("env-admin");
   });
 
   it("does not override explicit local.yaml server.host with CODEX_PROXY_HOST", () => {

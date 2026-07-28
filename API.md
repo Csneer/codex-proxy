@@ -2,8 +2,7 @@
 
 ## Authentication
 
-All proxy endpoints (chat/messages/responses) optionally accept `Authorization: Bearer {proxy_api_key}`.
-Dashboard UI uses cookie-based session (`_codex_session`).
+Service endpoints accept `Authorization: Bearer {proxy_api_key}` or an existing account-level `codex-proxy-*` key. Dashboard login and management automation use the independent mandatory `dashboard.admin_key`; the service key is never accepted for management. Browser management uses `_codex_session` plus origin/CSRF checks, including on localhost. Automation may use `Authorization: Bearer {dashboard.admin_key}`.
 
 ---
 
@@ -135,7 +134,7 @@ message content. `data:` URLs and HTTPS URLs both work.
 
 ```jsonc
 {
-  "model": "gpt-5.5",
+  "model": "gpt-5.6-sol",
   "stream": true,
   "input": [{
     "role": "user",
@@ -161,13 +160,11 @@ base64 image bytes.
 
 The optional bridge runs on a separate listener, defaulting to `http://127.0.0.1:11434`.
 It is disabled by default and can be controlled through Dashboard settings or the admin
-API. Ollama endpoints are intentionally unauthenticated; keep the listener bound to
-localhost unless you explicitly trust the network.
+API. Ollama endpoints have no independent inbound authentication, so the listener is
+strictly restricted to loopback hosts (`localhost`, `127.x.x.x`, or `::1`).
 Browser CORS access is restricted to loopback origins (`localhost`, `127.x.x.x`,
 and `::1`) so non-local web pages cannot read bridge responses by default. The
-bridge injects the configured Codex Proxy API key for `/v1/*` passthrough
-requests, so exposing it beyond localhost also exposes the main proxy API
-without requiring clients to know that key.
+bridge injects the configured service API key for `/v1/*` passthrough requests.
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -224,12 +221,12 @@ Model catalog entries can include token metadata:
 
 Static catalog values are defined in `config/models.yaml`; dynamic entries from
 `/backend-api/codex/models` win when the same model ID is returned by upstream.
-On 2026-05-08, real Codex backend metadata returned `context_window=272000`,
-`max_context_window=272000`, `truncation_policy.limit=10000` for `gpt-5.5`, and
-`context_window=272000`, `max_context_window=1000000`,
-`truncation_policy.limit=10000` for `gpt-5.4`. Treat these as runtime Codex
-limits, not as proof that request-level context or max-token switches are
-supported.
+The static GPT-5.6 family (`gpt-5.6-sol` / `gpt-5.6-terra` / `gpt-5.6-luna` /
+`gpt-5.6`) uses a 1,050,000 context window and 128,000 max output tokens.
+Earlier runtime samples still document `context_window=272000` for `gpt-5.5` /
+`gpt-5.4`, with `max_context_window=1000000` on `gpt-5.4`. Treat these as
+runtime Codex limits, not as proof that request-level context or max-token
+switches are supported.
 
 ---
 
@@ -456,9 +453,11 @@ passes.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/auth/dashboard-login` | Login with password → sets session cookie (rate limited: 5/min) |
+| POST | `/auth/dashboard-login` | Login with `dashboard.admin_key` → sets session cookie (rate limited: 5/min) |
 | POST | `/auth/dashboard-logout` | Clear session |
-| GET | `/auth/dashboard-status` | Check if login required |
+| GET | `/auth/dashboard-status` | Check session state; management login is always required |
+
+`dashboard.admin_key` is generated and persisted when absent and never falls back to `server.proxy_api_key`. It is never returned by the API. Rotating it through `POST /admin/settings` revokes every Dashboard session and CSRF token. Management automation can send it as a Bearer token; browser code should use the session cookie and CSRF flow instead.
 
 ---
 

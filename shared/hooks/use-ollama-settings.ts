@@ -28,7 +28,7 @@ interface OllamaSettingsSaveResponse extends OllamaSettingsData {
   success: boolean;
 }
 
-export function useOllamaSettings(apiKey: string | null) {
+export function useOllamaSettings() {
   const [data, setData] = useState<OllamaSettingsData | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -51,11 +51,9 @@ export function useOllamaSettings(apiKey: string | null) {
     setSaved(false);
     setError(null);
     try {
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
       const resp = await adminFetch("/admin/ollama-settings", {
         method: "POST",
-        headers,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patch),
       });
       if (!resp.ok) {
@@ -78,7 +76,7 @@ export function useOllamaSettings(apiKey: string | null) {
     } finally {
       setSaving(false);
     }
-  }, [apiKey]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
 

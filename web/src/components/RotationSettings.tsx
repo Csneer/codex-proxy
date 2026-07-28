@@ -1,7 +1,6 @@
 import { useState, useCallback } from "preact/hooks";
 import { useT } from "../../../shared/i18n/context";
 import { useRotationSettings, type RotationStrategy } from "../../../shared/hooks/use-rotation-settings";
-import { useSettings } from "../../../shared/hooks/use-settings";
 
 type Mode = "sticky" | "rotation";
 type RotationSub = "least_used" | "round_robin" | "quota_batch";
@@ -16,8 +15,7 @@ function toStrategy(mode: Mode, sub: RotationSub): RotationStrategy {
 
 export function RotationSettings() {
   const t = useT();
-  const settings = useSettings();
-  const rs = useRotationSettings(settings.apiKey);
+  const rs = useRotationSettings();
 
   const current = rs.data?.rotation_strategy ?? "least_used";
   const currentMode = toMode(current);
@@ -126,7 +124,6 @@ export function RotationSettings() {
                   <div class="pl-6 flex items-center gap-2">
                     <label class="text-xs text-slate-500 dark:text-text-dim" for="quota-batch-percent">{t("rotationQuotaBatchPercent")}</label>
                     <input id="quota-batch-percent" type="number" min="1" max="100" step="1" value={displayPercent} onInput={(event) => setDraftPercent(Number((event.currentTarget as HTMLInputElement).value))} class="w-20 rounded-md border border-gray-200 dark:border-border-dark bg-white/80 dark:bg-bg-dark px-2 py-1 text-sm" />
-                    <span class="text-xs text-slate-400">%</span>
                     {!validPercent && <span class="text-xs text-red-500">1–100</span>}
                   </div>
                 )}

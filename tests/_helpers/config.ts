@@ -12,6 +12,7 @@ export interface MockConfigOverrides {
   model?: Partial<AppConfig["model"]>;
   auth?: Partial<AppConfig["auth"]>;
   server?: Partial<AppConfig["server"]>;
+  dashboard?: Partial<AppConfig["dashboard"]>;
   session?: Partial<AppConfig["session"]>;
   tls?: Partial<AppConfig["tls"]>;
   quota?: Partial<AppConfig["quota"]>;
@@ -64,6 +65,9 @@ export function createMockConfig(overrides?: MockConfigOverrides): AppConfig {
       port: 8080,
       proxy_api_key: null,
     },
+    dashboard: {
+      admin_key: "test-admin-key",
+    },
     session: {
       ttl_minutes: 60,
       cleanup_interval_minutes: 5,
@@ -98,6 +102,7 @@ export function createMockConfig(overrides?: MockConfigOverrides): AppConfig {
     model:   { ...base.model,   ...overrides?.model },
     auth:    { ...base.auth,    ...overrides?.auth },
     server:  { ...base.server,  ...overrides?.server },
+    dashboard: { ...base.dashboard, ...overrides?.dashboard },
     session: { ...base.session, ...overrides?.session },
     tls:     { ...base.tls,     ...overrides?.tls },
     quota:   { ...base.quota,   ...overrides?.quota },
