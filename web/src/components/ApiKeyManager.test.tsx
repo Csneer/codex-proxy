@@ -1,12 +1,39 @@
 /** @vitest-environment jsdom */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/preact";
-import { AddKeyForm } from "./ApiKeyManager";
+import { AddKeyForm, KeyRow } from "./ApiKeyManager";
 import type { ApiKeyCapability, ApiKeyProvider, ApiKeyWire, CatalogModel } from "../../../shared/hooks/use-api-keys";
 
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+});
+
+describe("KeyRow", () => {
+  it("anchors the status switch knob before translating it", () => {
+    const { container } = render(
+      <KeyRow
+        entry={{
+          id: "key-1",
+          provider: "openai",
+          model: "gpt-test",
+          apiKey: "sk-...test",
+          baseUrl: "https://api.openai.com/v1",
+          label: null,
+          capabilities: ["chat"],
+          wire: "chat",
+          status: "active",
+          addedAt: "2026-07-28T00:00:00Z",
+          lastUsedAt: null,
+        }}
+        onDelete={vi.fn()}
+        onToggle={vi.fn()}
+      />,
+    );
+
+    const knob = container.querySelector('button[title="Disable"] span');
+    expect(knob?.className).toContain("left-0");
+  });
 });
 
 function createOnAdd() {

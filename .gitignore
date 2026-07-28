@@ -27,3 +27,15 @@ stitch-screens/
 CLAUDE.md
 *.tar.gz
 stitch-output/
+
+# Local source-service runtime and operator artifacts
+.env.source
+.superpowers/
+Dockerfile.source
+docker-compose.source.yml
+HANDOFF.md
+data-source/
+data-temp-*/
+dist.backup-*/
+public.backup-*/
+current-*.png
