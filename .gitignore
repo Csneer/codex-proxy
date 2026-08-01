@@ -31,6 +31,7 @@ stitch-output/
 # Local source-service runtime and operator artifacts
 .env.source
 .superpowers/
+.playwright-mcp/
 Dockerfile.source
 docker-compose.source.yml
 HANDOFF.md

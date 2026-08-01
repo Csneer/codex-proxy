@@ -19,6 +19,7 @@ import { LogsPage } from "./pages/LogsPage";
 import { ErrorsPage } from "./pages/ErrorsPage";
 import { CallRecordsPage } from "./pages/CallRecordsPage";
 import { CallDashboardPage } from "./pages/CallDashboardPage";
+import { BackupResourcesPage } from "./pages/BackupResourcesPage";
 import { useUiAppearance } from "../../shared/hooks/use-ui-appearance";
 import { AppearanceDrawer } from "./components/AppearanceDrawer";
 import { useAccounts } from "../../shared/hooks/use-accounts";
@@ -69,6 +70,7 @@ function useUpdateMessage() {
 const TABS: Array<{ hash: string; label: TranslationKey }> = [
   { hash: "", label: "overview" },
   { hash: "#/accounts", label: "manageAccounts" },
+  { hash: "#/backup-resources", label: "backupResources" },
   { hash: "#/api-keys", label: "apiKeys" },
   { hash: "#/proxies", label: "proxySettings" },
   { hash: "#/usage-stats", label: "usageStats" },
@@ -102,9 +104,34 @@ export function TabBar({ activeHash }: { activeHash: string }) {
   );
 }
 
+const ACCOUNT_NAV_ITEMS: Array<{ hash: string; label: TranslationKey }> = [
+  { hash: "#/accounts", label: "manageAccounts" },
+  { hash: "#/backup-resources", label: "backupResources" },
+  { hash: "#/api-keys", label: "apiKeys" },
+];
+
+export function AccountNav({ activeHash }: { activeHash: string }) {
+  const t = useT();
+  return (
+    <nav class="glass-surface mb-5 flex gap-1 overflow-x-auto rounded-xl p-1" aria-label={t("manageAccounts")}>
+      {ACCOUNT_NAV_ITEMS.map((item) => (
+        <a
+          key={item.hash}
+          href={item.hash}
+          aria-current={activeHash === item.hash ? "page" : undefined}
+          class={`min-h-10 whitespace-nowrap rounded-lg px-4 py-2.5 text-xs font-medium transition ${activeHash === item.hash ? "bg-primary-container text-primary shadow-sm" : "text-main hover:bg-primary-container/60 hover:text-primary"}`}
+        >
+          {t(item.label)}
+        </a>
+      ))}
+    </nav>
+  );
+}
+
 const ICON_NAV_ITEMS = [
   { hashes: ["", "#/"], href: "#/", title: "调用大盘", icon: "⌁" },
   { hashes: ["#/accounts", "#/api-keys"], href: "#/accounts", title: "账号", icon: "◎" },
+  { hashes: ["#/backup-resources"], href: "#/backup-resources", title: "备用资源", icon: "▣" },
   { hashes: ["#/proxies"], href: "#/proxies", title: "代理路由", icon: "↗" },
   { hashes: ["#/usage-stats"], href: "#/usage-stats", title: "用量", icon: "◫" },
   { hashes: ["#/logs", "#/errors"], href: "#/logs", title: "日志", icon: "≡" },
@@ -245,6 +272,10 @@ function Dashboard() {
           />
           <AppearanceDrawer />
 
+          {(activeTab === "#/accounts" || activeTab === "#/backup-resources" || activeTab === "#/api-keys") && (
+            <AccountNav activeHash={activeTab} />
+          )}
+
           {activeTab === "" && (
             <div class="flex flex-col gap-6">
               <CallDashboardPage />
@@ -283,6 +314,10 @@ function Dashboard() {
 
           {activeTab === "#/accounts" && (
             <AccountManagement embedded />
+          )}
+
+          {activeTab === "#/backup-resources" && (
+            <BackupResourcesPage />
           )}
 
           {activeTab === "#/api-keys" && (

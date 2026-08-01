@@ -53,6 +53,7 @@ import { createOfficialAgentRoutes } from "./routes/official-agent.js";
 import { installUncaughtErrorHandlers } from "./logs/error-log.js";
 import { closeCallRecordService, initializeCallRecordService } from "./call-records/service.js";
 import { awaitServerListening } from "./utils/await-listening.js";
+import { closeBackupResourceService } from "./backup-resources/service.js";
 
 export interface ServerHandle {
   close: () => Promise<void>;
@@ -288,6 +289,7 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
         cookieJar.destroy();
         accountPool.destroy();
         closeCallRecordService();
+        closeBackupResourceService();
         resolve();
       });
     });

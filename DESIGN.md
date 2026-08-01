@@ -3,13 +3,14 @@
 ## Source of truth
 
 - Status: Active
-- Last refreshed: 2026-07-18
-- Primary product surfaces: authenticated Web dashboard, call observability dashboard, context timeline, call detail, account and proxy administration, settings, logs, usage, and errors.
+- Last refreshed: 2026-08-01
+- Primary product surfaces: authenticated Web dashboard, call observability dashboard, context timeline, call detail, account and proxy administration, backup-resource administration, settings, logs, usage, and errors.
 - Evidence reviewed:
   - `web/src/App.tsx`
   - `web/src/index.css`
   - `web/src/pages/CallRecordsPage.tsx`
   - `web/src/pages/UsageStats.tsx`
+  - `web/src/pages/BackupResourcesPage.tsx`
   - `web/src/components/Header.tsx`
   - `shared/theme/context.tsx`
   - `src/call-records/types.ts`
@@ -83,6 +84,7 @@
   - call search: global semantic search with advanced filters in a secondary surface;
   - call detail: semantic conversation first, raw evidence second;
   - accounts, proxy routing, usage, logs/errors, API/configuration, and appearance settings.
+  - backup resources: short-lived spare account credentials and SMS numbers managed in one dedicated screen under the account navigation group.
 - Content hierarchy:
   1. health and recency;
   2. scale and trend;
@@ -216,3 +218,18 @@
 ## Open questions
 
 - None for the approved scope. New product or visual decisions must be recorded here before implementation diverges from this contract.
+
+## Backup resources feature contract
+
+- Route and navigation: `#/backup-resources` is a dedicated workbench page with its own rail destination, while the account-group secondary navigation also links management accounts, backup resources, and API keys. The page has local tabs for backup accounts and SMS numbers.
+- Intended use: centralized management of low-value, short-lived OAI-related accounts and reusable SMS numbers. This is an operational convenience surface, not a production secrets-management product.
+- Backup account fields: email, email password, ChatGPT password, TOTP secret, email-code URL, note, created time, and updated time.
+- SMS fields: phone number, non-negative use count, note, created time, and updated time. A dedicated “use once” action increments the count atomically; manual edits may correct the count.
+- Default disclosure: account lists expose email, notes, timestamps, and factual `has*` flags only. Passwords, TOTP secrets, and full email-code URLs remain hidden until a single-record detail request. SMS numbers may be shown in full inside this authenticated personal dashboard and masked in compact list presentation.
+- Edit behavior: existing secrets are never preloaded merely to render an edit form. Omitted secret fields remain unchanged; explicit replacement updates them and explicit removal clears them.
+- Storage: backup resources use a dedicated SQLite database and are excluded from existing account import/export. Email, phone number, notes, counts, and timestamps may remain plaintext for simple lookup. Email password, ChatGPT password, TOTP secret, and email-code URL use versioned AES-256-GCM application-layer encryption.
+- Key handling: `CODEX_PROXY_BACKUP_KEY` supplies a base64-encoded 32-byte key when configured. Otherwise the server creates a local base64 key file with owner-only permissions. Missing or invalid keys and authentication failures fail closed and never overwrite ciphertext.
+- Security boundary: management authentication and the existing mutation/CSRF guard remain mandatory. Sensitive responses use `Cache-Control: no-store`; secrets never enter URLs, browser persistence, logs, error copy, or existing account exports.
+- Explicit non-goals: external KMS/HSM integration, per-record envelope keys, key-rotation UI, step-up authentication, detailed access auditing, automatic inbox access, credential validity probing, bulk reveal/copy, and plaintext export.
+- Responsive behavior: desktop uses compact tables; phone uses stacked cards and 40px actions. Loading, empty, error, save, copy, and delete states follow the shared workbench language.
+- Verification: tests cover ciphertext round trips and tamper failure, absence of credential plaintext in SQLite/list responses, CRUD and atomic use-count increments, CSRF-compatible mutations, secret-preserving partial updates, Web interaction states, typecheck, and production build.

@@ -18,6 +18,8 @@ describe("route authentication policy", () => {
     ["GET", "/auth/accounts/export", "management"],
     ["POST", "/auth/login-start", "management"],
     ["POST", "/api/proxies/import", "management"],
+    ["POST", "/admin/backup-resources/accounts", "management"],
+    ["POST", "/admin/backup-resources/phones/phone-1/use", "management"],
     ["GET", "/debug/models", "management"],
     ["GET", "/future-route", "management"],
   ] as const)("classifies %s %s as %s", (method, path, expected) => {

@@ -5,6 +5,7 @@ import { I18nProvider } from "../../shared/i18n/context";
 
 let TabBarComponent: typeof import("./App").TabBar;
 let IconRailComponent: typeof import("./App").IconRail;
+let AccountNavComponent: typeof import("./App").AccountNav;
 
 beforeAll(async () => {
   Object.defineProperty(window, "matchMedia", {
@@ -24,6 +25,7 @@ beforeAll(async () => {
   const app = await import("./App");
   TabBarComponent = app.TabBar;
   IconRailComponent = app.IconRail;
+  AccountNavComponent = app.AccountNav;
 });
 
 afterEach(() => {
@@ -56,6 +58,7 @@ describe("IconRail", () => {
   it.each([
     ["#/", "调用大盘"],
     ["#/api-keys", "账号"],
+    ["#/backup-resources", "备用资源"],
     ["#/errors", "日志"],
     ["#/call-records", "调用记录"],
   ])("maps %s to its visible navigation parent", (hash, label) => {
@@ -69,5 +72,18 @@ describe("IconRail", () => {
     render(<IconRailComponent activeHash="#/missing" />);
 
     expect(document.querySelectorAll(".icon-nav.active")).toHaveLength(0);
+  });
+});
+
+describe("AccountNav", () => {
+  it("exposes backup resources inside the accounts navigation group", () => {
+    const { container } = render(<I18nProvider><AccountNavComponent activeHash="#/backup-resources" /></I18nProvider>);
+
+    const link = screen.getByRole("link", { name: "Backup Resources" });
+    const accountLink = screen.getByRole("link", { name: "Manage Accounts" });
+    expect(link.getAttribute("href")).toBe("#/backup-resources");
+    expect(link.getAttribute("aria-current")).toBe("page");
+    expect(container.querySelector("nav")?.classList.contains("glass-surface")).toBe(true);
+    expect(accountLink.classList.contains("text-main")).toBe(true);
   });
 });

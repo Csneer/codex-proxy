@@ -88,10 +88,9 @@ export async function adminFetch(
   const headers = new Headers(input instanceof Request ? input.headers : undefined);
   new Headers(init?.headers).forEach((value, key) => headers.set(key, value));
   headers.set("X-Codex-Proxy-CSRF", csrf.value.token);
-  const outgoing = input instanceof Request
-    ? new Request(input.clone(), { ...init, headers })
-    : { ...init, headers };
-  const response = await fetch(input instanceof Request ? outgoing : input, input instanceof Request ? undefined : outgoing);
+  const response = input instanceof Request
+    ? await fetch(new Request(input.clone(), { ...init, headers }))
+    : await fetch(input, { ...init, headers });
   if (response.status === 403) clearAdminCsrfCache();
   return response;
 }

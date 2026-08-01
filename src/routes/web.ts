@@ -15,6 +15,7 @@ import { createErrorLogRoutes } from "./admin/error-logs.js";
 import { createCallRecordRoutes } from "./admin/call-records.js";
 import { createUiAppearanceRoutes } from "./admin/ui-appearance.js";
 import { createCallObservabilityRoutes } from "./admin/call-observability.js";
+import { createBackupResourceRoutes } from "./admin/backup-resources.js";
 import type { UsageStatsStore } from "../auth/usage-stats.js";
 
 export function createWebRoutes(accountPool: AccountPool, usageStats: UsageStatsStore): Hono {
@@ -57,6 +58,7 @@ export function createWebRoutes(accountPool: AccountPool, usageStats: UsageStats
   app.route("/", createCallRecordRoutes());
   app.route("/", createUiAppearanceRoutes());
   app.route("/", createCallObservabilityRoutes());
+  app.route("/", createBackupResourceRoutes());
 
   return app;
 }

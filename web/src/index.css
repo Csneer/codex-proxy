@@ -164,6 +164,8 @@ button, input, select, textarea { font: inherit; }
 .call-text-toggle:hover, .call-text-toggle:focus-visible { background: rgb(var(--primary-container) / .72); border-color: rgb(var(--primary) / .48); outline: none; }
 @media (min-width: 1024px) { .call-record-layout { display: grid; grid-template-columns: minmax(260px, .64fr) minmax(0, 1.36fr); } .call-record-list { max-height: 760px; } }
 .text-main { color: rgb(var(--text-main-rgb)); }
+.text-muted { color: rgb(var(--text-muted-rgb)); }
+.inset-surface { background: rgb(var(--bg-surface) / .42); border: 1px solid rgb(var(--border-soft) / .72); }
 .account-card { background: rgb(var(--bg-surface) / .78); border: 1px solid rgb(var(--border-soft) / .86); box-shadow: 0 5px 18px rgb(64 45 31 / .07); backdrop-filter: blur(var(--surface-blur)) saturate(.86); }
 .dark .account-card { background: rgb(var(--bg-surface) / .72); }
 .app-shell .bg-white, .app-shell .dark\:bg-card-dark { background-color: rgb(var(--bg-surface) / var(--card-alpha)) !important; backdrop-filter: blur(var(--surface-blur)) saturate(.86); }

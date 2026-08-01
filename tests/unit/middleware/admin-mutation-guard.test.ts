@@ -51,7 +51,14 @@ describe("admin mutation guard", () => {
     expect((await app.request("/v1/chat/completions", { method: "POST" })).status).toBe(200);
   });
 
-  it.each(["/auth/accounts", "/auth/api-keys/import", "/api/proxies/import", "/debug/action"])(
+  it.each([
+    "/auth/accounts",
+    "/auth/api-keys/import",
+    "/api/proxies/import",
+    "/admin/backup-resources/accounts",
+    "/admin/backup-resources/phones/phone-1/use",
+    "/debug/action",
+  ])(
     "guards management mutations outside /admin: %s",
     async (path) => {
       expect((await createApp().request(path, { method: "POST" })).status).toBe(403);
