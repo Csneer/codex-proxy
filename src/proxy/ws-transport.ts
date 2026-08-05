@@ -94,7 +94,6 @@ function isEarlyMetadataWsEvent(type: string): boolean {
     type === "response.in_progress" ||
     type === "response.metadata" ||
     type === "codex.response.metadata";
-    type === "codex.response.metadata";
 }
 
 const WS_CONNECTING = 0;

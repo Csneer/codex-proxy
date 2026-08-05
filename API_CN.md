@@ -173,7 +173,9 @@ OpenAI Chat 兼容路径会接受 `tools: [{"type":"image_generation"}]`，但�
 | `truncationPolicyLimit` | 上游提供的截断策略限制（如果返回） |
 
 静态值定义在 `config/models.yaml`；同一模型 ID 如果从
-`/backend-api/codex/models` 拉到动态条目，则以上游动态值为准。静态 GPT-5.6
+`/backend-api/codex/models` 拉到动态条目，则以上游动态值为准。
+ChatGPT UI 专用的 `auto` 选择器会从实时模型目录及两种缓存格式中排除，
+因此 `/v1/models` 只会公布可实际调用的模型 ID。静态 GPT-5.6
 家族（`gpt-5.6-sol` / `gpt-5.6-terra` / `gpt-5.6-luna` / `gpt-5.6`）使用
 1,050,000 上下文与 128,000 最大输出。更早的运行时样本仍记录 `gpt-5.5` /
 `gpt-5.4` 的 `context_window=272000`，以及 `gpt-5.4` 的
@@ -223,6 +225,39 @@ context 或 max-token 开关可用。
 | GET | `/auth/accounts/:id/cookies` | 获取已存 cookies |
 | POST | `/auth/accounts/:id/cookies` | 设置 cookies（`{ cookies }`） |
 | DELETE | `/auth/accounts/:id/cookies` | 清除 cookies |
+
+---
+
+## 备用资源
+
+备用资源是与活动账号池及其导入导出格式相互独立的手工维护记录。所有端点都要求
+Dashboard 管理认证；写操作还必须通过现有管理 mutation/CSRF 校验。
+
+### 备用账号
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/admin/backup-resources/accounts` | 列出不含秘密值的账号摘要 |
+| POST | `/admin/backup-resources/accounts` | 新增备用账号 |
+| GET | `/admin/backup-resources/accounts/:id` | 获取单个账号及解密后的秘密字段（`Cache-Control: no-store`） |
+| PATCH | `/admin/backup-resources/accounts/:id` | 部分更新元数据或秘密字段 |
+| DELETE | `/admin/backup-resources/accounts/:id` | 删除单个备用账号 |
+
+`accountStatus` 由用户手工维护，只允许 `plus`、`free`、`unregistered`、`pro`。
+已有数据库记录以及未传状态的新增请求默认使用 `unregistered`。列表只返回邮箱、
+状态、备注、时间戳和 `has*` 存在标记；邮箱密码、ChatGPT 密码、TOTP 密钥和
+邮箱接码 URL 只由单条详情接口返回。
+
+### 接码手机号
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/admin/backup-resources/phones` | 列出接码手机号 |
+| POST | `/admin/backup-resources/phones` | 新增接码手机号 |
+| GET | `/admin/backup-resources/phones/:id` | 获取单条手机号记录 |
+| PATCH | `/admin/backup-resources/phones/:id` | 更新号码、备注或使用次数 |
+| DELETE | `/admin/backup-resources/phones/:id` | 删除单条手机号记录 |
+| POST | `/admin/backup-resources/phones/:id/use` | 原子递增使用次数 |
 
 ---
 

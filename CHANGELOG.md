@@ -10,6 +10,9 @@
 
 ### Changed
 
+- 备用资源账号新增手工维护的 `plus` / `free` / `unregistered` / `pro` 状态：状态随账号保存并在桌面表格、移动卡片与详情中显示，编辑表单可直接修改；已有 `backup-resources.sqlite` 自动增加受约束的 `account_status` 列，旧记录默认 `unregistered`。详情页同时补齐每个已填写值的显式复制操作并修复长文本横向溢出。
+- 动态模型目录现在从实时响应、按 plan 缓存和旧缓存格式统一排除 ChatGPT UI 专用的 `auto` 选择器，同时继续接纳其他后端模型；清理 WebSocket metadata 判定函数中重复且不可达的表达式。
+- Codex Desktop 默认指纹同步到 `26.730.61639` / build `6234`。
 - 服务调用密钥与管理密钥严格解耦：保留 `server.proxy_api_key` 首次启动默认值 `pwd`，新增必需且独立生成的 `dashboard.admin_key`；Dashboard、本机/Electron 管理访问及管理自动化统一要求管理凭据，服务密钥不再具有管理权限。管理密钥轮换会撤销全部 session/CSRF，前端拆分两类密钥且不回显管理密钥；Ollama Bridge 强制仅监听 loopback。
 - 修正 `quota_batch` 在滑动额度窗口下因 `reset_at` 漂移反复重建基线、长期粘住同一账号的问题；现在额度增量会稳定累计，并以固定 100 个已完成请求作为陈旧/未知额度的安全兜底。配置值仍只表示额度百分点，例如 10 表示额度增加 10 个百分点时切换；若额度长期不动，则当前账号完成 100 个请求后切到下一个合格账号。
 - 账号持久化从 `accounts.json` 主存储迁移到 `accounts.sqlite`，启动时自动从旧 JSON 迁移并继续保留 `accounts.json` 镜像用于降级/回滚；批量导入改为持久化批处理，避免每个账号同步重写整份 JSON 导致大批量导入卡死。（#657）

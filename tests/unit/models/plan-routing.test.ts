@@ -118,7 +118,7 @@ describe("plan-based model routing", () => {
     expect(getModelPlanTypes("nonexistent-model")).toEqual([]);
   });
 
-  it("all backend model slugs are admitted (no client-side filtering)", () => {
+  it("admits arbitrary backend model slugs except known UI-only selectors", () => {
     applyBackendModelsForPlan("free", [
       makeModel("gpt-5.3-codex"),
       makeModel("research"),

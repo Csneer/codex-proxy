@@ -7,6 +7,7 @@ import type {
   BackupAccountDetail,
   BackupAccountInput,
   BackupAccountPatch,
+  BackupAccountStatus,
   BackupAccountSummary,
   BackupPhone,
   BackupPhoneInput,
@@ -16,6 +17,7 @@ import type {
 interface AccountRow {
   id: string;
   email: string;
+  account_status: BackupAccountStatus;
   email_password: string | null;
   chatgpt_password: string | null;
   totp_secret: string | null;
@@ -42,6 +44,7 @@ const SECRET_COLUMNS = {
 } as const;
 const KEY_CHECK_NAME = "encryption_key_check";
 const KEY_CHECK_VALUE = "codex-proxy-backup-resources-v1";
+const DEFAULT_ACCOUNT_STATUS: BackupAccountStatus = "unregistered";
 
 function now(): string {
   return new Date().toISOString();
@@ -51,6 +54,7 @@ function accountSummary(row: AccountRow): BackupAccountSummary {
   return {
     id: row.id,
     email: row.email,
+    accountStatus: row.account_status,
     note: row.note ?? "",
     hasEmailPassword: row.email_password !== null,
     hasChatgptPassword: row.chatgpt_password !== null,
@@ -89,6 +93,8 @@ export class BackupResourceStore {
         CREATE TABLE IF NOT EXISTS backup_accounts (
           id TEXT PRIMARY KEY,
           email TEXT NOT NULL,
+          account_status TEXT NOT NULL DEFAULT 'unregistered'
+            CHECK (account_status IN ('plus', 'free', 'unregistered', 'pro')),
           email_password TEXT,
           chatgpt_password TEXT,
           totp_secret TEXT,
@@ -106,6 +112,7 @@ export class BackupResourceStore {
           updated_at TEXT NOT NULL
         );
       `);
+      this.ensureAccountStatusColumn();
       this.verifyEncryptionKey();
     } catch (error) {
       this.db.close();
@@ -139,11 +146,12 @@ export class BackupResourceStore {
     const timestamp = now();
     this.db.prepare(`
       INSERT INTO backup_accounts (
-        id, email, email_password, chatgpt_password, totp_secret, email_code_url, note, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        id, email, account_status, email_password, chatgpt_password, totp_secret, email_code_url, note, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       input.email,
+      input.accountStatus ?? DEFAULT_ACCOUNT_STATUS,
       this.encryptNullable(input.emailPassword),
       this.encryptNullable(input.chatgptPassword),
       this.encryptNullable(input.totpSecret),
@@ -166,6 +174,10 @@ export class BackupResourceStore {
       if (patch.email !== undefined) {
         assignments.push("email = ?");
         values.push(patch.email);
+      }
+      if (patch.accountStatus !== undefined) {
+        assignments.push("account_status = ?");
+        values.push(patch.accountStatus);
       }
       for (const [field, column] of Object.entries(SECRET_COLUMNS) as Array<[keyof typeof SECRET_COLUMNS, string]>) {
         if (patch[field] !== undefined) {
@@ -251,6 +263,16 @@ export class BackupResourceStore {
 
   private encryptNullable(value: string | null | undefined): string | null {
     return value == null ? null : this.cipher.encrypt(value);
+  }
+
+  private ensureAccountStatusColumn(): void {
+    const columns = this.db.pragma("table_info(backup_accounts)") as Array<{ name: string }>;
+    if (columns.some((column) => column.name === "account_status")) return;
+    this.db.exec(`
+      ALTER TABLE backup_accounts
+      ADD COLUMN account_status TEXT NOT NULL DEFAULT 'unregistered'
+        CHECK (account_status IN ('plus', 'free', 'unregistered', 'pro'))
+    `);
   }
 
   private verifyEncryptionKey(): void {

@@ -5,6 +5,7 @@ import {
   useBackupResources,
   type BackupAccount,
   type BackupAccountInput,
+  type BackupAccountStatus,
   type SmsNumber,
   type SmsNumberInput,
 } from "../../../shared/hooks/use-backup-resources";
@@ -18,6 +19,7 @@ const buttonBase = "min-h-10 rounded-lg border px-3 py-2 text-xs font-medium tra
 const secondaryButton = `${buttonBase} border-gray-200 text-muted hover:border-primary/40 hover:text-primary dark:border-border-dark`;
 const dangerButton = `${buttonBase} border-gray-200 text-red-500 hover:border-red-300 hover:text-red-600 dark:border-border-dark dark:text-red-400`;
 const primaryButton = "min-h-10 rounded-lg bg-primary-action px-4 py-2 text-xs font-semibold text-white transition hover:bg-primary-action-hover disabled:cursor-not-allowed disabled:opacity-60";
+const accountStatuses: BackupAccountStatus[] = ["plus", "free", "unregistered", "pro"];
 
 function formatDate(value: string, lang: string): string {
   const date = new Date(value);
@@ -40,7 +42,7 @@ function Modal({ title, children, onClose }: { title: string; children: Componen
   return (
     <div class="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/35 p-3 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label={title}>
       <button class="absolute inset-0 cursor-default" aria-label="Close" onClick={onClose} />
-      <div class="glass-surface relative max-h-[calc(100dvh-24px)] w-full max-w-2xl overflow-y-auto rounded-2xl p-5 shadow-2xl md:p-6">
+      <div class="glass-surface relative max-h-[calc(100dvh-24px)] w-full max-w-2xl overflow-x-hidden overflow-y-auto rounded-2xl p-5 shadow-2xl md:p-6">
         <div class="mb-5 flex items-center justify-between gap-3">
           <h2 class="text-section font-semibold text-main">{title}</h2>
           <button class={secondaryButton} onClick={onClose} aria-label="Close">×</button>
@@ -57,6 +59,30 @@ function Field({ label, children }: { label: string; children: ComponentChildren
       <span>{label}</span>
       {children}
     </label>
+  );
+}
+
+function accountStatusLabel(status: BackupAccountStatus, t: ReturnType<typeof useT>): string {
+  switch (status) {
+    case "plus": return t("backupStatusPlus");
+    case "free": return t("backupStatusFree");
+    case "pro": return t("backupStatusPro");
+    case "unregistered": return t("backupStatusUnregistered");
+  }
+}
+
+function AccountStatusBadge({ status }: { status: BackupAccountStatus }) {
+  const t = useT();
+  const styles: Record<BackupAccountStatus, string> = {
+    plus: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
+    free: "bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300",
+    unregistered: "bg-slate-100 text-slate-500 dark:bg-border-dark dark:text-text-dim",
+    pro: "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300",
+  };
+  return (
+    <span class={`inline-flex whitespace-nowrap rounded-full px-2 py-1 text-[11px] font-semibold ${styles[status]}`}>
+      {accountStatusLabel(status, t)}
+    </span>
   );
 }
 
@@ -110,6 +136,7 @@ function AccountForm({
 }) {
   const t = useT();
   const [email, setEmail] = useState(account?.email ?? "");
+  const [accountStatus, setAccountStatus] = useState<BackupAccountStatus>(account?.accountStatus ?? "unregistered");
   const [note, setNote] = useState(account?.note ?? "");
   const [secrets, setSecrets] = useState<Record<SecretField, string>>({ emailPassword: "", chatgptPassword: "", totpSecret: "", emailCodeUrl: "" });
   const [cleared, setCleared] = useState<Record<SecretField, boolean>>({ emailPassword: false, chatgptPassword: false, totpSecret: false, emailCodeUrl: false });
@@ -123,7 +150,7 @@ function AccountForm({
 
   const submit = async (event: Event) => {
     event.preventDefault();
-    const input: BackupAccountInput = { email: email.trim(), note: note.trim() };
+    const input: BackupAccountInput = { email: email.trim(), accountStatus, note: note.trim() };
     for (const field of Object.keys(secrets) as SecretField[]) {
       if (cleared[field]) input[field] = null;
       else if (secrets[field] !== "" || !account) input[field] = secrets[field] || null;
@@ -136,6 +163,15 @@ function AccountForm({
       <form class="grid gap-4" onSubmit={submit}>
         <Field label={t("backupEmail")}>
           <input class={inputClass} type="email" required autocomplete="off" value={email} onInput={(event) => setEmail((event.currentTarget as HTMLInputElement).value)} />
+        </Field>
+        <Field label={t("backupAccountStatus")}>
+          <select
+            class={inputClass}
+            value={accountStatus}
+            onChange={(event) => setAccountStatus((event.currentTarget as HTMLSelectElement).value as BackupAccountStatus)}
+          >
+            {accountStatuses.map((status) => <option key={status} value={status}>{accountStatusLabel(status, t)}</option>)}
+          </select>
         </Field>
         <div class="grid gap-4 md:grid-cols-2">
           <SecretInput label={t("backupEmailPassword")} value={secrets.emailPassword} hasExisting={hasExisting.emailPassword} clear={cleared.emailPassword}
@@ -216,19 +252,19 @@ function SecretDetail({ label, value }: { label: string; value: string | null })
   const t = useT();
   const [revealed, setRevealed] = useState(false);
   return (
-    <div class="inset-surface rounded-xl p-3">
-      <div class="mb-1 flex items-center justify-between gap-3">
-        <span class="text-muted text-xs font-medium">{label}</span>
+    <div class="inset-surface min-w-0 rounded-xl p-3">
+      <div class="mb-1 flex flex-wrap items-center justify-between gap-2">
+        <span class="text-muted min-w-0 text-xs font-medium">{label}</span>
         {value && (
-          <div class="flex items-center gap-1">
+          <div class="flex max-w-full flex-wrap items-center justify-end gap-1">
             <button class="min-h-10 px-2 text-xs font-medium text-primary" onClick={() => setRevealed((current) => !current)}>
               {revealed ? t("backupHideSecret") : t("backupRevealSecret")}
             </button>
-            <CopyButton getText={() => value} titleKey="copy" class="text-muted hover:text-primary" />
+            <CopyButton getText={() => value} variant="label" class="shrink-0" />
           </div>
         )}
       </div>
-      <p class="break-all font-mono text-xs text-main">{value ? (revealed ? value : "••••••••••••") : t("backupNotSet")}</p>
+      <p class="min-w-0 break-all font-mono text-xs text-main">{value ? (revealed ? value : "••••••••••••") : t("backupNotSet")}</p>
     </div>
   );
 }
@@ -240,18 +276,27 @@ function AccountDetail({ resources, onClose }: { resources: ReturnType<typeof us
       {resources.detailLoading && <div class="py-12 text-center text-sm text-slate-400">{t("backupLoadingDetail")}</div>}
       {resources.detailError && <div role="alert" class="rounded-lg bg-red-50 p-3 text-sm text-red-600 dark:bg-red-900/20 dark:text-red-400">{resources.detailError}</div>}
       {resources.detail && (
-        <div class="grid gap-3">
-          <div>
-            <p class="text-muted text-xs">{t("backupEmail")}</p>
-            <p class="mt-1 break-all text-sm font-semibold text-main">{resources.detail.email}</p>
+        <div class="grid min-w-0 gap-3">
+          <div class="flex flex-wrap items-start justify-between gap-2">
+            <div class="min-w-0 flex-1">
+              <p class="text-muted text-xs">{t("backupEmail")}</p>
+              <p class="mt-1 break-all text-sm font-semibold text-main">{resources.detail.email}</p>
+              <div class="mt-2"><AccountStatusBadge status={resources.detail.accountStatus} /></div>
+            </div>
+            <CopyButton getText={() => resources.detail!.email} variant="label" class="shrink-0" />
           </div>
           <SecretDetail label={t("backupEmailPassword")} value={resources.detail.emailPassword} />
           <SecretDetail label={t("backupChatgptPassword")} value={resources.detail.chatgptPassword} />
           <SecretDetail label={t("backupTotpSecret")} value={resources.detail.totpSecret} />
           <SecretDetail label={t("backupEmailCodeUrl")} value={resources.detail.emailCodeUrl} />
-          <div class="inset-surface rounded-xl p-3">
-            <p class="text-muted text-xs">{t("backupNote")}</p>
-            <p class="mt-1 whitespace-pre-wrap text-sm text-main">{resources.detail.note || t("backupNoNote")}</p>
+          <div class="inset-surface min-w-0 rounded-xl p-3">
+            <div class="flex flex-wrap items-start justify-between gap-2">
+              <div class="min-w-0 flex-1">
+                <p class="text-muted text-xs">{t("backupNote")}</p>
+                <p class="mt-1 break-all whitespace-pre-wrap text-sm text-main">{resources.detail.note || t("backupNoNote")}</p>
+              </div>
+              {resources.detail.note && <CopyButton getText={() => resources.detail!.note} variant="label" class="shrink-0" />}
+            </div>
           </div>
         </div>
       )}
@@ -405,14 +450,15 @@ export function BackupResourcesPage() {
           ) : resources.accounts.length === 0 ? <EmptyState text={t("backupEmptyAccounts")} /> : (
             <>
               <div class="glass-surface hidden overflow-x-auto rounded-xl md:block">
-                <table class="w-full min-w-[920px] text-left text-xs">
+                <table class="w-full min-w-[1000px] text-left text-xs">
                   <thead class="border-b border-gray-200 text-muted dark:border-border-dark">
-                    <tr><th class="px-4 py-3">{t("backupEmail")}</th><th class="px-3 py-3">{t("backupEmailPassword")}</th><th class="px-3 py-3">{t("backupChatgptPassword")}</th><th class="px-3 py-3">TOTP</th><th class="px-3 py-3">{t("backupEmailCodeUrl")}</th><th class="px-3 py-3">{t("backupNote")}</th><th class="px-3 py-3">{t("updatedAt")}</th><th class="px-4 py-3 text-right">{t("backupActions")}</th></tr>
+                    <tr><th class="px-4 py-3">{t("backupEmail")}</th><th class="px-3 py-3">{t("backupAccountStatus")}</th><th class="px-3 py-3">{t("backupEmailPassword")}</th><th class="px-3 py-3">{t("backupChatgptPassword")}</th><th class="px-3 py-3">TOTP</th><th class="px-3 py-3">{t("backupEmailCodeUrl")}</th><th class="px-3 py-3">{t("backupNote")}</th><th class="px-3 py-3">{t("updatedAt")}</th><th class="px-4 py-3 text-right">{t("backupActions")}</th></tr>
                   </thead>
                   <tbody class="divide-y divide-gray-100 dark:divide-border-dark">
                     {resources.accounts.map((account) => (
                       <tr key={account.id} class="align-middle transition-colors hover:bg-primary-container/20">
                         <td class="max-w-48 break-all px-4 py-3 font-medium text-main">{account.email}</td>
+                        <td class="px-3 py-3"><AccountStatusBadge status={account.accountStatus} /></td>
                         <td class="px-3 py-3"><Presence present={account.hasEmailPassword} /></td>
                         <td class="px-3 py-3"><Presence present={account.hasChatgptPassword} /></td>
                         <td class="px-3 py-3"><Presence present={account.hasTotpSecret} /></td>
@@ -428,7 +474,10 @@ export function BackupResourcesPage() {
               <div class="grid gap-3 md:hidden">
                 {resources.accounts.map((account) => (
                   <article key={account.id} class="glass-surface rounded-xl p-4">
-                    <p class="break-all text-sm font-semibold text-main">{account.email}</p>
+                    <div class="flex flex-wrap items-start justify-between gap-2">
+                      <p class="min-w-0 flex-1 break-all text-sm font-semibold text-main">{account.email}</p>
+                      <AccountStatusBadge status={account.accountStatus} />
+                    </div>
                     <p class="mt-1 line-clamp-2 text-xs text-slate-500 dark:text-text-dim">{account.note || t("backupNoNote")}</p>
                     <div class="mt-3 grid grid-cols-2 gap-2 text-xs">
                       <span>{t("backupEmailPassword")}: <Presence present={account.hasEmailPassword} /></span>

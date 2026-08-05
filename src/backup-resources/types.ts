@@ -1,5 +1,9 @@
+export const BACKUP_ACCOUNT_STATUSES = ["plus", "free", "unregistered", "pro"] as const;
+export type BackupAccountStatus = typeof BACKUP_ACCOUNT_STATUSES[number];
+
 export interface BackupAccountInput {
   email: string;
+  accountStatus?: BackupAccountStatus;
   emailPassword?: string | null;
   chatgptPassword?: string | null;
   totpSecret?: string | null;
@@ -9,6 +13,7 @@ export interface BackupAccountInput {
 
 export interface BackupAccountPatch {
   email?: string;
+  accountStatus?: BackupAccountStatus;
   emailPassword?: string | null;
   chatgptPassword?: string | null;
   totpSecret?: string | null;
@@ -19,6 +24,7 @@ export interface BackupAccountPatch {
 export interface BackupAccountSummary {
   id: string;
   email: string;
+  accountStatus: BackupAccountStatus;
   note: string;
   hasEmailPassword: boolean;
   hasChatgptPassword: boolean;

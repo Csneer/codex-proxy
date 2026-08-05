@@ -3,9 +3,12 @@ import { adminFetch } from "../http/admin-fetch";
 
 const BASE_URL = "/admin/backup-resources";
 
+export type BackupAccountStatus = "plus" | "free" | "unregistered" | "pro";
+
 export interface BackupAccount {
   id: string;
   email: string;
+  accountStatus: BackupAccountStatus;
   note: string;
   hasEmailPassword: boolean;
   hasChatgptPassword: boolean;
@@ -24,6 +27,7 @@ export interface BackupAccountDetail extends BackupAccount {
 
 export interface BackupAccountInput {
   email: string;
+  accountStatus: BackupAccountStatus;
   emailPassword?: string | null;
   chatgptPassword?: string | null;
   totpSecret?: string | null;

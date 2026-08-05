@@ -16,6 +16,45 @@ function createStore(): { store: BackupResourceStore; path: string } {
   return { store, path };
 }
 
+function createLegacyStore(): { store: BackupResourceStore; path: string } {
+  const path = join(mkdtempSync(join(tmpdir(), "backup-store-legacy-")), "backup-resources.sqlite");
+  const key = randomBytes(32);
+  const cipher = new BackupSecretCipher(key);
+  const db = new Database(path);
+  db.exec(`
+    CREATE TABLE backup_metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+    CREATE TABLE backup_accounts (
+      id TEXT PRIMARY KEY,
+      email TEXT NOT NULL,
+      email_password TEXT,
+      chatgpt_password TEXT,
+      totp_secret TEXT,
+      email_code_url TEXT,
+      note TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE TABLE backup_phones (
+      id TEXT PRIMARY KEY,
+      phone TEXT NOT NULL,
+      use_count INTEGER NOT NULL DEFAULT 0 CHECK (use_count >= 0),
+      note TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+  `);
+  db.prepare("INSERT INTO backup_metadata (key, value) VALUES (?, ?)")
+    .run("encryption_key_check", cipher.encrypt("codex-proxy-backup-resources-v1"));
+  db.prepare(`
+    INSERT INTO backup_accounts (id, email, created_at, updated_at)
+    VALUES ('legacy-account', 'legacy@example.com', '2026-08-01T00:00:00.000Z', '2026-08-01T00:00:00.000Z')
+  `).run();
+  db.close();
+  const store = new BackupResourceStore(path, new BackupSecretCipher(key));
+  stores.push(store);
+  return { store, path };
+}
+
 afterEach(() => {
   for (const store of stores.splice(0)) store.close();
 });
@@ -25,6 +64,7 @@ describe("BackupResourceStore", () => {
     const { store, path } = createStore();
     const created = store.createAccount({
       email: "user@example.com",
+      accountStatus: "plus",
       emailPassword: "email-password",
       chatgptPassword: "chatgpt-password",
       totpSecret: "totp-secret",
@@ -34,6 +74,7 @@ describe("BackupResourceStore", () => {
 
     expect(created).toMatchObject({
       email: "user@example.com",
+      accountStatus: "plus",
       note: "plain note",
       hasEmailPassword: true,
       hasChatgptPassword: true,
@@ -52,6 +93,7 @@ describe("BackupResourceStore", () => {
     const rawDb = new Database(path, { readonly: true });
     const raw = rawDb.prepare("SELECT * FROM backup_accounts").get() as Record<string, unknown>;
     expect(raw.email).toBe("user@example.com");
+    expect(raw.account_status).toBe("plus");
     expect(raw.note).toBe("plain note");
     for (const column of ["email_password", "chatgpt_password", "totp_secret", "email_code_url"]) {
       expect(raw[column]).toMatch(/^v1:/);
@@ -62,6 +104,18 @@ describe("BackupResourceStore", () => {
     rawDb.close();
   });
 
+  it("defaults existing databases and new accounts to unregistered status", () => {
+    const { store } = createLegacyStore();
+
+    expect(store.getAccount("legacy-account")).toMatchObject({
+      email: "legacy@example.com",
+      accountStatus: "unregistered",
+    });
+    expect(store.createAccount({ email: "new@example.com" })).toMatchObject({
+      accountStatus: "unregistered",
+    });
+  });
+
   it("preserves omitted secrets and removes explicit null secrets", () => {
     const { store } = createStore();
     const account = store.createAccount({
@@ -70,9 +124,10 @@ describe("BackupResourceStore", () => {
       totpSecret: "remove-me",
     });
 
-    store.updateAccount(account.id, { email: "new@example.com", totpSecret: null });
+    store.updateAccount(account.id, { email: "new@example.com", accountStatus: "pro", totpSecret: null });
     expect(store.getAccount(account.id)).toMatchObject({
       email: "new@example.com",
+      accountStatus: "pro",
       emailPassword: "keep-me",
       totpSecret: null,
       hasEmailPassword: true,

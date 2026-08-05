@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   account: {
     id: "backup-1",
     email: "spare@example.com",
+    accountStatus: "plus" as const,
     note: "short-lived",
     hasEmailPassword: true,
     hasChatgptPassword: true,
@@ -23,6 +24,7 @@ const mocks = vi.hoisted(() => ({
   detail: {
     id: "backup-1",
     email: "spare@example.com",
+    accountStatus: "plus" as const,
     note: "short-lived",
     hasEmailPassword: true,
     hasChatgptPassword: true,
@@ -30,8 +32,8 @@ const mocks = vi.hoisted(() => ({
     hasEmailCodeUrl: false,
     emailPassword: "mail-secret",
     chatgptPassword: "chatgpt-secret",
-    totpSecret: null,
-    emailCodeUrl: null,
+    totpSecret: "totp-secret",
+    emailCodeUrl: "https://mail.example/code",
     createdAt: "2026-08-01T10:00:00.000Z",
     updatedAt: "2026-08-01T11:00:00.000Z",
   },
@@ -94,6 +96,13 @@ describe("BackupResourcesPage", () => {
     expect(dialog.querySelectorAll(".inset-surface")).toHaveLength(5);
   });
 
+  it("exposes a visible copy action for every populated detail value", () => {
+    renderPage();
+    fireEvent.click(screen.getAllByRole("button", { name: "View" })[0]!);
+
+    expect(screen.getAllByRole("button", { name: "Copy" })).toHaveLength(6);
+  });
+
   it("omits untouched secret fields from an account edit", async () => {
     renderPage();
     fireEvent.click(screen.getAllByRole("button", { name: "Edit" })[0]!);
@@ -102,8 +111,24 @@ describe("BackupResourcesPage", () => {
     await waitFor(() => expect(mocks.updateAccount).toHaveBeenCalledTimes(1));
     expect(mocks.updateAccount).toHaveBeenCalledWith("backup-1", {
       email: "spare@example.com",
+      accountStatus: "plus",
       note: "short-lived",
     });
+  });
+
+  it("shows and manually updates the persisted account status", async () => {
+    renderPage();
+
+    expect(screen.getAllByText("Plus").length).toBeGreaterThan(0);
+    fireEvent.click(screen.getAllByRole("button", { name: "Edit" })[0]!);
+    fireEvent.change(screen.getByRole("combobox", { name: "Account status" }), { target: { value: "pro" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(mocks.updateAccount).toHaveBeenCalledWith("backup-1", {
+      email: "spare@example.com",
+      accountStatus: "pro",
+      note: "short-lived",
+    }));
   });
 
   it("always exposes separate account and phone creation actions", () => {

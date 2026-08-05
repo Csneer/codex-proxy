@@ -26,11 +26,11 @@ describe("backup resource admin routes", () => {
     const createResponse = await app.request("/admin/backup-resources/accounts", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email: "user@example.com", emailPassword: "secret", totpSecret: "123456" }),
+      body: JSON.stringify({ email: "user@example.com", accountStatus: "plus", emailPassword: "secret", totpSecret: "123456" }),
     });
     expect(createResponse.status).toBe(201);
     const created = await createResponse.json();
-    expect(created).toMatchObject({ email: "user@example.com", hasEmailPassword: true, hasTotpSecret: true });
+    expect(created).toMatchObject({ email: "user@example.com", accountStatus: "plus", hasEmailPassword: true, hasTotpSecret: true });
     expect(created).not.toHaveProperty("emailPassword");
 
     const list = await (await app.request("/admin/backup-resources/accounts")).json();
@@ -44,13 +44,26 @@ describe("backup resource admin routes", () => {
     const patchResponse = await app.request(`/admin/backup-resources/accounts/${created.id}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email: "changed@example.com", totpSecret: null }),
+      body: JSON.stringify({ email: "changed@example.com", accountStatus: "pro", totpSecret: null }),
     });
     expect(await patchResponse.json()).toMatchObject({
       email: "changed@example.com",
+      accountStatus: "pro",
       hasEmailPassword: true,
       hasTotpSecret: false,
     });
+  });
+
+  it("rejects unsupported account statuses", async () => {
+    const app = makeApp();
+    const response = await app.request("/admin/backup-resources/accounts", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: "user@example.com", accountStatus: "enterprise" }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "invalid_request" });
   });
 
   it("validates bodies, handles phone use, and returns sanitized failures", async () => {

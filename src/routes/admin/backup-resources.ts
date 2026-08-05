@@ -2,10 +2,13 @@ import { Hono, type Context } from "hono";
 import { z } from "zod";
 import { getBackupResourceStore } from "../../backup-resources/service.js";
 import type { BackupResourceStore } from "../../backup-resources/store.js";
+import { BACKUP_ACCOUNT_STATUSES } from "../../backup-resources/types.js";
 
 const NullableText = z.string().max(10_000).nullable();
+const AccountStatusSchema = z.enum(BACKUP_ACCOUNT_STATUSES);
 const AccountCreateSchema = z.object({
   email: z.string().trim().min(1).max(320),
+  accountStatus: AccountStatusSchema.optional(),
   emailPassword: NullableText.optional(),
   chatgptPassword: NullableText.optional(),
   totpSecret: NullableText.optional(),

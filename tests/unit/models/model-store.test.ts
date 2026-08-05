@@ -174,6 +174,16 @@ describe("ModelStore", () => {
         if (filePath.endsWith("models-cache.yaml")) {
           return `
 models:
+  - id: auto
+    displayName: auto
+    description: ChatGPT selector
+    isDefault: false
+    supportedReasoningEfforts:
+      - { reasoningEffort: medium, description: "Medium" }
+    defaultReasoningEffort: medium
+    inputModalities: [text]
+    supportsPersonality: false
+    upgrade: null
   - id: cached-only
     displayName: Cached Only
     description: Cached snapshot model
@@ -194,6 +204,7 @@ aliases:
       loadStaticModels("/tmp/test-config");
 
       expect(getModelCatalog().map((m) => m.id)).toEqual(["cached-only"]);
+      expect(getModelInfo("auto")).toBeUndefined();
       expect(getModelAliases()).toEqual({});
       expect(getModelInfo("cached-only")!.source).toBe("backend");
     });
@@ -206,6 +217,16 @@ aliases:
           return `
 planSnapshots:
   plus:
+    - id: auto
+      displayName: auto
+      description: ChatGPT selector
+      isDefault: false
+      supportedReasoningEfforts:
+        - { reasoningEffort: medium, description: "Medium" }
+      defaultReasoningEffort: medium
+      inputModalities: [text]
+      supportsPersonality: false
+      upgrade: null
     - id: cached-plus
       displayName: Cached Plus
       description: Cached plus model
@@ -234,6 +255,7 @@ aliases: {}
       });
 
       loadStaticModels("/tmp/test-config");
+      expect(getModelInfo("auto")).toBeUndefined();
       applyBackendModelsForPlan("plus", [{ slug: "fresh-plus", display_name: "Fresh Plus" }]);
 
       expect(getModelInfo("fresh-plus")).toBeDefined();
@@ -539,15 +561,29 @@ aliases: {}
       expect(info).toBeDefined();
     });
 
-    it("admits all backend models without client-side filtering", () => {
+    it("admits arbitrary backend models except known UI-only selectors", () => {
       loadStaticModels("/tmp/test-config");
       applyBackendModels([{
         slug: "research",
         display_name: "Research Model",
       }]);
-      // All backend models are trusted — no client-side filtering
+      // Unknown backend models remain trusted; only known UI-only selectors are excluded.
       const info = getModelInfo("research");
       expect(info).toBeDefined();
+    });
+
+    it("filters the ChatGPT-only auto selector from backend models", () => {
+      loadStaticModels("/tmp/test-config");
+      applyBackendModels([{
+        slug: "auto",
+        display_name: "auto",
+      }, {
+        slug: "gpt-5.4",
+        display_name: "GPT-5.4",
+      }]);
+
+      expect(getModelInfo("auto")).toBeUndefined();
+      expect(getModelInfo("gpt-5.4")).toBeDefined();
     });
 
     it("uses normalized default efforts when backend has none", () => {
@@ -642,7 +678,7 @@ aliases: {}
   });
 
   describe("backend model admission", () => {
-    it("admits all backend models regardless of naming pattern", () => {
+    it("admits arbitrary backend models regardless of naming pattern", () => {
       loadStaticModels("/tmp/test-config");
       applyBackendModels([
         { slug: "gpt-6.0-codex", display_name: "6.0 Codex" },

@@ -221,6 +221,8 @@ Model catalog entries can include token metadata:
 
 Static catalog values are defined in `config/models.yaml`; dynamic entries from
 `/backend-api/codex/models` win when the same model ID is returned by upstream.
+The ChatGPT UI-only `auto` selector is rejected from live backend catalogs and
+both supported cache formats, so `/v1/models` only advertises callable model IDs.
 The static GPT-5.6 family (`gpt-5.6-sol` / `gpt-5.6-terra` / `gpt-5.6-luna` /
 `gpt-5.6`) uses a 1,050,000 context window and 128,000 max output tokens.
 Earlier runtime samples still document `context_window=272000` for `gpt-5.5` /
@@ -271,6 +273,42 @@ switches are supported.
 | GET | `/auth/accounts/:id/cookies` | Get stored cookies |
 | POST | `/auth/accounts/:id/cookies` | Set cookies (`{ cookies }`) |
 | DELETE | `/auth/accounts/:id/cookies` | Clear cookies |
+
+---
+
+## Backup Resources
+
+Backup resources are manually maintained operational records, separate from the
+active account pool and its import/export formats. All endpoints require
+Dashboard management authentication; mutations also require the normal admin
+mutation/CSRF proof.
+
+### Backup Accounts
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/admin/backup-resources/accounts` | List secret-free account summaries |
+| POST | `/admin/backup-resources/accounts` | Create an account record |
+| GET | `/admin/backup-resources/accounts/:id` | Load one account with decrypted secrets (`Cache-Control: no-store`) |
+| PATCH | `/admin/backup-resources/accounts/:id` | Partially update metadata or secrets |
+| DELETE | `/admin/backup-resources/accounts/:id` | Delete one account record |
+
+`accountStatus` is manually selected and must be `plus`, `free`, `unregistered`,
+or `pro`. Existing database rows and create requests that omit it default to
+`unregistered`. List responses expose only email, status, note, timestamps, and
+`has*` presence flags. Email password, ChatGPT password, TOTP secret, and the
+email-code URL are returned only by the single-record detail endpoint.
+
+### SMS Numbers
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/admin/backup-resources/phones` | List SMS number records |
+| POST | `/admin/backup-resources/phones` | Create an SMS number record |
+| GET | `/admin/backup-resources/phones/:id` | Get one SMS number record |
+| PATCH | `/admin/backup-resources/phones/:id` | Update number, note, or use count |
+| DELETE | `/admin/backup-resources/phones/:id` | Delete one SMS number record |
+| POST | `/admin/backup-resources/phones/:id/use` | Atomically increment the use count |
 
 ---
 

@@ -127,6 +127,7 @@ If you see streaming AI text, the setup is working. If you get 401, double-check
 - **Passive quota collection** — updates account quota from upstream response headers and WebSocket rate-limit events; `quota.refresh_interval_minutes` only controls local usage snapshots, and `0` disables that timer.
 - **Ban detection** — upstream 403 auto-marks banned; 401 token invalidation auto-expires and switches account
 - **API key provider pool** — manage third-party API keys, model lists, import/export, and enable/disable state from the dashboard.
+- **Backup resources** — independently manage spare accounts and SMS numbers; account tier/status is manually maintained, while passwords, TOTP, and email-code URLs are encrypted and loaded only on demand.
 - **Web dashboard** — account management, usage stats, batch operations; dashboard login gate for remote access
 
 ### 3. 🌐 Proxy Pool
@@ -668,6 +669,16 @@ Migration is strict: an old `server.proxy_api_key` is never copied or used as an
 | `/auth/api-keys/:id` | DELETE | Delete one API key |
 | `/auth/api-keys/:id/label` | PATCH | Update API key label |
 | `/auth/api-keys/:id/status` | PATCH | Enable or disable an API key |
+
+**Backup Resources (Dashboard management authentication)**
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/admin/backup-resources/accounts` | GET/POST | List / create backup accounts |
+| `/admin/backup-resources/accounts/:id` | GET/PATCH/DELETE | Load details / update / delete a backup account |
+| `/admin/backup-resources/phones` | GET/POST | List / create SMS numbers |
+| `/admin/backup-resources/phones/:id` | GET/PATCH/DELETE | Get / update / delete an SMS number |
+| `/admin/backup-resources/phones/:id/use` | POST | Record one use |
 
 **Account Import/Export Examples**
 

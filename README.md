@@ -156,6 +156,7 @@ curl http://localhost:8080/v1/chat/completions \
 - **配额采集** — 默认从上游响应头和 WebSocket rate limit 事件被动更新账号额度；用户手动查询单账号额度时会调用 `/backend-api/wham/usage`，并把 `remaining_percent = 100 - used_percent` 写入缓存。
 - **封禁检测** — 上游 403 自动标记 banned；401 token 吊销自动过期并切换账号
 - **API Key Provider 池** — 支持通过 Dashboard 管理第三方 API Key、模型列表、导入导出和启停状态。
+- **备用资源** — 独立管理备用账号与接码手机号；账号套餐状态由用户手工维护，密码、TOTP 和邮箱接码 URL 加密保存且仅在详情中按需读取。
 - **Web 控制面板** — 账号管理、用量统计、批量操作，中英双语；远程访问需 Dashboard 登录门
 
 ### 🌐 代理池
@@ -806,6 +807,16 @@ curl -N http://localhost:8080/official-agent/threads/{threadId}/turns \
 | `/auth/api-keys/:id` | DELETE | 删除单个 API Key |
 | `/auth/api-keys/:id/label` | PATCH | 修改 API Key 标签 |
 | `/auth/api-keys/:id/status` | PATCH | 启用或停用 API Key |
+
+**备用资源（Dashboard 管理认证）**
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/admin/backup-resources/accounts` | GET/POST | 列出 / 新增备用账号 |
+| `/admin/backup-resources/accounts/:id` | GET/PATCH/DELETE | 查看详情 / 更新 / 删除备用账号 |
+| `/admin/backup-resources/phones` | GET/POST | 列出 / 新增接码手机号 |
+| `/admin/backup-resources/phones/:id` | GET/PATCH/DELETE | 查看 / 更新 / 删除接码手机号 |
+| `/admin/backup-resources/phones/:id/use` | POST | 记录使用一次 |
 
 **账号导入导出示例**
 
