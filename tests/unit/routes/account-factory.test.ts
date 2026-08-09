@@ -102,7 +102,12 @@ describe("account-factory v1 routes", () => {
     const response = await app.request("/integration/account-factory/v1/accounts/not-the-account/submission-commit", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ taskId: claim.lease.taskId }),
+      body: JSON.stringify({
+        taskId: claim.lease.taskId,
+        leaseId: claim.lease.id,
+        operationId: "commit-1",
+        idempotencyKey: "commit-key-1",
+      }),
     });
 
     expect(account.id).toBe(claim.account.id);
@@ -172,9 +177,107 @@ describe("account-factory v1 routes", () => {
     expect(syncResponse.headers.get("cache-control")).toBe("no-store");
     expect(claimBody.lease).toMatchObject({ hasProgress: false });
     expect(claimBody.lease).not.toHaveProperty("progress");
-    expect(syncBody.lease).toMatchObject({ hasProgress: false });
-    expect(syncBody.lease).not.toHaveProperty("progress");
-    expect(JSON.stringify(claimBody)).not.toMatch(/password|token|session|mailBody/i);
-    expect(JSON.stringify(syncBody)).not.toMatch(/password|token|session|mailBody/i);
+    expect(syncBody).toMatchObject({
+      schemaVersion: 1,
+      accountId: account.id,
+      lifecycleStatus: "leased",
+      revision: 2,
+      lastSourceRevision: null,
+      hasSession: false,
+      hasAccessToken: false,
+      hasRefreshToken: false,
+    });
+    expect(syncBody).not.toHaveProperty("lease");
+    expect(JSON.stringify(claimBody)).not.toMatch(/password|accessToken|refreshToken|sessionJson|mailBody/i);
+    expect(syncBody).not.toHaveProperty("session");
+    expect(syncBody).not.toHaveProperty("accessToken");
+    expect(syncBody).not.toHaveProperty("refreshToken");
+  });
+
+  it("completes only the owned lease, returns account sync state, and maps stale revisions to a safe 409", async () => {
+    const store = createStore();
+    const account = sync(store);
+    const claim = store.claimAccount({ consumerId: "consumer", taskId: "task-1" })!;
+    const app = createApp(store);
+    const ownership = {
+      leaseId: claim.lease.id,
+      taskId: "task-1",
+      idempotencyKey: "complete-key",
+    };
+    const commit = await app.request(`/integration/account-factory/v1/accounts/${account.id}/submission-commit`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ...ownership, operationId: "commit-1" }),
+    });
+    const completePayload = {
+      ...ownership,
+      schemaVersion: 1,
+      operationId: "complete-1",
+      sourceRevision: 4,
+      chatgptPassword: "chatgpt-secret",
+      session: { user: { email: account.email } },
+      accessToken: "access-secret",
+      refreshToken: "refresh-secret",
+      accountStatus: "free",
+      registrationRoute: "no-2fa",
+      eligibilityStatus: "eligible",
+      validityStatus: "valid",
+    };
+    const completed = await app.request(`/integration/account-factory/v1/accounts/${account.id}/complete`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(completePayload),
+    });
+    const completedBody = await completed.json();
+    const replay = await app.request(`/integration/account-factory/v1/accounts/${account.id}/complete`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ...completePayload, chatgptPassword: "ignored-secret" }),
+    });
+    const stale = await app.request(`/integration/account-factory/v1/accounts/${account.id}/complete`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ...completePayload, operationId: "complete-stale", sourceRevision: 3 }),
+    });
+
+    expect(commit.status).toBe(200);
+    expect(completed.status).toBe(200);
+    expect(completed.headers.get("cache-control")).toBe("no-store");
+    expect(completedBody).toMatchObject({
+      schemaVersion: 1,
+      accountId: account.id,
+      lifecycleStatus: "registered",
+      lastSourceRevision: 4,
+      lastAppliedOperationId: "complete-1",
+      hasSession: true,
+      hasAccessToken: true,
+      hasRefreshToken: true,
+    });
+    expect(await replay.json()).toEqual(completedBody);
+    expect(stale.status).toBe(409);
+    expect(await stale.json()).toEqual({ error: "revision_conflict", ...completedBody });
+    expect(JSON.stringify(completedBody)).not.toContain("secret");
+  });
+
+  it("rejects complete when leaseId does not own the task/account", async () => {
+    const store = createStore();
+    const account = sync(store);
+    const claim = store.claimAccount({ consumerId: "consumer", taskId: "task-1" })!;
+    const app = createApp(store);
+    const response = await app.request(`/integration/account-factory/v1/accounts/${account.id}/complete`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        schemaVersion: 1,
+        leaseId: `${claim.lease.id}-wrong`,
+        taskId: "task-1",
+        operationId: "complete-1",
+        sourceRevision: 1,
+        idempotencyKey: "complete-key",
+        password: "secret",
+      }),
+    });
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({ error: "not_found" });
   });
 });

@@ -9,13 +9,14 @@ import { createTestCipher } from "@fixtures/backup-resources/cipher-fixtures.js"
 const stores: BackupResourceStore[] = [];
 const tempDirs: string[] = [];
 
-function createStore(): { store: BackupResourceStore; path: string } {
+function createStore(): { store: BackupResourceStore; path: string; cipher: ReturnType<typeof createTestCipher> } {
   const dir = mkdtempSync(join(tmpdir(), "account-factory-lifecycle-"));
   tempDirs.push(dir);
   const path = join(dir, "backup-resources.sqlite");
-  const store = new BackupResourceStore(path, createTestCipher());
+  const cipher = createTestCipher();
+  const store = new BackupResourceStore(path, cipher);
   stores.push(store);
-  return { store, path };
+  return { store, path, cipher };
 }
 
 function sync(store: BackupResourceStore, externalId = "mail-1", sourceRevision = "rev-1") {
@@ -130,13 +131,13 @@ describe("BackupResourceStore account-factory lifecycle", () => {
       .run("2000-01-01T00:00:00.000Z", "task-1");
     db.close();
 
-    expect(store.commitSubmission({ taskId: "task-1" })).toMatchObject({ state: "retired" });
+    expect(store.commitSubmission({ taskId: "task-1", leaseId: first.lease.id, idempotencyKey: "commit-expired" })).toMatchObject({ state: "retired" });
     expect(store.getLease("task-1")).toMatchObject({ state: "retired" });
 
     const reclaimed = store.claimAccount({ consumerId: "consumer-2", taskId: "task-2" });
     expect(reclaimed).toMatchObject({ account: { id: account.id }, replayed: false });
 
-    store.commitSubmission({ taskId: "task-2", operationId: "commit-1" });
+    store.commitSubmission({ taskId: "task-2", leaseId: reclaimed!.lease.id, operationId: "commit-1", idempotencyKey: "commit-1" });
     const unavailable = store.claimAccount({ consumerId: "consumer-3", taskId: "task-3" });
 
     expect(unavailable).toBeNull();
@@ -151,47 +152,121 @@ describe("BackupResourceStore account-factory lifecycle", () => {
   it("persists progress and replays mutation results by operation id", () => {
     const { store } = createStore();
     sync(store);
-    store.claimAccount({ consumerId: "consumer-1", taskId: "task-1" });
+    const claim = store.claimAccount({ consumerId: "consumer-1", taskId: "task-1" })!;
 
     const progress = store.reportProgress({
       taskId: "task-1",
+      leaseId: claim.lease.id,
+      idempotencyKey: "progress-1",
       operationId: "progress-1",
       progress: { stage: "邮箱验证码", current: 2, total: 3 },
     });
     const changed = store.reportProgress({
       taskId: "task-1",
+      leaseId: claim.lease.id,
+      idempotencyKey: "progress-2",
       operationId: "progress-2",
       progress: { stage: "submitted", current: 3, total: 3 },
     });
     const replay = store.reportProgress({
       taskId: "task-1",
+      leaseId: claim.lease.id,
+      idempotencyKey: "progress-1",
       operationId: "progress-1",
       progress: { stage: "ignored" },
     });
 
     expect(changed.progress).toEqual({ stage: "submitted", current: 3, total: 3 });
     expect(replay).toEqual(progress);
-    expect(() => store.reportProgress({ taskId: "task-other", operationId: "progress-1", progress: {} }))
+    expect(() => store.reportProgress({ taskId: "task-other", leaseId: claim.lease.id, idempotencyKey: "progress-1", operationId: "progress-1", progress: {} }))
       .toThrow(/reused for a different operation/);
-    expect(() => store.commitSubmission({ taskId: "task-1", operationId: "progress-1" }))
+    expect(() => store.commitSubmission({ taskId: "task-1", leaseId: claim.lease.id, idempotencyKey: "progress-1", operationId: "progress-1" }))
       .toThrow(/reused for a different operation/);
   });
 
-  it("requires submission commit before completion and preserves terminal results on replay", () => {
-    const { store } = createStore();
-    sync(store);
-    store.claimAccount({ consumerId: "consumer-1", taskId: "task-1" });
+  it("encrypts completion credentials and keeps client and mailbox revisions independent", () => {
+    const { store, path, cipher } = createStore();
+    const account = sync(store, "mail-1", "mail-rev-1");
+    const claim = store.claimAccount({ consumerId: "consumer-1", taskId: "task-1" })!;
+    const ownership = { taskId: "task-1", leaseId: claim.lease.id, idempotencyKey: "complete-key" };
 
-    expect(() => store.completeLease({ taskId: "task-1" })).toThrow(/committed first/);
-    store.commitSubmission({ taskId: "task-1" });
-    const completed = store.completeLease({ taskId: "task-1", operationId: "complete-1", accountStatus: "plus" });
-    const replay = store.completeLease({ taskId: "task-1", operationId: "complete-1", accountStatus: "free" });
+    expect(() => store.completeLease({
+      ...ownership, schemaVersion: 1, operationId: "complete-before-commit", sourceRevision: 1, password: "secret-password",
+    })).toThrow(/committed first/);
+    store.commitSubmission({ ...ownership, operationId: "commit-1" });
+    const completed = store.completeLease({
+      ...ownership,
+      schemaVersion: 1,
+      operationId: "complete-1",
+      sourceRevision: 7,
+      password: "secret-password",
+      emailPassword: "mail-password",
+      totpSecret: "totp-secret",
+      session: { user: { email: account.email } },
+      accessToken: "access-token",
+      refreshToken: "refresh-token",
+      accountStatus: "plus",
+      registrationRoute: "totp",
+      eligibilityStatus: "eligible",
+      validityStatus: "valid",
+    });
+    const replay = store.completeLease({
+      ...ownership, schemaVersion: 1, operationId: "complete-1", sourceRevision: 7, password: "ignored-password",
+    });
 
-    expect(completed).toMatchObject({ state: "completed" });
+    expect(completed).toMatchObject({
+      schemaVersion: 1,
+      accountId: account.id,
+      lifecycleStatus: "registered",
+      lastSourceRevision: 7,
+      lastAppliedOperationId: "complete-1",
+      hasSession: true,
+      hasAccessToken: true,
+      hasRefreshToken: true,
+    });
     expect(replay).toEqual(completed);
-    expect(() => store.completeLease({ taskId: "task-1", operationId: "complete-2" }))
-      .toThrow(/terminal/);
-    expect(store.getSyncState("mail_dashboard")).toMatchObject({ registeredAccounts: 1 });
+    const db = new Database(path);
+    const persisted = db.prepare(`
+      SELECT chatgpt_password, email_password, totp_secret, session_json, access_token,
+             refresh_token, last_source_revision, last_client_revision
+      FROM backup_accounts WHERE id = ?
+    `).get(account.id) as Record<string, string | number | null>;
+    db.close();
+    expect(persisted.last_source_revision).toBe("mail-rev-1");
+    expect(persisted.last_client_revision).toBe(7);
+    expect(persisted.chatgpt_password).not.toBe("secret-password");
+    expect(cipher.decrypt(String(persisted.chatgpt_password))).toBe("secret-password");
+
+    store.syncSourceAccount({
+      sourceSystem: "mail_dashboard", externalId: "mail-1", email: account.email,
+      sourceRevision: "mail-rev-2", appleLabel: "updated",
+    });
+    expect(store.getAccountSyncState(account.id)).toMatchObject({
+      lastSourceRevision: 7,
+      lastAppliedOperationId: "complete-1",
+    });
+    const dbAfterSync = new Database(path, { readonly: true });
+    expect(dbAfterSync.prepare("SELECT last_source_revision FROM backup_accounts WHERE id = ?").get(account.id))
+      .toEqual({ last_source_revision: "mail-rev-2" });
+    dbAfterSync.close();
+  });
+
+  it("replays the same complete without a revision bump, accepts newer client state, and safely rejects stale state", () => {
+    const { store } = createStore();
+    const account = sync(store);
+    const claim = store.claimAccount({ consumerId: "consumer", taskId: "task-1" })!;
+    const base = { schemaVersion: 1 as const, taskId: "task-1", leaseId: claim.lease.id, idempotencyKey: "complete-key" };
+    store.commitSubmission({ taskId: "task-1", leaseId: claim.lease.id, idempotencyKey: "commit-key", operationId: "commit-1" });
+    const first = store.completeLease({ ...base, operationId: "complete-1", sourceRevision: 5, password: "password-1" });
+    const replay = store.completeLease({ ...base, operationId: "complete-1", sourceRevision: 5, password: "ignored" });
+    const newer = store.completeLease({ ...base, operationId: "complete-2", sourceRevision: 6, password: "password-2" });
+
+    expect(replay).toEqual(first);
+    expect(newer.revision).toBe(first.revision + 1);
+    expect(newer.lastSourceRevision).toBe(6);
+    expect(() => store.completeLease({ ...base, operationId: "complete-stale", sourceRevision: 4, password: "stale" }))
+      .toThrow(/source revision conflict/);
+    expect(store.getAccountSyncState(account.id)).toEqual(newer);
   });
 
   it("rejects an operation id reused to sync a different source identity", () => {
@@ -216,12 +291,12 @@ describe("BackupResourceStore account-factory lifecycle", () => {
   it("returns uncommitted failures to the pool and records committed failures as invalid", () => {
     const { store } = createStore();
     const account = sync(store);
-    store.claimAccount({ consumerId: "consumer-1", taskId: "task-1" });
+    const first = store.claimAccount({ consumerId: "consumer-1", taskId: "task-1" })!;
 
-    const failed = store.failLease({ taskId: "task-1", errorCode: "mail_timeout" });
-    const reclaimed = store.claimAccount({ consumerId: "consumer-2", taskId: "task-2" });
-    store.commitSubmission({ taskId: "task-2" });
-    const committedFailure = store.failLease({ taskId: "task-2", errorCode: "submission_rejected" });
+    const failed = store.failLease({ taskId: "task-1", leaseId: first.lease.id, idempotencyKey: "fail-1", errorCode: "mail_timeout" });
+    const reclaimed = store.claimAccount({ consumerId: "consumer-2", taskId: "task-2" })!;
+    store.commitSubmission({ taskId: "task-2", leaseId: reclaimed.lease.id, idempotencyKey: "commit-2" });
+    const committedFailure = store.failLease({ taskId: "task-2", leaseId: reclaimed.lease.id, idempotencyKey: "fail-2", errorCode: "submission_rejected" });
 
     expect(failed).toMatchObject({ state: "failed", failureCode: "mail_timeout" });
     expect(reclaimed).toMatchObject({ account: { id: account.id } });
@@ -232,8 +307,8 @@ describe("BackupResourceStore account-factory lifecycle", () => {
   it("does not replay a terminal task claim after its account is reassigned", () => {
     const { store } = createStore();
     const account = sync(store);
-    store.claimAccount({ consumerId: "consumer-1", taskId: "task-1" });
-    store.failLease({ taskId: "task-1", errorCode: "mail_timeout" });
+    const first = store.claimAccount({ consumerId: "consumer-1", taskId: "task-1" })!;
+    store.failLease({ taskId: "task-1", leaseId: first.lease.id, idempotencyKey: "fail-1", errorCode: "mail_timeout" });
 
     const reassigned = store.claimAccount({ consumerId: "consumer-2", taskId: "task-2" });
     const retry = store.claimAccount({ consumerId: "consumer-1", taskId: "task-1" });

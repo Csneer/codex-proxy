@@ -14,6 +14,7 @@ import {
 } from "./types.js";
 import type {
   AccountFactoryAccount,
+  AccountFactoryAccountSyncState,
   AccountFactoryClaimInput,
   AccountFactoryClaimResult,
   AccountFactoryCompleteInput,
@@ -72,7 +73,12 @@ interface AccountFactoryAccountRow extends AccountRow {
   last_mail_synced_at: string | null;
   revision: number;
   last_source_revision: string | null;
+  last_client_revision: number | null;
+  last_client_operation_id: string | null;
   last_applied_operation_id: string | null;
+  access_token: string | null;
+  session_json: string | null;
+  refresh_token: string | null;
 }
 
 interface AccountFactoryLeaseRow {
@@ -152,6 +158,19 @@ function assertTaskId(taskId: string): string {
   const value = taskId.trim();
   if (!value) throw new Error("Account factory taskId must not be empty");
   return value;
+}
+
+function assertRequiredText(value: string, field: string): string {
+  const normalized = value.trim();
+  if (!normalized) throw new Error(`Account factory ${field} must not be empty`);
+  return normalized;
+}
+
+export class AccountFactoryRevisionConflict extends Error {
+  constructor(readonly syncState: AccountFactoryAccountSyncState) {
+    super("Account factory source revision conflict");
+    this.name = "AccountFactoryRevisionConflict";
+  }
 }
 
 const SECRET_COLUMNS = {
@@ -581,24 +600,85 @@ export class BackupResourceStore {
     });
   }
 
-  completeLease(input: AccountFactoryCompleteInput): AccountFactoryLease {
-    return this.applyLeaseOperation(input, "completed", (lease, timestamp, operationId) => {
-      if (lease.state === "completed" || lease.state === "failed" || lease.state === "retired") {
-        throw new Error("Cannot complete a terminal account factory lease");
+  completeLease(input: AccountFactoryCompleteInput): AccountFactoryAccountSyncState {
+    const taskId = assertTaskId(input.taskId);
+    const leaseId = assertRequiredText(input.leaseId, "leaseId");
+    const operationId = assertRequiredText(input.operationId ?? "", "operationId");
+    assertRequiredText(input.idempotencyKey, "idempotencyKey");
+    if (input.schemaVersion !== 1 || !Number.isSafeInteger(input.sourceRevision) || input.sourceRevision < 0) {
+      throw new Error("Invalid account factory completion revision");
+    }
+    const chatgptPassword = input.chatgptPassword ?? input.password;
+    if (!chatgptPassword?.trim()) throw new Error("Account factory chatgpt password is required");
+
+    return this.db.transaction(() => {
+      const replay = this.getOperationResult<AccountFactoryAccountSyncState>(operationId, taskId, "completed", leaseId);
+      if (replay) return replay;
+      const lease = this.getLeaseRow(taskId);
+      if (!lease || lease.id !== leaseId) throw new Error("Account factory lease not found");
+      const current = this.db.prepare("SELECT * FROM backup_accounts WHERE id = ?").get(lease.account_id) as AccountFactoryAccountRow | undefined;
+      if (!current) throw new Error("Account factory account not found");
+      const currentSourceRevision = current.last_client_revision;
+      if (currentSourceRevision !== null && input.sourceRevision < currentSourceRevision) {
+        throw new AccountFactoryRevisionConflict(this.accountSyncState(current));
       }
+      if (lease.state === "failed" || lease.state === "retired") throw new Error("Cannot complete a terminal account factory lease");
       if (!lease.email_submission_committed) throw new Error("Account factory submission must be committed first");
+
+      const timestamp = now();
       this.db.prepare(`
         UPDATE account_factory_leases
         SET state = 'completed', last_applied_operation_id = ?, updated_at = ?
-        WHERE task_id = ?
-      `).run(operationId ?? null, timestamp, lease.task_id);
+        WHERE id = ?
+      `).run(operationId, timestamp, leaseId);
       this.db.prepare(`
         UPDATE backup_accounts
         SET lifecycle_status = 'registered', account_status = ?, registered_at = ?,
-            revision = revision + 1, last_applied_operation_id = ?, updated_at = ?
+            email_password = CASE WHEN ? = 1 THEN ? ELSE email_password END,
+            chatgpt_password = ?,
+            totp_secret = CASE WHEN ? = 1 THEN ? ELSE totp_secret END,
+            session_json = CASE WHEN ? = 1 THEN ? ELSE session_json END,
+            access_token = CASE WHEN ? = 1 THEN ? ELSE access_token END,
+            refresh_token = CASE WHEN ? = 1 THEN ? ELSE refresh_token END,
+            registration_route = COALESCE(?, registration_route),
+            eligibility_status = COALESCE(?, eligibility_status),
+            eligibility_reason = COALESCE(?, eligibility_reason),
+            eligibility_checked_at = COALESCE(?, eligibility_checked_at),
+            validity_status = COALESCE(?, validity_status),
+            revision = revision + 1, last_client_revision = ?, last_client_operation_id = ?,
+            last_applied_operation_id = ?, updated_at = ?
         WHERE id = ?
-      `).run(input.accountStatus ?? "free", timestamp, operationId ?? null, timestamp, lease.account_id);
-    });
+      `).run(
+        input.accountStatus ?? (current.account_status === "unregistered" ? "free" : current.account_status),
+        timestamp,
+        input.emailPassword === undefined ? 0 : 1,
+        this.encryptNullable(input.emailPassword),
+        this.cipher.encrypt(chatgptPassword),
+        input.totpSecret === undefined ? 0 : 1,
+        this.encryptNullable(input.totpSecret),
+        input.session === undefined ? 0 : 1,
+        input.session == null ? null : this.cipher.encrypt(typeof input.session === "string" ? input.session : JSON.stringify(input.session)),
+        input.accessToken === undefined ? 0 : 1,
+        this.encryptNullable(input.accessToken),
+        input.refreshToken === undefined ? 0 : 1,
+        this.encryptNullable(input.refreshToken),
+        input.registrationRoute ?? null,
+        input.eligibilityStatus ?? null,
+        input.eligibilityReason ?? null,
+        input.eligibilityCheckedAt ?? null,
+        input.validityStatus ?? null,
+        String(input.sourceRevision),
+        operationId,
+        operationId,
+        timestamp,
+        lease.account_id,
+      );
+      const updated = this.db.prepare("SELECT * FROM backup_accounts WHERE id = ?").get(lease.account_id) as AccountFactoryAccountRow;
+      const result = this.accountSyncState(updated);
+      this.recordEvent(lease.account_id, taskId, "completed");
+      this.recordOperation(operationId, taskId, "completed", leaseId, result);
+      return result;
+    })();
   }
 
   failLease(input: AccountFactoryFailInput): AccountFactoryLease {
@@ -628,6 +708,11 @@ export class BackupResourceStore {
     });
   }
 
+  getAccountSyncState(accountId: string): AccountFactoryAccountSyncState | null {
+    const row = this.db.prepare("SELECT * FROM backup_accounts WHERE id = ?").get(accountId) as AccountFactoryAccountRow | undefined;
+    return row ? this.accountSyncState(row) : null;
+  }
+
   getSyncState(sourceSystem: AccountFactorySourceSystem): AccountFactorySyncState {
     const row = this.db.prepare(`
       SELECT
@@ -638,22 +723,30 @@ export class BackupResourceStore {
         SUM(CASE WHEN lifecycle_status = 'registered' THEN 1 ELSE 0 END) AS registered_accounts,
         MAX(last_mail_synced_at) AS last_synced_at
       FROM backup_accounts WHERE source_system = ?
-    `).get(sourceSystem) as {
-      active_accounts: number | null;
-      available_accounts: number | null;
-      leased_accounts: number | null;
-      registering_accounts: number | null;
-      registered_accounts: number | null;
-      last_synced_at: string | null;
-    };
+    `).get(sourceSystem) as Record<string, number | string | null>;
     return {
       sourceSystem,
-      activeAccounts: row.active_accounts ?? 0,
-      availableAccounts: row.available_accounts ?? 0,
-      leasedAccounts: row.leased_accounts ?? 0,
-      registeringAccounts: row.registering_accounts ?? 0,
-      registeredAccounts: row.registered_accounts ?? 0,
-      lastSyncedAt: row.last_synced_at,
+      activeAccounts: Number(row.active_accounts ?? 0),
+      availableAccounts: Number(row.available_accounts ?? 0),
+      leasedAccounts: Number(row.leased_accounts ?? 0),
+      registeringAccounts: Number(row.registering_accounts ?? 0),
+      registeredAccounts: Number(row.registered_accounts ?? 0),
+      lastSyncedAt: typeof row.last_synced_at === "string" ? row.last_synced_at : null,
+    };
+  }
+
+  private accountSyncState(row: AccountFactoryAccountRow): AccountFactoryAccountSyncState {
+    return {
+      schemaVersion: 1,
+      accountId: row.id,
+      lifecycleStatus: row.lifecycle_status,
+      revision: row.revision,
+      lastSourceRevision: row.last_client_revision,
+      lastAppliedOperationId: row.last_client_operation_id,
+      updatedAt: row.updated_at,
+      hasSession: row.session_json !== null,
+      hasAccessToken: row.access_token !== null,
+      hasRefreshToken: row.refresh_token !== null,
     };
   }
 
@@ -754,6 +847,9 @@ export class BackupResourceStore {
     }
     if (current < 4) {
       this.applySchemaV4();
+    }
+    if (current < 5) {
+      this.applySchemaV5();
     }
 
     this.writeSchemaVersion(BACKUP_RESOURCES_SCHEMA_VERSION);
@@ -921,6 +1017,19 @@ export class BackupResourceStore {
     migration();
   }
 
+  private applySchemaV5(): void {
+    const migration = this.db.transaction(() => {
+      this.addColumnIfMissing("backup_accounts", "registration_route", "TEXT");
+      this.addColumnIfMissing("backup_accounts", "last_client_revision", "INTEGER");
+      this.addColumnIfMissing("backup_accounts", "last_client_operation_id", "TEXT");
+      this.addColumnIfMissing("backup_accounts", "eligibility_status", "TEXT");
+      this.addColumnIfMissing("backup_accounts", "eligibility_reason", "TEXT");
+      this.addColumnIfMissing("backup_accounts", "eligibility_checked_at", "TEXT");
+      this.addColumnIfMissing("backup_accounts", "validity_status", "TEXT");
+    });
+    migration();
+  }
+
   private getOperationResult<T>(
     operationId: string | undefined,
     taskId: string | null,
@@ -994,19 +1103,20 @@ export class BackupResourceStore {
     apply: (lease: AccountFactoryLeaseRow, timestamp: string, operationId: string | undefined) => void,
   ): AccountFactoryLease {
     const taskId = assertTaskId(input.taskId);
-    const operationId = assertOperationId(input.operationId);
+    const leaseId = assertRequiredText(input.leaseId, "leaseId");
+    const operationId = assertOperationId(input.operationId ?? input.idempotencyKey);
     return this.db.transaction(() => {
-      const replay = this.getOperationResult<AccountFactoryLease>(operationId, taskId, eventType, taskId);
+      const replay = this.getOperationResult<AccountFactoryLease>(operationId, taskId, eventType, leaseId);
       if (replay) return replay;
       const timestamp = now();
       this.expireReclaimableLeases(timestamp);
       const lease = this.getLeaseRow(taskId);
-      if (!lease) throw new Error("Account factory lease not found");
+      if (!lease || lease.id !== leaseId) throw new Error("Account factory lease not found");
       if (lease.state === "retired") return accountFactoryLease(lease);
       apply(lease, timestamp, operationId);
       const result = accountFactoryLease(this.getLeaseRow(taskId)!);
       this.recordEvent(result.accountId, taskId, eventType);
-      this.recordOperation(operationId, taskId, eventType, taskId, result);
+      this.recordOperation(operationId, taskId, eventType, leaseId, result);
       return result;
     })();
   }

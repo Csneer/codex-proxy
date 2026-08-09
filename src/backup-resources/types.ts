@@ -40,7 +40,7 @@ export const ACCOUNT_FACTORY_PROMOTION_STATES = [
 export type AccountFactoryPromotionState = typeof ACCOUNT_FACTORY_PROMOTION_STATES[number];
 
 export const BACKUP_RESOURCES_SCHEMA_VERSION_KEY = "schema_version";
-export const BACKUP_RESOURCES_SCHEMA_VERSION = 4;
+export const BACKUP_RESOURCES_SCHEMA_VERSION = 5;
 
 export interface BackupAccountInput {
   email: string;
@@ -219,8 +219,10 @@ export interface AccountFactoryClaimResult {
 }
 
 export interface AccountFactoryOperationInput {
+  leaseId: string;
   taskId: string;
   operationId?: string;
+  idempotencyKey?: string;
 }
 
 export interface AccountFactoryProgressInput extends AccountFactoryOperationInput {
@@ -228,11 +230,40 @@ export interface AccountFactoryProgressInput extends AccountFactoryOperationInpu
 }
 
 export interface AccountFactoryCompleteInput extends AccountFactoryOperationInput {
+  schemaVersion: 1;
+  operationId: string;
+  idempotencyKey: string;
+  sourceRevision: number;
+  password?: string;
+  chatgptPassword?: string;
+  emailPassword?: string | null;
+  totpSecret?: string | null;
+  session?: unknown | null;
+  accessToken?: string | null;
+  refreshToken?: string | null;
   accountStatus?: BackupAccountStatus;
+  registrationRoute?: string | null;
+  eligibilityStatus?: string | null;
+  eligibilityReason?: string | null;
+  eligibilityCheckedAt?: string | null;
+  validityStatus?: string | null;
 }
 
 export interface AccountFactoryFailInput extends AccountFactoryOperationInput {
   errorCode: string;
+}
+
+export interface AccountFactoryAccountSyncState {
+  schemaVersion: 1;
+  accountId: string;
+  lifecycleStatus: BackupAccountLifecycleStatus;
+  revision: number;
+  lastSourceRevision: number | null;
+  lastAppliedOperationId: string | null;
+  updatedAt: string;
+  hasSession: boolean;
+  hasAccessToken: boolean;
+  hasRefreshToken: boolean;
 }
 
 export interface AccountFactorySyncState {

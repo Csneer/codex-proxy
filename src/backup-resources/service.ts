@@ -6,6 +6,7 @@ import { BackupResourceStore } from "./store.js";
 import type {
   AccountFactoryClaimInput,
   AccountFactoryClaimResult,
+  AccountFactoryAccountSyncState,
   AccountFactoryCompleteInput,
   AccountFactoryFailInput,
   AccountFactoryLease,
@@ -45,7 +46,7 @@ export class AccountFactoryLifecycleService {
     return this.store.reportProgress(input);
   }
 
-  complete(input: AccountFactoryCompleteInput): AccountFactoryLease {
+  complete(input: AccountFactoryCompleteInput): AccountFactoryAccountSyncState {
     return this.store.completeLease(input);
   }
 
@@ -55,6 +56,10 @@ export class AccountFactoryLifecycleService {
 
   getSyncState(sourceSystem: AccountFactorySourceSystem): AccountFactorySyncState {
     return this.store.getSyncState(sourceSystem);
+  }
+
+  getAccountSyncState(accountId: string): AccountFactoryAccountSyncState | null {
+    return this.store.getAccountSyncState(accountId);
   }
 }
 

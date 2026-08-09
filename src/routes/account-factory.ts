@@ -2,7 +2,10 @@ import { Hono, type Context } from "hono";
 import { z } from "zod";
 import { getConfig } from "../config.js";
 import { getBackupResourceStore } from "../backup-resources/service.js";
-import type { BackupResourceStore } from "../backup-resources/store.js";
+import {
+  AccountFactoryRevisionConflict,
+  type BackupResourceStore,
+} from "../backup-resources/store.js";
 import { BACKUP_ACCOUNT_STATUSES } from "../backup-resources/types.js";
 import {
   createMailDashboardClient,
@@ -12,10 +15,14 @@ import {
 
 const BASE_PATH = "/integration/account-factory/v1";
 const Text = z.string().trim().min(1).max(512);
+const Secret = z.string().max(1024 * 1024);
 const Operation = z.object({
+  leaseId: Text,
   taskId: Text,
   operationId: Text.optional(),
+  idempotencyKey: Text.optional(),
 }).strict();
+const SubmissionCommit = Operation.extend({ idempotencyKey: Text }).strict();
 const Claim = z.object({
   consumerId: Text,
   taskId: Text,
@@ -24,11 +31,33 @@ const Claim = z.object({
 }).strict();
 const Progress = Operation.extend({
   progress: z.unknown().refine((value) => value !== undefined),
-}).strict();
+}).strict().refine((value) => Boolean(value.operationId || value.idempotencyKey), {
+  message: "operation identity is required",
+});
 const Complete = Operation.extend({
+  schemaVersion: z.literal(1),
+  operationId: Text,
+  idempotencyKey: Text,
+  sourceRevision: z.number().int().nonnegative(),
+  password: Secret.optional(),
+  chatgptPassword: Secret.optional(),
+  emailPassword: Secret.nullable().optional(),
+  totpSecret: Secret.nullable().optional(),
+  session: z.union([Secret, z.record(z.unknown())]).nullable().optional(),
+  accessToken: Secret.nullable().optional(),
+  refreshToken: Secret.nullable().optional(),
   accountStatus: z.enum(BACKUP_ACCOUNT_STATUSES).optional(),
-}).strict();
-const Fail = Operation.extend({ errorCode: Text }).strict();
+  registrationRoute: Text.nullable().optional(),
+  eligibilityStatus: Text.nullable().optional(),
+  eligibilityReason: Secret.nullable().optional(),
+  eligibilityCheckedAt: z.string().datetime({ offset: true }).nullable().optional(),
+  validityStatus: Text.nullable().optional(),
+}).strict().refine((value) => Boolean(value.password || value.chatgptPassword), {
+  message: "password is required",
+});
+const Fail = Operation.extend({ errorCode: Text }).strict().refine((value) => Boolean(value.operationId || value.idempotencyKey), {
+  message: "operation identity is required",
+});
 const VerificationQuery = z.object({
   after: z.string().datetime({ offset: true }),
   taskId: Text,
@@ -55,9 +84,9 @@ function responseError(c: Context, status: 400 | 404 | 409 | 502, error: string)
   return c.json({ error });
 }
 
-function leaseForAccount(c: Context, store: BackupResourceStore, taskId: string) {
+function leaseForAccount(c: Context, store: BackupResourceStore, taskId: string, leaseId?: string) {
   const lease = store.getLease(taskId);
-  return lease && lease.accountId === c.req.param("id") ? lease : null;
+  return lease && lease.accountId === c.req.param("id") && (leaseId === undefined || lease.id === leaseId) ? lease : null;
 }
 
 function leaseResponse(lease: ReturnType<BackupResourceStore["getLease"]> & {}): Omit<NonNullable<ReturnType<BackupResourceStore["getLease"]>>, "progress"> & { hasProgress: boolean } {
@@ -77,6 +106,10 @@ export function createAccountFactoryRoutes(dependencies: RouteDependencies = {})
       errorType: error instanceof Error ? error.name : "UnknownError",
     });
     if (error instanceof MailDashboardError) return responseError(c, 502, "mail_service_unavailable");
+    if (error instanceof AccountFactoryRevisionConflict) {
+      c.status(409);
+      return c.json({ error: "revision_conflict", ...error.syncState });
+    }
     if (error instanceof Error && error.message.includes("not found")) return responseError(c, 404, "not_found");
     if (error instanceof Error && error.message.includes("Invalid")) return responseError(c, 400, "invalid_request");
     return responseError(c, 409, "lease_conflict");
@@ -119,9 +152,9 @@ export function createAccountFactoryRoutes(dependencies: RouteDependencies = {})
   });
 
   app.post(`${BASE_PATH}/accounts/:id/submission-commit`, async (c) => {
-    const input = await body(c, Operation);
+    const input = await body(c, SubmissionCommit);
     if (!input) return responseError(c, 400, "invalid_request");
-    if (!leaseForAccount(c, store(), input.taskId)) return responseError(c, 404, "not_found");
+    if (!leaseForAccount(c, store(), input.taskId, input.leaseId)) return responseError(c, 404, "not_found");
     return c.json({ lease: leaseResponse(store().commitSubmission(input)) });
   });
 
@@ -140,10 +173,12 @@ export function createAccountFactoryRoutes(dependencies: RouteDependencies = {})
   app.patch(`${BASE_PATH}/accounts/:id/progress`, async (c) => {
     const input = await body(c, Progress);
     if (!input) return responseError(c, 400, "invalid_request");
-    if (!leaseForAccount(c, store(), input.taskId)) return responseError(c, 404, "not_found");
+    if (!leaseForAccount(c, store(), input.taskId, input.leaseId)) return responseError(c, 404, "not_found");
     return c.json({ lease: leaseResponse(store().reportProgress({
+      leaseId: input.leaseId,
       taskId: input.taskId,
       operationId: input.operationId,
+      idempotencyKey: input.idempotencyKey,
       progress: input.progress,
     })) });
   });
@@ -154,20 +189,23 @@ export function createAccountFactoryRoutes(dependencies: RouteDependencies = {})
     const lease = leaseForAccount(c, store(), query.data.taskId);
     if (!lease || lease.id !== query.data.leaseId) return responseError(c, 404, "not_found");
     c.header("Cache-Control", "no-store");
-    return c.json({ lease: leaseResponse(lease), syncState: store().getSyncState("mail_dashboard") });
+    const syncState = store().getAccountSyncState(c.req.param("id"));
+    if (!syncState) return responseError(c, 404, "not_found");
+    return c.json(syncState);
   });
 
   app.post(`${BASE_PATH}/accounts/:id/complete`, async (c) => {
     const input = await body(c, Complete);
     if (!input) return responseError(c, 400, "invalid_request");
-    if (!leaseForAccount(c, store(), input.taskId)) return responseError(c, 404, "not_found");
-    return c.json({ lease: leaseResponse(store().completeLease(input)) });
+    if (!leaseForAccount(c, store(), input.taskId, input.leaseId)) return responseError(c, 404, "not_found");
+    c.header("Cache-Control", "no-store");
+    return c.json(store().completeLease(input));
   });
 
   app.post(`${BASE_PATH}/accounts/:id/fail`, async (c) => {
     const input = await body(c, Fail);
     if (!input) return responseError(c, 400, "invalid_request");
-    if (!leaseForAccount(c, store(), input.taskId)) return responseError(c, 404, "not_found");
+    if (!leaseForAccount(c, store(), input.taskId, input.leaseId)) return responseError(c, 404, "not_found");
     return c.json({ lease: leaseResponse(store().failLease(input)) });
   });
 
