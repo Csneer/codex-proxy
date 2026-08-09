@@ -14,6 +14,7 @@ import { dashboardAuth } from "./middleware/dashboard-auth.js";
 import { adminMutationGuard } from "./middleware/admin-mutation-guard.js";
 import { logCapture } from "./middleware/log-capture.js";
 import { cors } from "./middleware/cors.js";
+import { createAccountFactoryAuth } from "./middleware/account-factory-auth.js";
 
 import type { UpstreamAdapter } from "./proxy/upstream-adapter.js";
 import { createAuthRoutes } from "./routes/auth.js";
@@ -50,6 +51,7 @@ import { createEmbeddingsRoutes } from "./routes/embeddings.js";
 import { createRuntimeUpstreamRouter } from "./proxy/upstream-router-bootstrap.js";
 import { startOllamaBridge, stopOllamaBridge } from "./ollama/server.js";
 import { createOfficialAgentRoutes } from "./routes/official-agent.js";
+import { createAccountFactoryRoutes } from "./routes/account-factory.js";
 import { installUncaughtErrorHandlers } from "./logs/error-log.js";
 import { closeCallRecordService, initializeCallRecordService } from "./call-records/service.js";
 import { awaitServerListening } from "./utils/await-listening.js";
@@ -123,6 +125,7 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   app.use("*", requestId);
   app.use("*", logger);
   app.onError(errorHandler);
+  app.use("/integration/account-factory/v1/*", createAccountFactoryAuth());
   app.use("*", dashboardAuth);
   app.use("*", adminMutationGuard);
   app.use("*", logCapture);
@@ -197,6 +200,7 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   app.route("/", geminiRoutes);
   app.route("/", responsesRoutes);
   app.route("/", createOfficialAgentRoutes());
+  app.route("/", createAccountFactoryRoutes());
   app.route("/", proxyRoutes);
   app.route("/", createModelRoutes(apiKeyPool, accountPool));
   app.route("/", webRoutes);

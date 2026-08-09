@@ -13,6 +13,19 @@ import {
   BACKUP_RESOURCES_SCHEMA_VERSION_KEY,
 } from "./types.js";
 import type {
+  AccountFactoryAccount,
+  AccountFactoryClaimInput,
+  AccountFactoryClaimResult,
+  AccountFactoryCompleteInput,
+  AccountFactoryFailInput,
+  AccountFactoryLease,
+  AccountFactoryOperationInput,
+  AccountFactoryProgressInput,
+  AccountFactorySourceReconcileInput,
+  AccountFactorySourceReconcileResult,
+  AccountFactorySourceSystem,
+  AccountFactorySyncInput,
+  AccountFactorySyncState,
   BackupAccountDetail,
   BackupAccountInput,
   BackupAccountPatch,
@@ -32,6 +45,11 @@ interface AccountRow {
   totp_secret: string | null;
   email_code_url: string | null;
   note: string | null;
+  lifecycle_status: AccountFactoryAccount["lifecycleStatus"];
+  source_system: AccountFactorySourceSystem | null;
+  source_active: number;
+  last_mail_synced_at: string | null;
+  revision: number;
   created_at: string;
   updated_at: string;
 }
@@ -43,6 +61,97 @@ interface PhoneRow {
   note: string | null;
   created_at: string;
   updated_at: string;
+}
+
+interface AccountFactoryAccountRow extends AccountRow {
+  lifecycle_status: AccountFactoryAccount["lifecycleStatus"];
+  source_system: AccountFactorySourceSystem | null;
+  external_id: string | null;
+  apple_label: string | null;
+  source_active: number;
+  last_mail_synced_at: string | null;
+  revision: number;
+  last_source_revision: string | null;
+  last_applied_operation_id: string | null;
+}
+
+interface AccountFactoryLeaseRow {
+  id: string;
+  account_id: string;
+  consumer_id: string;
+  task_id: string;
+  state: AccountFactoryLease["state"];
+  email_submission_committed: number;
+  email_submission_committed_at: string | null;
+  claim_expires_at: string | null;
+  failure_code: string | null;
+  progress_json: string | null;
+  last_applied_operation_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface AccountFactoryOperationRow {
+  operation_id: string;
+  task_id: string | null;
+  operation_kind: string | null;
+  resource_key: string | null;
+  result_json: string;
+  created_at: string;
+}
+
+function accountFactoryAccount(row: AccountFactoryAccountRow): AccountFactoryAccount {
+  return {
+    id: row.id,
+    email: row.email,
+    accountStatus: row.account_status,
+    lifecycleStatus: row.lifecycle_status,
+    sourceSystem: row.source_system,
+    externalId: row.external_id,
+    appleLabel: row.apple_label,
+    sourceActive: row.source_active === 1,
+    lastMailSyncedAt: row.last_mail_synced_at,
+    revision: row.revision,
+    sourceRevision: row.last_source_revision,
+    lastOperationId: row.last_applied_operation_id,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function accountFactoryLease(row: AccountFactoryLeaseRow): AccountFactoryLease {
+  return {
+    id: row.id,
+    accountId: row.account_id,
+    consumerId: row.consumer_id,
+    taskId: row.task_id,
+    state: row.state,
+    submissionCommitted: row.email_submission_committed === 1,
+    submissionCommittedAt: row.email_submission_committed_at,
+    claimExpiresAt: row.claim_expires_at,
+    failureCode: row.failure_code,
+    progress: row.progress_json === null ? null : JSON.parse(row.progress_json),
+    lastOperationId: row.last_applied_operation_id,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function parseOperationResult<T>(row: AccountFactoryOperationRow): T {
+  return JSON.parse(row.result_json) as T;
+}
+
+function assertOperationId(operationId: string | undefined): string | undefined {
+  if (operationId === undefined) return undefined;
+  const value = operationId.trim();
+  if (!value) throw new Error("Account factory operationId must not be empty");
+  return value;
+}
+
+function assertTaskId(taskId: string): string {
+  const value = taskId.trim();
+  if (!value) throw new Error("Account factory taskId must not be empty");
+  return value;
 }
 
 const SECRET_COLUMNS = {
@@ -68,6 +177,11 @@ function accountSummary(row: AccountRow): BackupAccountSummary {
     id: row.id,
     email: row.email,
     accountStatus: row.account_status,
+    lifecycleStatus: row.lifecycle_status,
+    sourceSystem: row.source_system,
+    sourceActive: row.source_active === 1,
+    revision: row.revision,
+    lastMailSyncedAt: row.last_mail_synced_at,
     note: row.note ?? "",
     hasEmailPassword: row.email_password !== null,
     hasChatgptPassword: row.chatgpt_password !== null,
@@ -280,6 +394,269 @@ export class BackupResourceStore {
     return this.db.prepare("DELETE FROM backup_phones WHERE id = ?").run(id).changes > 0;
   }
 
+  reconcileSourceAccounts(input: AccountFactorySourceReconcileInput): AccountFactorySourceReconcileResult {
+    const externalIds = [...new Set(input.activeExternalIds.map((externalId) => externalId.trim()).filter(Boolean))];
+
+    return this.db.transaction(() => {
+      this.db.exec("CREATE TEMP TABLE IF NOT EXISTS account_factory_source_snapshot (external_id TEXT PRIMARY KEY)");
+      this.db.prepare("DELETE FROM account_factory_source_snapshot").run();
+      const insert = this.db.prepare("INSERT INTO account_factory_source_snapshot (external_id) VALUES (?)");
+      for (const externalId of externalIds) insert.run(externalId);
+
+      const result = this.db.prepare(`
+        UPDATE backup_accounts
+        SET source_active = 0, revision = revision + 1, updated_at = ?
+        WHERE source_system = ? AND source_active = 1
+          AND NOT EXISTS (
+            SELECT 1 FROM account_factory_source_snapshot snapshot
+            WHERE snapshot.external_id = backup_accounts.external_id
+          )
+      `).run(now(), input.sourceSystem);
+      return { sourceSystem: input.sourceSystem, deactivated: result.changes };
+    })();
+  }
+
+  syncSourceAccount(input: AccountFactorySyncInput): AccountFactoryAccount {
+    const sourceSystem = input.sourceSystem;
+    const externalId = input.externalId.trim();
+    const email = input.email.trim();
+    const sourceRevision = input.sourceRevision.trim();
+    const operationId = assertOperationId(input.operationId);
+    if (!externalId || !email || !sourceRevision) throw new Error("Account factory sync identity is required");
+
+    return this.db.transaction(() => {
+      const replay = this.getOperationResult<AccountFactoryAccount>(
+        operationId,
+        null,
+        "sync",
+        `${sourceSystem}:${externalId}`,
+      );
+      if (replay) return replay;
+      const timestamp = now();
+      const current = this.db.prepare(
+        "SELECT * FROM backup_accounts WHERE source_system = ? AND external_id = ?",
+      ).get(sourceSystem, externalId) as AccountFactoryAccountRow | undefined;
+      if (current && current.last_source_revision === sourceRevision) {
+        const result = accountFactoryAccount(current);
+        this.recordOperation(operationId, null, "sync", `${sourceSystem}:${externalId}`, result);
+        return result;
+      }
+      if (current) {
+        this.db.prepare(`
+          UPDATE backup_accounts
+          SET email = ?, email_normalized = ?, apple_label = ?, source_active = ?,
+              last_mail_synced_at = ?, last_source_revision = ?, revision = revision + 1,
+              last_applied_operation_id = ?, updated_at = ?
+          WHERE id = ?
+        `).run(
+          email,
+          normalizeEmail(email),
+          input.appleLabel ?? null,
+          input.active === false ? 0 : 1,
+          timestamp,
+          sourceRevision,
+          operationId ?? null,
+          timestamp,
+          current.id,
+        );
+      } else {
+        this.db.prepare(`
+          INSERT INTO backup_accounts (
+            id, email, email_normalized, account_status, lifecycle_status, source_system,
+            external_id, apple_label, source_active, last_mail_synced_at, revision,
+            last_source_revision, last_applied_operation_id, created_at, updated_at
+          ) VALUES (?, ?, ?, 'unregistered', 'available', ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
+        `).run(
+          randomUUID(),
+          email,
+          normalizeEmail(email),
+          sourceSystem,
+          externalId,
+          input.appleLabel ?? null,
+          input.active === false ? 0 : 1,
+          timestamp,
+          sourceRevision,
+          operationId ?? null,
+          timestamp,
+          timestamp,
+        );
+      }
+      const row = this.db.prepare(
+        "SELECT * FROM backup_accounts WHERE source_system = ? AND external_id = ?",
+      ).get(sourceSystem, externalId) as AccountFactoryAccountRow;
+      const result = accountFactoryAccount(row);
+      this.recordOperation(operationId, null, "sync", `${sourceSystem}:${externalId}`, result);
+      return result;
+    })();
+  }
+
+  claimAccount(input: AccountFactoryClaimInput): AccountFactoryClaimResult | null {
+    const taskId = assertTaskId(input.taskId);
+    const consumerId = input.consumerId.trim();
+    const operationId = assertOperationId(input.operationId);
+    const ttlMs = input.leaseTtlMs ?? 5 * 60_000;
+    if (!consumerId || !Number.isFinite(ttlMs) || ttlMs <= 0) throw new Error("Invalid account factory claim input");
+
+    return this.db.transaction(() => {
+      const replay = this.getOperationResult<AccountFactoryClaimResult | null>(operationId, taskId, "claim", taskId);
+      if (replay !== undefined) return replay;
+      const existing = this.getLeaseRow(taskId);
+      if (existing) {
+        if (existing.state !== "leased" && existing.state !== "committed") {
+          this.recordOperation(operationId, taskId, "claim", taskId, null);
+          return null;
+        }
+        const result = this.claimResult(existing, true);
+        this.recordOperation(operationId, taskId, "claim", taskId, result);
+        return result;
+      }
+      const timestamp = now();
+      this.expireReclaimableLeases(timestamp);
+      const account = this.db.prepare(`
+        SELECT * FROM backup_accounts
+        WHERE lifecycle_status = 'available' AND source_active = 1
+        ORDER BY created_at ASC, id ASC LIMIT 1
+      `).get() as AccountFactoryAccountRow | undefined;
+      if (!account) {
+        this.recordOperation(operationId, taskId, "claim", taskId, null);
+        return null;
+      }
+      const leaseId = randomUUID();
+      const expiresAt = new Date(Date.now() + ttlMs).toISOString();
+      this.db.prepare(`
+        INSERT INTO account_factory_leases (
+          id, account_id, consumer_id, task_id, state, claim_expires_at,
+          last_applied_operation_id, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, 'leased', ?, ?, ?, ?)
+      `).run(leaseId, account.id, consumerId, taskId, expiresAt, operationId ?? null, timestamp, timestamp);
+      this.db.prepare(`
+        UPDATE backup_accounts
+        SET lifecycle_status = 'leased', revision = revision + 1,
+            last_applied_operation_id = ?, updated_at = ?
+        WHERE id = ?
+      `).run(operationId ?? null, timestamp, account.id);
+      this.recordEvent(account.id, taskId, "claimed");
+      const result = this.claimResult(this.getLeaseRow(taskId)!, false);
+      this.recordOperation(operationId, taskId, "claim", taskId, result);
+      return result;
+    })();
+  }
+
+  getLease(taskId: string): AccountFactoryLease | null {
+    const row = this.getLeaseRow(assertTaskId(taskId));
+    return row ? accountFactoryLease(row) : null;
+  }
+
+  commitSubmission(input: AccountFactoryOperationInput): AccountFactoryLease {
+    return this.applyLeaseOperation(input, "submission_committed", (lease, timestamp, operationId) => {
+      if (lease.state === "completed" || lease.state === "failed" || lease.state === "retired") {
+        throw new Error("Cannot commit a terminal account factory lease");
+      }
+      this.db.prepare(`
+        UPDATE account_factory_leases
+        SET state = 'committed', email_submission_committed = 1,
+            email_submission_committed_at = COALESCE(email_submission_committed_at, ?),
+            claim_expires_at = NULL, last_applied_operation_id = ?, updated_at = ?
+        WHERE task_id = ?
+      `).run(timestamp, operationId ?? null, timestamp, lease.task_id);
+      this.db.prepare(`
+        UPDATE backup_accounts
+        SET lifecycle_status = 'registering', revision = revision + 1,
+            last_applied_operation_id = ?, updated_at = ?
+        WHERE id = ?
+      `).run(operationId ?? null, timestamp, lease.account_id);
+    });
+  }
+
+  reportProgress(input: AccountFactoryProgressInput): AccountFactoryLease {
+    return this.applyLeaseOperation(input, "progress", (lease, timestamp, operationId) => {
+      if (lease.state === "completed" || lease.state === "failed" || lease.state === "retired") {
+        throw new Error("Cannot report progress for a terminal account factory lease");
+      }
+      this.db.prepare(`
+        UPDATE account_factory_leases
+        SET progress_json = ?, last_applied_operation_id = ?, updated_at = ?
+        WHERE task_id = ?
+      `).run(JSON.stringify(input.progress), operationId ?? null, timestamp, lease.task_id);
+    });
+  }
+
+  completeLease(input: AccountFactoryCompleteInput): AccountFactoryLease {
+    return this.applyLeaseOperation(input, "completed", (lease, timestamp, operationId) => {
+      if (lease.state === "completed" || lease.state === "failed" || lease.state === "retired") {
+        throw new Error("Cannot complete a terminal account factory lease");
+      }
+      if (!lease.email_submission_committed) throw new Error("Account factory submission must be committed first");
+      this.db.prepare(`
+        UPDATE account_factory_leases
+        SET state = 'completed', last_applied_operation_id = ?, updated_at = ?
+        WHERE task_id = ?
+      `).run(operationId ?? null, timestamp, lease.task_id);
+      this.db.prepare(`
+        UPDATE backup_accounts
+        SET lifecycle_status = 'registered', account_status = ?, registered_at = ?,
+            revision = revision + 1, last_applied_operation_id = ?, updated_at = ?
+        WHERE id = ?
+      `).run(input.accountStatus ?? "free", timestamp, operationId ?? null, timestamp, lease.account_id);
+    });
+  }
+
+  failLease(input: AccountFactoryFailInput): AccountFactoryLease {
+    const errorCode = input.errorCode.trim();
+    if (!errorCode) throw new Error("Account factory errorCode is required");
+    return this.applyLeaseOperation(input, "failed", (lease, timestamp, operationId) => {
+      if (lease.state === "completed" || lease.state === "failed" || lease.state === "retired") {
+        throw new Error("Cannot fail a terminal account factory lease");
+      }
+      this.db.prepare(`
+        UPDATE account_factory_leases
+        SET state = 'failed', failure_code = ?, last_applied_operation_id = ?, updated_at = ?
+        WHERE task_id = ?
+      `).run(errorCode, operationId ?? null, timestamp, lease.task_id);
+      this.db.prepare(`
+        UPDATE backup_accounts
+        SET lifecycle_status = ?, last_error_code = ?, revision = revision + 1,
+            last_applied_operation_id = ?, updated_at = ?
+        WHERE id = ?
+      `).run(
+        lease.email_submission_committed ? "invalid" : "available",
+        errorCode,
+        operationId ?? null,
+        timestamp,
+        lease.account_id,
+      );
+    });
+  }
+
+  getSyncState(sourceSystem: AccountFactorySourceSystem): AccountFactorySyncState {
+    const row = this.db.prepare(`
+      SELECT
+        SUM(CASE WHEN source_active = 1 THEN 1 ELSE 0 END) AS active_accounts,
+        SUM(CASE WHEN lifecycle_status = 'available' AND source_active = 1 THEN 1 ELSE 0 END) AS available_accounts,
+        SUM(CASE WHEN lifecycle_status = 'leased' THEN 1 ELSE 0 END) AS leased_accounts,
+        SUM(CASE WHEN lifecycle_status = 'registering' THEN 1 ELSE 0 END) AS registering_accounts,
+        SUM(CASE WHEN lifecycle_status = 'registered' THEN 1 ELSE 0 END) AS registered_accounts,
+        MAX(last_mail_synced_at) AS last_synced_at
+      FROM backup_accounts WHERE source_system = ?
+    `).get(sourceSystem) as {
+      active_accounts: number | null;
+      available_accounts: number | null;
+      leased_accounts: number | null;
+      registering_accounts: number | null;
+      registered_accounts: number | null;
+      last_synced_at: string | null;
+    };
+    return {
+      sourceSystem,
+      activeAccounts: row.active_accounts ?? 0,
+      availableAccounts: row.available_accounts ?? 0,
+      leasedAccounts: row.leased_accounts ?? 0,
+      registeringAccounts: row.registering_accounts ?? 0,
+      registeredAccounts: row.registered_accounts ?? 0,
+      lastSyncedAt: row.last_synced_at,
+    };
+  }
+
   private encryptNullable(value: string | null | undefined): string | null {
     return value == null ? null : this.cipher.encrypt(value);
   }
@@ -371,6 +748,12 @@ export class BackupResourceStore {
     }
     if (current < 2) {
       this.applySchemaV2();
+    }
+    if (current < 3) {
+      this.applySchemaV3();
+    }
+    if (current < 4) {
+      this.applySchemaV4();
     }
 
     this.writeSchemaVersion(BACKUP_RESOURCES_SCHEMA_VERSION);
@@ -510,5 +893,128 @@ export class BackupResourceStore {
       );
     });
     migration();
+  }
+
+  private applySchemaV3(): void {
+    const migration = this.db.transaction(() => {
+      this.addColumnIfMissing("account_factory_leases", "progress_json", "TEXT");
+      this.addColumnIfMissing("account_factory_leases", "last_applied_operation_id", "TEXT");
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS account_factory_operations (
+          operation_id TEXT PRIMARY KEY,
+          task_id TEXT,
+          result_json TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_account_factory_operations_task
+          ON account_factory_operations(task_id, created_at);
+      `);
+    });
+    migration();
+  }
+
+  private applySchemaV4(): void {
+    const migration = this.db.transaction(() => {
+      this.addColumnIfMissing("account_factory_operations", "operation_kind", "TEXT");
+      this.addColumnIfMissing("account_factory_operations", "resource_key", "TEXT");
+    });
+    migration();
+  }
+
+  private getOperationResult<T>(
+    operationId: string | undefined,
+    taskId: string | null,
+    operationKind: string,
+    resourceKey: string,
+  ): T | undefined {
+    if (!operationId) return undefined;
+    const row = this.db.prepare(
+      "SELECT operation_id, task_id, operation_kind, resource_key, result_json, created_at FROM account_factory_operations WHERE operation_id = ?",
+    ).get(operationId) as AccountFactoryOperationRow | undefined;
+    if (!row) return undefined;
+    if (row.task_id !== taskId) {
+      throw new Error("Account factory operationId was reused for a different operation");
+    }
+    if (row.operation_kind === null && row.resource_key === null) {
+      return parseOperationResult<T>(row);
+    }
+    if (row.operation_kind !== operationKind || row.resource_key !== resourceKey) {
+      throw new Error("Account factory operationId was reused for a different operation");
+    }
+    return parseOperationResult<T>(row);
+  }
+
+  private recordOperation(
+    operationId: string | undefined,
+    taskId: string | null,
+    operationKind: string,
+    resourceKey: string,
+    result: unknown,
+  ): void {
+    if (!operationId) return;
+    this.db.prepare(`
+      INSERT INTO account_factory_operations (
+        operation_id, task_id, operation_kind, resource_key, result_json, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `).run(operationId, taskId, operationKind, resourceKey, JSON.stringify(result), now());
+  }
+
+  private getLeaseRow(taskId: string): AccountFactoryLeaseRow | undefined {
+    return this.db.prepare("SELECT * FROM account_factory_leases WHERE task_id = ?").get(taskId) as AccountFactoryLeaseRow | undefined;
+  }
+
+  private claimResult(lease: AccountFactoryLeaseRow, replayed: boolean): AccountFactoryClaimResult {
+    const account = this.db.prepare("SELECT * FROM backup_accounts WHERE id = ?").get(lease.account_id) as AccountFactoryAccountRow | undefined;
+    if (!account) throw new Error("Account factory lease references a missing account");
+    return { account: accountFactoryAccount(account), lease: accountFactoryLease(lease), replayed };
+  }
+
+  private expireReclaimableLeases(timestamp: string): void {
+    const expired = this.db.prepare(`
+      SELECT * FROM account_factory_leases
+      WHERE state = 'leased' AND email_submission_committed = 0 AND claim_expires_at <= ?
+    `).all(timestamp) as AccountFactoryLeaseRow[];
+    for (const lease of expired) {
+      this.db.prepare(`
+        UPDATE account_factory_leases
+        SET state = 'retired', updated_at = ? WHERE id = ?
+      `).run(timestamp, lease.id);
+      this.db.prepare(`
+        UPDATE backup_accounts
+        SET lifecycle_status = 'available', revision = revision + 1, updated_at = ?
+        WHERE id = ? AND lifecycle_status = 'leased'
+      `).run(timestamp, lease.account_id);
+      this.recordEvent(lease.account_id, lease.task_id, "lease_expired");
+    }
+  }
+
+  private applyLeaseOperation<T extends AccountFactoryOperationInput>(
+    input: T,
+    eventType: string,
+    apply: (lease: AccountFactoryLeaseRow, timestamp: string, operationId: string | undefined) => void,
+  ): AccountFactoryLease {
+    const taskId = assertTaskId(input.taskId);
+    const operationId = assertOperationId(input.operationId);
+    return this.db.transaction(() => {
+      const replay = this.getOperationResult<AccountFactoryLease>(operationId, taskId, eventType, taskId);
+      if (replay) return replay;
+      const timestamp = now();
+      this.expireReclaimableLeases(timestamp);
+      const lease = this.getLeaseRow(taskId);
+      if (!lease) throw new Error("Account factory lease not found");
+      if (lease.state === "retired") return accountFactoryLease(lease);
+      apply(lease, timestamp, operationId);
+      const result = accountFactoryLease(this.getLeaseRow(taskId)!);
+      this.recordEvent(result.accountId, taskId, eventType);
+      this.recordOperation(operationId, taskId, eventType, taskId, result);
+      return result;
+    })();
+  }
+
+  private recordEvent(accountId: string, taskId: string | null, eventType: string): void {
+    this.db.prepare(`
+      INSERT INTO account_factory_events (id, account_id, task_id, event_type, created_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(randomUUID(), accountId, taskId, eventType, now());
   }
 }

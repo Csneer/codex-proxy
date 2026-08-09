@@ -21,6 +21,6 @@ export function classifyRequestPath(path: string, method = "GET"): RequestAuthSu
     path.startsWith("/v1/") ||
     path.startsWith("/v1beta/")
   ) return "service";
-  if (path.startsWith("/official-agent/")) return "independent";
+  if (path.startsWith("/official-agent/") || path.startsWith("/integration/account-factory/v1/")) return "independent";
   return "management";
 }

@@ -1,0 +1,180 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import { BackupResourceStore } from "@src/backup-resources/store.js";
+import { createTestCipher } from "@fixtures/backup-resources/cipher-fixtures.js";
+import { createAccountFactoryRoutes } from "@src/routes/account-factory.js";
+import {
+  MailDashboardError,
+  type MailDashboardClient,
+} from "@src/services/mail-dashboard-client.js";
+
+const stores: BackupResourceStore[] = [];
+const tempDirs: string[] = [];
+
+function createStore(): BackupResourceStore {
+  const dir = mkdtempSync(join(tmpdir(), "account-factory-routes-"));
+  tempDirs.push(dir);
+  const store = new BackupResourceStore(join(dir, "backup-resources.sqlite"), createTestCipher());
+  stores.push(store);
+  return store;
+}
+
+function createApp(store: BackupResourceStore, mail: Partial<MailDashboardClient> = {}) {
+  return createAccountFactoryRoutes({
+    resolveStore: () => store,
+    resolveMailClient: () => ({
+      listMailboxes: async () => [],
+      pollVerificationCode: async () => ({ status: "pending" as const }),
+      ...mail,
+    }),
+  });
+}
+
+function sync(store: BackupResourceStore) {
+  return store.syncSourceAccount({
+    sourceSystem: "mail_dashboard",
+    externalId: "mailbox-1",
+    email: "mailbox@example.com",
+    sourceRevision: "revision-1",
+  });
+}
+
+afterEach(() => {
+  while (stores.length) stores.pop()?.close();
+  while (tempDirs.length) rmSync(tempDirs.pop()!, { recursive: true, force: true });
+});
+
+describe("account-factory v1 routes", () => {
+  it("returns capability health and rejects malformed claims", async () => {
+    const app = createApp(createStore());
+
+    const health = await app.request("/integration/account-factory/v1/health");
+    const invalid = await app.request("/integration/account-factory/v1/claims", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ consumerId: "consumer" }),
+    });
+
+    expect(await health.json()).toEqual({
+      enabled: true,
+      schemaVersion: 1,
+      capabilities: ["claim", "submissionCommit", "poll", "progress", "syncState", "complete", "fail"],
+    });
+    expect(invalid.status).toBe(400);
+    expect(await invalid.json()).toEqual({ error: "invalid_request" });
+  });
+
+  it("reconciles the mailbox snapshot after source upserts", async () => {
+    const store = createStore();
+    const missing = store.syncSourceAccount({
+      sourceSystem: "mail_dashboard",
+      externalId: "mailbox-missing",
+      email: "missing@example.com",
+      sourceRevision: "revision-missing",
+    });
+    const app = createApp(store, {
+      listMailboxes: async () => [{
+        externalId: "mailbox-present",
+        email: "present@example.com",
+        sourceRevision: "revision-present",
+        appleLabel: null,
+      }],
+    });
+
+    const response = await app.request("/integration/account-factory/v1/mailboxes/sync", { method: "POST" });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      accounts: [{ externalId: "mailbox-present", sourceActive: true }],
+      reconciliation: { sourceSystem: "mail_dashboard", deactivated: 1 },
+    });
+    expect(store.getAccount(missing.id)).toMatchObject({ sourceActive: false });
+  });
+
+  it("rejects lifecycle requests whose task lease belongs to another account", async () => {
+    const store = createStore();
+    const account = sync(store);
+    const claim = store.claimAccount({ consumerId: "consumer", taskId: "task-1" })!;
+    const app = createApp(store);
+
+    const response = await app.request("/integration/account-factory/v1/accounts/not-the-account/submission-commit", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ taskId: claim.lease.taskId }),
+    });
+
+    expect(account.id).toBe(claim.account.id);
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({ error: "not_found" });
+  });
+
+  it("binds verification polling to the matching task lease and account", async () => {
+    const store = createStore();
+    const account = sync(store);
+    const claim = store.claimAccount({ consumerId: "consumer", taskId: "task-1" })!;
+    let pollCalls = 0;
+    const pending = createApp(store, {
+      pollVerificationCode: async () => {
+        pollCalls += 1;
+        return { status: "pending" };
+      },
+    });
+    const unavailable = createApp(store, {
+      pollVerificationCode: async () => { throw new MailDashboardError(); },
+    });
+    const query = `after=2026-08-09T07%3A00%3A00.000Z&taskId=task-1&leaseId=${encodeURIComponent(claim.lease.id)}`;
+    const path = `/integration/account-factory/v1/accounts/${account.id}/verification-code?${query}`;
+
+    const pendingResponse = await pending.request(path);
+    const unavailableResponse = await unavailable.request(path);
+    const missingLease = await pending.request(
+      `/integration/account-factory/v1/accounts/${account.id}/verification-code?after=2026-08-09T07%3A00%3A00.000Z`,
+    );
+    const wrongLease = await pending.request(
+      `/integration/account-factory/v1/accounts/${account.id}/verification-code?after=2026-08-09T07%3A00%3A00.000Z&taskId=task-1&leaseId=wrong`,
+    );
+    const wrongAccount = await pending.request(
+      `/integration/account-factory/v1/accounts/not-the-account/verification-code?${query}`,
+    );
+
+    expect(await pendingResponse.json()).toEqual({ status: "pending" });
+    expect(unavailableResponse.status).toBe(502);
+    expect(await unavailableResponse.json()).toEqual({ error: "mail_service_unavailable" });
+    expect(missingLease.status).toBe(400);
+    expect(await missingLease.json()).toEqual({ error: "invalid_request" });
+    expect(wrongLease.status).toBe(404);
+    expect(await wrongLease.json()).toEqual({ error: "not_found" });
+    expect(wrongAccount.status).toBe(404);
+    expect(await wrongAccount.json()).toEqual({ error: "not_found" });
+    expect(pollCalls).toBe(1);
+  });
+
+  it("returns lease and sync DTOs without account credentials or mail body data", async () => {
+    const store = createStore();
+    const account = sync(store);
+    const claim = store.claimAccount({ consumerId: "consumer", taskId: "task-1" })!;
+    const app = createApp(store);
+
+    const claimResponse = await app.request("/integration/account-factory/v1/claims", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ consumerId: "consumer", taskId: "task-1" }),
+    });
+    const syncResponse = await app.request(
+      `/integration/account-factory/v1/accounts/${account.id}/sync-state?taskId=task-1&leaseId=${encodeURIComponent(claim.lease.id)}`,
+    );
+
+    const claimBody = await claimResponse.json();
+    const syncBody = await syncResponse.json();
+    expect(claimResponse.status).toBe(200);
+    expect(syncResponse.headers.get("cache-control")).toBe("no-store");
+    expect(claimBody.lease).toMatchObject({ hasProgress: false });
+    expect(claimBody.lease).not.toHaveProperty("progress");
+    expect(syncBody.lease).toMatchObject({ hasProgress: false });
+    expect(syncBody.lease).not.toHaveProperty("progress");
+    expect(JSON.stringify(claimBody)).not.toMatch(/password|token|session|mailBody/i);
+    expect(JSON.stringify(syncBody)).not.toMatch(/password|token|session|mailBody/i);
+  });
+});

@@ -40,7 +40,7 @@ export const ACCOUNT_FACTORY_PROMOTION_STATES = [
 export type AccountFactoryPromotionState = typeof ACCOUNT_FACTORY_PROMOTION_STATES[number];
 
 export const BACKUP_RESOURCES_SCHEMA_VERSION_KEY = "schema_version";
-export const BACKUP_RESOURCES_SCHEMA_VERSION = 2;
+export const BACKUP_RESOURCES_SCHEMA_VERSION = 4;
 
 export interface BackupAccountInput {
   email: string;
@@ -66,6 +66,11 @@ export interface BackupAccountSummary {
   id: string;
   email: string;
   accountStatus: BackupAccountStatus;
+  lifecycleStatus: BackupAccountLifecycleStatus;
+  sourceSystem: AccountFactorySourceSystem | null;
+  sourceActive: boolean;
+  revision: number;
+  lastMailSyncedAt: string | null;
   note: string;
   hasEmailPassword: boolean;
   hasChatgptPassword: boolean;
@@ -145,4 +150,97 @@ export interface BackupRestoreResult {
   destination: string;
   bytes: number;
   integrityCheck: "ok";
+}
+
+export interface AccountFactorySyncInput {
+  sourceSystem: AccountFactorySourceSystem;
+  externalId: string;
+  email: string;
+  sourceRevision: string;
+  active?: boolean;
+  appleLabel?: string | null;
+  operationId?: string;
+}
+
+export interface AccountFactorySourceReconcileInput {
+  sourceSystem: AccountFactorySourceSystem;
+  activeExternalIds: readonly string[];
+}
+
+export interface AccountFactorySourceReconcileResult {
+  sourceSystem: AccountFactorySourceSystem;
+  deactivated: number;
+}
+
+export interface AccountFactoryAccount {
+  id: string;
+  email: string;
+  accountStatus: BackupAccountStatus;
+  lifecycleStatus: BackupAccountLifecycleStatus;
+  sourceSystem: AccountFactorySourceSystem | null;
+  externalId: string | null;
+  appleLabel: string | null;
+  sourceActive: boolean;
+  lastMailSyncedAt: string | null;
+  revision: number;
+  sourceRevision: string | null;
+  lastOperationId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AccountFactoryLease {
+  id: string;
+  accountId: string;
+  consumerId: string;
+  taskId: string;
+  state: AccountFactoryLeaseState;
+  submissionCommitted: boolean;
+  submissionCommittedAt: string | null;
+  claimExpiresAt: string | null;
+  failureCode: string | null;
+  progress: unknown | null;
+  lastOperationId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AccountFactoryClaimInput {
+  consumerId: string;
+  taskId: string;
+  leaseTtlMs?: number;
+  operationId?: string;
+}
+
+export interface AccountFactoryClaimResult {
+  account: AccountFactoryAccount;
+  lease: AccountFactoryLease;
+  replayed: boolean;
+}
+
+export interface AccountFactoryOperationInput {
+  taskId: string;
+  operationId?: string;
+}
+
+export interface AccountFactoryProgressInput extends AccountFactoryOperationInput {
+  progress: unknown;
+}
+
+export interface AccountFactoryCompleteInput extends AccountFactoryOperationInput {
+  accountStatus?: BackupAccountStatus;
+}
+
+export interface AccountFactoryFailInput extends AccountFactoryOperationInput {
+  errorCode: string;
+}
+
+export interface AccountFactorySyncState {
+  sourceSystem: AccountFactorySourceSystem;
+  activeAccounts: number;
+  availableAccounts: number;
+  leasedAccounts: number;
+  registeringAccounts: number;
+  registeredAccounts: number;
+  lastSyncedAt: string | null;
 }

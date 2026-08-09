@@ -8,8 +8,13 @@ import { isLoopbackHostname, normalizeHostname } from "../utils/host.js";
  */
 export const cors: MiddlewareHandler = async (c, next) => {
   const origin = c.req.header("Origin");
-  const corsEnabled = isCorsEnabledPath(c.req.path);
-  const allowedOrigin = corsEnabled ? getAllowedOrigin(origin) : null;
+  const accountFactory = isAccountFactoryPath(c.req.path);
+  const corsEnabled = accountFactory || isCorsEnabledPath(c.req.path);
+  const allowedOrigin = !corsEnabled
+    ? null
+    : accountFactory
+      ? getAccountFactoryAllowedOrigin(origin)
+      : getAllowedOrigin(origin);
 
   if (corsEnabled && c.req.method === "OPTIONS") {
     if (!allowedOrigin) {
@@ -19,8 +24,8 @@ export const cors: MiddlewareHandler = async (c, next) => {
       status: 204,
       headers: {
         "Access-Control-Allow-Origin": allowedOrigin,
-        "Access-Control-Allow-Methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
-        "Access-Control-Allow-Headers": "*",
+        "Access-Control-Allow-Methods": accountFactory ? "GET,POST,PATCH,OPTIONS" : "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+        "Access-Control-Allow-Headers": accountFactory ? "Content-Type, X-Account-Factory-Token" : "*",
         "Access-Control-Max-Age": "86400",
         Vary: "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
       },
@@ -41,6 +46,17 @@ function isCorsEnabledPath(path: string): boolean {
     path === "/responses" ||
     path.startsWith("/responses/") ||
     path.startsWith("/official-agent/");
+}
+
+function isAccountFactoryPath(path: string): boolean {
+  return path === "/integration/account-factory/v1" || path.startsWith("/integration/account-factory/v1/");
+}
+
+function getAccountFactoryAllowedOrigin(origin: string | undefined): string | null {
+  if (!origin) return null;
+  const accountFactory = getConfig().account_factory;
+  if (!accountFactory.enabled) return null;
+  return accountFactory.allowed_extension_ids.some((id) => origin === `chrome-extension://${id}`) ? origin : null;
 }
 
 export function getAllowedOrigin(origin: string | undefined): string | null {
