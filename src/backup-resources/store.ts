@@ -1,8 +1,17 @@
 import Database from "better-sqlite3";
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, statSync } from "node:fs";
 import { dirname } from "node:path";
 import { randomUUID } from "node:crypto";
 import { BackupSecretCipher } from "./crypto.js";
+import {
+  ACCOUNT_FACTORY_LEASE_STATES,
+  ACCOUNT_FACTORY_PROMOTION_MODES,
+  ACCOUNT_FACTORY_PROMOTION_STATES,
+  ACCOUNT_FACTORY_SOURCE_SYSTEMS,
+  BACKUP_ACCOUNT_LIFECYCLE_STATUSES,
+  BACKUP_RESOURCES_SCHEMA_VERSION,
+  BACKUP_RESOURCES_SCHEMA_VERSION_KEY,
+} from "./types.js";
 import type {
   BackupAccountDetail,
   BackupAccountInput,
@@ -50,6 +59,10 @@ function now(): string {
   return new Date().toISOString();
 }
 
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
 function accountSummary(row: AccountRow): BackupAccountSummary {
   return {
     id: row.id,
@@ -80,9 +93,13 @@ export class BackupResourceStore {
   private readonly db: Database.Database;
 
   constructor(path: string, private readonly cipher: BackupSecretCipher) {
+    const existingDatabase = existsSync(path) && statSync(path).size > 0;
     mkdirSync(dirname(path), { recursive: true });
     this.db = new Database(path);
     try {
+      if (existingDatabase) {
+        this.verifyExistingEncryptionKey();
+      }
       this.db.pragma("journal_mode = WAL");
       this.db.pragma("foreign_keys = ON");
       this.db.exec(`
@@ -114,6 +131,7 @@ export class BackupResourceStore {
       `);
       this.ensureAccountStatusColumn();
       this.verifyEncryptionKey();
+      this.migrateSchema();
     } catch (error) {
       this.db.close();
       throw error;
@@ -146,11 +164,12 @@ export class BackupResourceStore {
     const timestamp = now();
     this.db.prepare(`
       INSERT INTO backup_accounts (
-        id, email, account_status, email_password, chatgpt_password, totp_secret, email_code_url, note, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        id, email, email_normalized, account_status, email_password, chatgpt_password, totp_secret, email_code_url, note, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       input.email,
+      normalizeEmail(input.email),
       input.accountStatus ?? DEFAULT_ACCOUNT_STATUS,
       this.encryptNullable(input.emailPassword),
       this.encryptNullable(input.chatgptPassword),
@@ -172,8 +191,8 @@ export class BackupResourceStore {
       const assignments: string[] = [];
       const values: unknown[] = [];
       if (patch.email !== undefined) {
-        assignments.push("email = ?");
-        values.push(patch.email);
+        assignments.push("email = ?", "email_normalized = ?");
+        values.push(patch.email, normalizeEmail(patch.email));
       }
       if (patch.accountStatus !== undefined) {
         assignments.push("account_status = ?");
@@ -275,6 +294,41 @@ export class BackupResourceStore {
     `);
   }
 
+  private verifyExistingEncryptionKey(): void {
+    const metadataExists = this.tableExists("backup_metadata");
+    const row = metadataExists
+      ? (this.db
+          .prepare("SELECT value FROM backup_metadata WHERE key = ?")
+          .get(KEY_CHECK_NAME) as { value: string } | undefined)
+      : undefined;
+    if (row) {
+      if (this.cipher.decrypt(row.value) !== KEY_CHECK_VALUE) {
+        throw new Error("Backup resource encryption key verification failed");
+      }
+      return;
+    }
+    if (this.countExistingResourceRows() > 0) {
+      throw new Error("Backup resource encryption key verification metadata is missing");
+    }
+  }
+
+  private tableExists(table: string): boolean {
+    const row = this.db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
+      .get(table) as { name: string } | undefined;
+    return Boolean(row);
+  }
+
+  private countExistingResourceRows(): number {
+    let total = 0;
+    for (const table of ["backup_accounts", "backup_phones"]) {
+      if (!this.tableExists(table)) continue;
+      const row = this.db.prepare(`SELECT COUNT(*) AS total FROM ${table}`).get() as { total: number };
+      total += row.total;
+    }
+    return total;
+  }
+
   private verifyEncryptionKey(): void {
     const row = this.db
       .prepare("SELECT value FROM backup_metadata WHERE key = ?")
@@ -301,5 +355,160 @@ export class BackupResourceStore {
   private getAccountSummary(id: string): BackupAccountSummary | null {
     const row = this.db.prepare("SELECT * FROM backup_accounts WHERE id = ?").get(id) as AccountRow | undefined;
     return row ? accountSummary(row) : null;
+  }
+
+  private migrateSchema(): void {
+    const current = this.readSchemaVersion();
+    if (current > BACKUP_RESOURCES_SCHEMA_VERSION) {
+      throw new Error(
+        `Backup resource schema version ${current} is newer than supported version ${BACKUP_RESOURCES_SCHEMA_VERSION}`,
+      );
+    }
+    if (current === BACKUP_RESOURCES_SCHEMA_VERSION) return;
+
+    if (current < 1) {
+      this.ensureAccountStatusColumn();
+    }
+    if (current < 2) {
+      this.applySchemaV2();
+    }
+
+    this.writeSchemaVersion(BACKUP_RESOURCES_SCHEMA_VERSION);
+  }
+
+  private readSchemaVersion(): number {
+    const row = this.db
+      .prepare("SELECT value FROM backup_metadata WHERE key = ?")
+      .get(BACKUP_RESOURCES_SCHEMA_VERSION_KEY) as { value: string } | undefined;
+    if (row) {
+      if (!/^\d+$/.test(row.value)) {
+        throw new Error(`Invalid backup resource schema version: ${row.value}`);
+      }
+      const parsed = Number(row.value);
+      if (Number.isSafeInteger(parsed)) return parsed;
+      throw new Error(`Invalid backup resource schema version: ${row.value}`);
+    }
+    if (!this.columnExists("backup_accounts", "account_status")) return 0;
+    return 1;
+  }
+
+  private writeSchemaVersion(version: number): void {
+    this.db
+      .prepare(
+        "INSERT INTO backup_metadata (key, value) VALUES (?, ?) " +
+          "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      )
+      .run(BACKUP_RESOURCES_SCHEMA_VERSION_KEY, String(version));
+  }
+
+  private columnExists(table: string, column: string): boolean {
+    const rows = this.db.pragma(`table_info(${table})`) as Array<{ name: string }>;
+    return rows.some((row) => row.name === column);
+  }
+
+  private addColumnIfMissing(table: string, column: string, definition: string): void {
+    if (this.columnExists(table, column)) return;
+    this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+
+  private applySchemaV2(): void {
+    const lifecycleValues = BACKUP_ACCOUNT_LIFECYCLE_STATUSES.map((v) => `'${v}'`).join(", ");
+    const sourceValues = ACCOUNT_FACTORY_SOURCE_SYSTEMS.map((v) => `'${v}'`).join(", ");
+    const leaseStateValues = ACCOUNT_FACTORY_LEASE_STATES.map((v) => `'${v}'`).join(", ");
+    const promotionModeValues = ACCOUNT_FACTORY_PROMOTION_MODES.map((v) => `'${v}'`).join(", ");
+    const promotionStateValues = ACCOUNT_FACTORY_PROMOTION_STATES.map((v) => `'${v}'`).join(", ");
+
+    const migration = this.db.transaction(() => {
+      this.addColumnIfMissing(
+        "backup_accounts",
+        "lifecycle_status",
+        `TEXT NOT NULL DEFAULT 'available' CHECK (lifecycle_status IN (${lifecycleValues}))`,
+      );
+      this.addColumnIfMissing("backup_accounts", "email_normalized", "TEXT");
+      this.addColumnIfMissing("backup_accounts", "source_system", `TEXT CHECK (source_system IS NULL OR source_system IN (${sourceValues}))`);
+      this.addColumnIfMissing("backup_accounts", "external_id", "TEXT");
+      this.addColumnIfMissing("backup_accounts", "apple_label", "TEXT");
+      this.addColumnIfMissing("backup_accounts", "source_active", "INTEGER NOT NULL DEFAULT 1");
+      this.addColumnIfMissing("backup_accounts", "active_account_id", "TEXT");
+      this.addColumnIfMissing("backup_accounts", "last_mail_synced_at", "TEXT");
+      this.addColumnIfMissing("backup_accounts", "registration_started_at", "TEXT");
+      this.addColumnIfMissing("backup_accounts", "registered_at", "TEXT");
+      this.addColumnIfMissing("backup_accounts", "last_verified_at", "TEXT");
+      this.addColumnIfMissing("backup_accounts", "last_error_code", "TEXT");
+      this.addColumnIfMissing("backup_accounts", "revision", "INTEGER NOT NULL DEFAULT 0");
+      this.addColumnIfMissing("backup_accounts", "last_source_revision", "TEXT");
+      this.addColumnIfMissing("backup_accounts", "last_applied_operation_id", "TEXT");
+      this.addColumnIfMissing("backup_accounts", "access_token", "TEXT");
+      this.addColumnIfMissing("backup_accounts", "session_json", "TEXT");
+      this.addColumnIfMissing("backup_accounts", "refresh_token", "TEXT");
+
+      this.db.exec(
+        "UPDATE backup_accounts " +
+          "SET email_normalized = lower(trim(email)) " +
+          "WHERE email_normalized IS NULL AND email IS NOT NULL",
+      );
+
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS account_factory_leases (
+          id TEXT PRIMARY KEY,
+          account_id TEXT NOT NULL REFERENCES backup_accounts(id),
+          consumer_id TEXT NOT NULL,
+          task_id TEXT NOT NULL UNIQUE,
+          state TEXT NOT NULL DEFAULT 'leased'
+            CHECK (state IN (${leaseStateValues})),
+          email_submission_committed INTEGER NOT NULL DEFAULT 0
+            CHECK (email_submission_committed IN (0, 1)),
+          email_submission_committed_at TEXT,
+          claim_expires_at TEXT,
+          failure_code TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS account_factory_promotions (
+          id TEXT PRIMARY KEY,
+          account_id TEXT NOT NULL UNIQUE REFERENCES backup_accounts(id),
+          idempotency_key TEXT NOT NULL UNIQUE,
+          mode TEXT NOT NULL
+            CHECK (mode IN (${promotionModeValues})),
+          state TEXT NOT NULL DEFAULT 'planned'
+            CHECK (state IN (${promotionStateValues})),
+          core_account_id TEXT,
+          error_code TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS account_factory_events (
+          id TEXT PRIMARY KEY,
+          account_id TEXT REFERENCES backup_accounts(id),
+          task_id TEXT,
+          event_type TEXT NOT NULL,
+          error_code TEXT,
+          created_at TEXT NOT NULL
+        );
+      `);
+
+      this.db.exec(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_backup_accounts_email_normalized " +
+          "ON backup_accounts(email_normalized) WHERE email_normalized IS NOT NULL",
+      );
+      this.db.exec(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_backup_accounts_source_external " +
+          "ON backup_accounts(source_system, external_id) " +
+          "WHERE source_system IS NOT NULL AND external_id IS NOT NULL",
+      );
+      this.db.exec(
+        "CREATE INDEX IF NOT EXISTS idx_backup_accounts_lifecycle " +
+          "ON backup_accounts(lifecycle_status)",
+      );
+      this.db.exec(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_account_factory_leases_account_open " +
+          "ON account_factory_leases(account_id) WHERE state IN ('leased', 'committed')",
+      );
+      this.db.exec(
+        "CREATE INDEX IF NOT EXISTS idx_account_factory_events_account " +
+          "ON account_factory_events(account_id, created_at)",
+      );
+    });
+    migration();
   }
 }

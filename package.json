@@ -26,7 +26,10 @@
     "extract": "tsx scripts/build/extract-fingerprint.ts",
     "apply-update": "tsx scripts/build/apply-update.ts",
     "apply-update:dry": "tsx scripts/build/apply-update.ts --dry-run",
-    "update": "tsx scripts/build/full-update.ts"
+    "update": "tsx scripts/build/full-update.ts",
+    "account-factory:migration:check": "tsx scripts/account-factory-migration-check.ts",
+    "account-factory:backup": "tsx scripts/account-factory-backup.ts backup",
+    "account-factory:restore": "tsx scripts/account-factory-backup.ts restore"
   },
   "dependencies": {
     "@electron/asar": "^3.2.0",

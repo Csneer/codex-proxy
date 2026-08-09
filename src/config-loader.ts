@@ -282,5 +282,29 @@ export function applyEnvOverrides(
       (raw.tls as Record<string, unknown>).proxy_url = proxyEnv;
     }
   }
+  const afEnabledEnv = process.env.CODEX_PROXY_ACCOUNT_FACTORY_ENABLED?.trim().toLowerCase();
+  const afTokenEnv = process.env.CODEX_PROXY_ACCOUNT_FACTORY_TOKEN?.trim();
+  const afExtensionsEnv = process.env.CODEX_PROXY_ACCOUNT_FACTORY_ALLOWED_EXTENSION_IDS?.trim();
+  const afMailBaseEnv = process.env.CODEX_PROXY_ACCOUNT_FACTORY_MAIL_BASE_URL?.trim();
+  const localAf = localOverrides?.account_factory as Record<string, unknown> | undefined;
+  if (afEnabledEnv || afTokenEnv || afExtensionsEnv || afMailBaseEnv) {
+    if (!raw.account_factory) raw.account_factory = {};
+    const af = raw.account_factory as Record<string, unknown>;
+    if (afEnabledEnv) {
+      af.enabled = ["1", "true", "yes"].includes(afEnabledEnv);
+    }
+    if (afTokenEnv && localAf?.token === undefined) {
+      af.token = afTokenEnv;
+    }
+    if (afExtensionsEnv && localAf?.allowed_extension_ids === undefined) {
+      af.allowed_extension_ids = afExtensionsEnv
+        .split(",")
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+    }
+    if (afMailBaseEnv && localAf?.mail_dashboard_base_url === undefined) {
+      af.mail_dashboard_base_url = afMailBaseEnv;
+    }
+  }
   return raw;
 }

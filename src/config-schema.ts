@@ -238,6 +238,30 @@ export const ConfigSchema = z.object({
   }).default({}),
   /** Explicit model → provider name routing table. */
   model_routing: z.record(z.string(), z.string()).default({}),
+  /** Default-off Account Factory integration configuration. */
+  account_factory: z.object({
+    enabled: z.boolean().default(false),
+    token: z.string().trim().min(1).nullable().default(null),
+    allowed_extension_ids: z.array(z.string().trim().min(1)).default([]),
+    mail_dashboard_base_url: z
+      .string()
+      .trim()
+      .refine(
+        (value) => {
+          try {
+            const url = new URL(value);
+            return ["http:", "https:"].includes(url.protocol) && isLoopbackHostname(url.hostname);
+          } catch {
+            return false;
+          }
+        },
+        {
+          message:
+            "account_factory.mail_dashboard_base_url must be an http(s) URL whose host is loopback (e.g. http://127.0.0.1:4173)",
+        },
+      )
+      .default("http://127.0.0.1:4173"),
+  }).default({}),
 });
 
 export type AppConfig = z.infer<typeof ConfigSchema>;
