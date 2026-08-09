@@ -13,6 +13,11 @@ const mocks = vi.hoisted(() => ({
     id: "backup-1",
     email: "spare@example.com",
     accountStatus: "plus" as const,
+    lifecycleStatus: "registered" as const,
+    sourceSystem: "mail_dashboard" as const,
+    sourceActive: true,
+    revision: 4,
+    lastMailSyncedAt: "2026-08-01T12:00:00.000Z",
     note: "short-lived",
     hasEmailPassword: true,
     hasChatgptPassword: true,
@@ -25,6 +30,11 @@ const mocks = vi.hoisted(() => ({
     id: "backup-1",
     email: "spare@example.com",
     accountStatus: "plus" as const,
+    lifecycleStatus: "registered" as const,
+    sourceSystem: "mail_dashboard" as const,
+    sourceActive: true,
+    revision: 4,
+    lastMailSyncedAt: "2026-08-01T12:00:00.000Z",
     note: "short-lived",
     hasEmailPassword: true,
     hasChatgptPassword: true,
@@ -142,6 +152,40 @@ describe("BackupResourcesPage", () => {
     renderPage();
 
     expect(screen.getByRole("table").parentElement?.classList.contains("glass-surface")).toBe(true);
+  });
+
+  it("shows sanitized account-factory status metadata in both responsive layouts", () => {
+    renderPage();
+
+    expect(screen.getAllByText("Lifecycle").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Registered").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Source").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Mail dashboard · Active").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Revision").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("4").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Last mail sync").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Aug 1, 2026/).length).toBeGreaterThan(0);
+  });
+
+  it("uses visible safe fallbacks for unassigned inactive source metadata", () => {
+    mocks.account.sourceSystem = null;
+    mocks.account.sourceActive = false;
+    mocks.account.lastMailSyncedAt = null;
+    mocks.detail.sourceSystem = null;
+    mocks.detail.sourceActive = false;
+    mocks.detail.lastMailSyncedAt = null;
+
+    renderPage();
+
+    expect(screen.getAllByText("Not set").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Not set · Inactive")).toBeNull();
+
+    mocks.account.sourceSystem = "mail_dashboard";
+    mocks.account.sourceActive = true;
+    mocks.account.lastMailSyncedAt = "2026-08-01T12:00:00.000Z";
+    mocks.detail.sourceSystem = "mail_dashboard";
+    mocks.detail.sourceActive = true;
+    mocks.detail.lastMailSyncedAt = "2026-08-01T12:00:00.000Z";
   });
 
   it("selects the phone tab and opens the phone form from the header action", () => {

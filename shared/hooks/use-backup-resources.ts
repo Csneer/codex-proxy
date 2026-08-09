@@ -4,11 +4,18 @@ import { adminFetch } from "../http/admin-fetch";
 const BASE_URL = "/admin/backup-resources";
 
 export type BackupAccountStatus = "plus" | "free" | "unregistered" | "pro";
+export type BackupAccountLifecycleStatus = "available" | "leased" | "registering" | "registered" | "promoted" | "invalid" | "retired";
+export type BackupAccountSourceSystem = "mail_dashboard" | "extension" | "manual";
 
 export interface BackupAccount {
   id: string;
   email: string;
   accountStatus: BackupAccountStatus;
+  lifecycleStatus: BackupAccountLifecycleStatus;
+  sourceSystem: BackupAccountSourceSystem | null;
+  sourceActive: boolean;
+  revision: number;
+  lastMailSyncedAt: string | null;
   note: string;
   hasEmailPassword: boolean;
   hasChatgptPassword: boolean;

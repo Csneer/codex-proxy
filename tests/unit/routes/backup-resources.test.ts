@@ -54,6 +54,35 @@ describe("backup resource admin routes", () => {
     });
   });
 
+  it("lists safe account-factory metadata without factory secrets", async () => {
+    const path = join(mkdtempSync(join(tmpdir(), "backup-routes-")), "backup-resources.sqlite");
+    const store = new BackupResourceStore(path, new BackupSecretCipher(randomBytes(32)));
+    stores.push(store);
+    const app = createBackupResourceRoutes(() => store);
+    store.syncSourceAccount({
+      sourceSystem: "mail_dashboard",
+      externalId: "mailbox-1",
+      email: "dashboard@example.com",
+      sourceRevision: "rev-1",
+      active: true,
+    });
+
+    const list = await (await app.request("/admin/backup-resources/accounts")).json() as Array<Record<string, unknown>>;
+
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({
+      email: "dashboard@example.com",
+      lifecycleStatus: "available",
+      sourceSystem: "mail_dashboard",
+      sourceActive: true,
+      revision: 1,
+      lastMailSyncedAt: expect.any(String),
+    });
+    for (const forbidden of ["emailPassword", "chatgptPassword", "totpSecret", "emailCodeUrl", "accessToken", "refreshToken", "sessionJson", "progress", "lastErrorCode"]) {
+      expect(list[0]).not.toHaveProperty(forbidden);
+    }
+  });
+
   it("rejects unsupported account statuses", async () => {
     const app = makeApp();
     const response = await app.request("/admin/backup-resources/accounts", {

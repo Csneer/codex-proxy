@@ -5,6 +5,8 @@ import {
   useBackupResources,
   type BackupAccount,
   type BackupAccountInput,
+  type BackupAccountLifecycleStatus,
+  type BackupAccountSourceSystem,
   type BackupAccountStatus,
   type SmsNumber,
   type SmsNumberInput,
@@ -83,6 +85,42 @@ function AccountStatusBadge({ status }: { status: BackupAccountStatus }) {
     <span class={`inline-flex whitespace-nowrap rounded-full px-2 py-1 text-[11px] font-semibold ${styles[status]}`}>
       {accountStatusLabel(status, t)}
     </span>
+  );
+}
+
+function lifecycleLabel(status: BackupAccountLifecycleStatus, t: ReturnType<typeof useT>): string {
+  switch (status) {
+    case "available": return t("backupLifecycleAvailable");
+    case "leased": return t("backupLifecycleLeased");
+    case "registering": return t("backupLifecycleRegistering");
+    case "registered": return t("backupLifecycleRegistered");
+    case "promoted": return t("backupLifecyclePromoted");
+    case "invalid": return t("backupLifecycleInvalid");
+    case "retired": return t("backupLifecycleRetired");
+  }
+}
+
+function sourceLabel(source: BackupAccountSourceSystem | null, t: ReturnType<typeof useT>): string {
+  if (source === "mail_dashboard") return t("backupSourceMailDashboard");
+  if (source === "extension") return t("backupSourceExtension");
+  if (source === "manual") return t("backupSourceManual");
+  return t("backupSourceUnset");
+}
+
+function AccountFactoryMetadata({ account }: { account: BackupAccount }) {
+  const t = useT();
+  const { lang } = useI18n();
+  const sourceState = account.sourceActive ? t("backupSourceActive") : t("backupSourceInactive");
+  const source = account.sourceSystem ? `${sourceLabel(account.sourceSystem, t)} · ${sourceState}` : sourceLabel(null, t);
+  const lastMailSync = account.lastMailSyncedAt ? formatDate(account.lastMailSyncedAt, lang) : t("backupNotSet");
+
+  return (
+    <dl class="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs text-muted">
+      <div><dt>{t("backupLifecycle")}</dt><dd class="mt-0.5 font-medium text-main">{lifecycleLabel(account.lifecycleStatus, t)}</dd></div>
+      <div><dt>{t("backupSource")}</dt><dd class="mt-0.5 font-medium text-main">{source}</dd></div>
+      <div><dt>{t("backupRevision")}</dt><dd class="mt-0.5 font-medium text-main">{account.revision}</dd></div>
+      <div><dt>{t("backupLastMailSynced")}</dt><dd class="mt-0.5 font-medium text-main">{lastMailSync}</dd></div>
+    </dl>
   );
 }
 
@@ -450,15 +488,19 @@ export function BackupResourcesPage() {
           ) : resources.accounts.length === 0 ? <EmptyState text={t("backupEmptyAccounts")} /> : (
             <>
               <div class="glass-surface hidden overflow-x-auto rounded-xl md:block">
-                <table class="w-full min-w-[1000px] text-left text-xs">
+                <table aria-label={t("backupAccountsTab")} class="w-full min-w-[1400px] text-left text-xs">
                   <thead class="border-b border-gray-200 text-muted dark:border-border-dark">
-                    <tr><th class="px-4 py-3">{t("backupEmail")}</th><th class="px-3 py-3">{t("backupAccountStatus")}</th><th class="px-3 py-3">{t("backupEmailPassword")}</th><th class="px-3 py-3">{t("backupChatgptPassword")}</th><th class="px-3 py-3">TOTP</th><th class="px-3 py-3">{t("backupEmailCodeUrl")}</th><th class="px-3 py-3">{t("backupNote")}</th><th class="px-3 py-3">{t("updatedAt")}</th><th class="px-4 py-3 text-right">{t("backupActions")}</th></tr>
+                    <tr><th scope="col" class="px-4 py-3">{t("backupEmail")}</th><th scope="col" class="px-3 py-3">{t("backupAccountStatus")}</th><th scope="col" class="px-3 py-3">{t("backupLifecycle")}</th><th scope="col" class="px-3 py-3">{t("backupSource")}</th><th scope="col" class="px-3 py-3">{t("backupRevision")}</th><th scope="col" class="px-3 py-3">{t("backupLastMailSynced")}</th><th scope="col" class="px-3 py-3">{t("backupEmailPassword")}</th><th scope="col" class="px-3 py-3">{t("backupChatgptPassword")}</th><th scope="col" class="px-3 py-3">TOTP</th><th scope="col" class="px-3 py-3">{t("backupEmailCodeUrl")}</th><th scope="col" class="px-3 py-3">{t("backupNote")}</th><th scope="col" class="px-3 py-3">{t("updatedAt")}</th><th scope="col" class="px-4 py-3 text-right">{t("backupActions")}</th></tr>
                   </thead>
                   <tbody class="divide-y divide-gray-100 dark:divide-border-dark">
                     {resources.accounts.map((account) => (
                       <tr key={account.id} class="align-middle transition-colors hover:bg-primary-container/20">
                         <td class="max-w-48 break-all px-4 py-3 font-medium text-main">{account.email}</td>
                         <td class="px-3 py-3"><AccountStatusBadge status={account.accountStatus} /></td>
+                        <td class="whitespace-nowrap px-3 py-3 text-main">{lifecycleLabel(account.lifecycleStatus, t)}</td>
+                        <td class="whitespace-nowrap px-3 py-3 text-main">{account.sourceSystem ? `${sourceLabel(account.sourceSystem, t)} · ${account.sourceActive ? t("backupSourceActive") : t("backupSourceInactive")}` : sourceLabel(null, t)}</td>
+                        <td class="px-3 py-3 text-main">{account.revision}</td>
+                        <td class="whitespace-nowrap px-3 py-3 text-muted">{account.lastMailSyncedAt ? formatDate(account.lastMailSyncedAt, lang) : t("backupNotSet")}</td>
                         <td class="px-3 py-3"><Presence present={account.hasEmailPassword} /></td>
                         <td class="px-3 py-3"><Presence present={account.hasChatgptPassword} /></td>
                         <td class="px-3 py-3"><Presence present={account.hasTotpSecret} /></td>
@@ -478,7 +520,8 @@ export function BackupResourcesPage() {
                       <p class="min-w-0 flex-1 break-all text-sm font-semibold text-main">{account.email}</p>
                       <AccountStatusBadge status={account.accountStatus} />
                     </div>
-                    <p class="mt-1 line-clamp-2 text-xs text-slate-500 dark:text-text-dim">{account.note || t("backupNoNote")}</p>
+                    <AccountFactoryMetadata account={account} />
+                    <p class="mt-3 line-clamp-2 text-xs text-slate-500 dark:text-text-dim">{account.note || t("backupNoNote")}</p>
                     <div class="mt-3 grid grid-cols-2 gap-2 text-xs">
                       <span>{t("backupEmailPassword")}: <Presence present={account.hasEmailPassword} /></span>
                       <span>{t("backupChatgptPassword")}: <Presence present={account.hasChatgptPassword} /></span>
