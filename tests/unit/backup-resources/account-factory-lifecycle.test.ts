@@ -90,6 +90,13 @@ describe("BackupResourceStore account-factory lifecycle", () => {
       sourceActive: false,
       lifecycleStatus: "leased",
     });
+    expect(store.syncSourceAccount({
+      sourceSystem: "mail_dashboard",
+      externalId: "mail-missing",
+      email: "mail-missing@example.com",
+      sourceRevision: "rev-1",
+      appleLabel: "mail-missing",
+    })).toMatchObject({ sourceActive: true, lifecycleStatus: "leased" });
     expect(store.getLease("task-missing")).toEqual(lease);
     expect(store.getAccount(retained.id)).toMatchObject({ sourceActive: true });
     expect(store.getAccount(extension.id)).toMatchObject({ sourceActive: true, sourceSystem: "extension" });

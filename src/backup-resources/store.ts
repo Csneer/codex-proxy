@@ -436,7 +436,7 @@ export class BackupResourceStore {
       const current = this.db.prepare(
         "SELECT * FROM backup_accounts WHERE source_system = ? AND external_id = ?",
       ).get(sourceSystem, externalId) as AccountFactoryAccountRow | undefined;
-      if (current && current.last_source_revision === sourceRevision) {
+      if (current && current.last_source_revision === sourceRevision && current.source_active === (input.active === false ? 0 : 1)) {
         const result = accountFactoryAccount(current);
         this.recordOperation(operationId, null, "sync", `${sourceSystem}:${externalId}`, result);
         return result;
