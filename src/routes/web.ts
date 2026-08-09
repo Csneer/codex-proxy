@@ -17,8 +17,15 @@ import { createUiAppearanceRoutes } from "./admin/ui-appearance.js";
 import { createCallObservabilityRoutes } from "./admin/call-observability.js";
 import { createBackupResourceRoutes } from "./admin/backup-resources.js";
 import type { UsageStatsStore } from "../auth/usage-stats.js";
+import type { AccountFactoryPromotionService } from "../backup-resources/promotion.js";
 
-export function createWebRoutes(accountPool: AccountPool, usageStats: UsageStatsStore): Hono {
+export function createWebRoutes(
+  accountPool: AccountPool,
+  usageStats: UsageStatsStore,
+  dependencies: {
+    resolvePromotionService?: () => Pick<AccountFactoryPromotionService, "promote">;
+  } = {},
+): Hono {
   const app = new Hono();
 
   const publicDir = getPublicDir();
@@ -58,7 +65,7 @@ export function createWebRoutes(accountPool: AccountPool, usageStats: UsageStats
   app.route("/", createCallRecordRoutes());
   app.route("/", createUiAppearanceRoutes());
   app.route("/", createCallObservabilityRoutes());
-  app.route("/", createBackupResourceRoutes());
+  app.route("/", createBackupResourceRoutes(undefined, dependencies.resolvePromotionService));
 
   return app;
 }

@@ -34,7 +34,7 @@ describe("backup resource admin routes", () => {
     expect(created).not.toHaveProperty("emailPassword");
 
     const list = await (await app.request("/admin/backup-resources/accounts")).json();
-    expect(list).toEqual([created]);
+    expect(list).toEqual([{ ...created, promotion: null }]);
     expect(JSON.stringify(list)).not.toContain("secret");
 
     const detailResponse = await app.request(`/admin/backup-resources/accounts/${created.id}`);

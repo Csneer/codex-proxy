@@ -6,6 +6,20 @@ const BASE_URL = "/admin/backup-resources";
 export type BackupAccountStatus = "plus" | "free" | "unregistered" | "pro";
 export type BackupAccountLifecycleStatus = "available" | "leased" | "registering" | "registered" | "promoted" | "invalid" | "retired";
 export type BackupAccountSourceSystem = "mail_dashboard" | "extension" | "manual";
+export type BackupAccountPromotionMode = "refreshable" | "ephemeral";
+export type BackupAccountPromotionState = "requested" | "importing" | "imported" | "linked" | "failed";
+
+export interface BackupAccountPromotion {
+  id: string;
+  accountId: string;
+  idempotencyKey: string;
+  mode: BackupAccountPromotionMode;
+  state: BackupAccountPromotionState;
+  coreAccountId: string | null;
+  errorCode: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export interface BackupAccount {
   id: string;
@@ -23,6 +37,7 @@ export interface BackupAccount {
   hasEmailCodeUrl: boolean;
   createdAt: string;
   updatedAt: string;
+  promotion: BackupAccountPromotion | null;
 }
 
 export interface BackupAccountDetail extends BackupAccount {
@@ -152,6 +167,16 @@ export function useBackupResources() {
     await loadAccounts();
   }, [detail?.id, loadAccounts, mutate]);
 
+  const promoteAccount = useCallback(async (account: BackupAccount) => {
+    await mutate(`/accounts/${encodeURIComponent(account.id)}/promote`, "POST", {
+      schemaVersion: 1,
+      idempotencyKey: account.promotion?.idempotencyKey ?? crypto.randomUUID(),
+      expectedRevision: account.revision,
+      allowEphemeral: false,
+    });
+    await loadAccounts();
+  }, [loadAccounts, mutate]);
+
   const loadAccountDetail = useCallback(async (id: string) => {
     const request = ++detailRequest.current;
     setDetail(null);
@@ -210,6 +235,7 @@ export function useBackupResources() {
     createAccount,
     updateAccount,
     deleteAccount,
+    promoteAccount,
     loadAccountDetail,
     clearAccountDetail,
     createPhone,

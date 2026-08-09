@@ -113,6 +113,7 @@ function AccountFactoryMetadata({ account }: { account: BackupAccount }) {
   const sourceState = account.sourceActive ? t("backupSourceActive") : t("backupSourceInactive");
   const source = account.sourceSystem ? `${sourceLabel(account.sourceSystem, t)} · ${sourceState}` : sourceLabel(null, t);
   const lastMailSync = account.lastMailSyncedAt ? formatDate(account.lastMailSyncedAt, lang) : t("backupNotSet");
+  const promotion = account.promotion;
 
   return (
     <dl class="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs text-muted">
@@ -120,6 +121,7 @@ function AccountFactoryMetadata({ account }: { account: BackupAccount }) {
       <div><dt>{t("backupSource")}</dt><dd class="mt-0.5 font-medium text-main">{source}</dd></div>
       <div><dt>{t("backupRevision")}</dt><dd class="mt-0.5 font-medium text-main">{account.revision}</dd></div>
       <div><dt>{t("backupLastMailSynced")}</dt><dd class="mt-0.5 font-medium text-main">{lastMailSync}</dd></div>
+      <div class="col-span-2"><dt>{t("backupPromotion")}</dt><dd class="mt-0.5 break-all font-medium text-main">{promotion ? `${promotion.state} · ${promotion.mode}${promotion.coreAccountId ? ` · ${promotion.coreAccountId}` : ""}${promotion.errorCode ? ` · ${promotion.errorCode}` : ""}` : t("backupNotSet")}</dd></div>
     </dl>
   );
 }
@@ -439,8 +441,25 @@ export function BackupResourcesPage() {
     }
   };
 
+  const promoteAccount = async (account: BackupAccount) => {
+    setBusyId(account.id);
+    try {
+      await resources.promoteAccount(account);
+      notify(t("backupPromotionStarted"));
+    } catch (error) {
+      notify(error instanceof Error ? error.message : String(error), true);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const actionButtons = (account: BackupAccount) => (
     <div class="flex flex-wrap justify-end gap-1.5">
+      {account.lifecycleStatus === "registered" && account.promotion?.state !== "linked" && (
+        <button class={primaryButton} disabled={busyId === account.id} onClick={() => void promoteAccount(account)}>
+          {account.promotion ? t("backupPromotionRetry") : t("backupPromote")}
+        </button>
+      )}
       <button class={secondaryButton} onClick={() => openDetail(account.id)}>{t("backupView")}</button>
       <button class={secondaryButton} onClick={() => setAccountForm(account)}>{t("backupEdit")}</button>
       <button class={dangerButton} disabled={busyId === account.id} onClick={() => void removeAccount(account)}>{t("backupDelete")}</button>
@@ -490,7 +509,7 @@ export function BackupResourcesPage() {
               <div class="glass-surface hidden overflow-x-auto rounded-xl md:block">
                 <table aria-label={t("backupAccountsTab")} class="w-full min-w-[1400px] text-left text-xs">
                   <thead class="border-b border-gray-200 text-muted dark:border-border-dark">
-                    <tr><th scope="col" class="px-4 py-3">{t("backupEmail")}</th><th scope="col" class="px-3 py-3">{t("backupAccountStatus")}</th><th scope="col" class="px-3 py-3">{t("backupLifecycle")}</th><th scope="col" class="px-3 py-3">{t("backupSource")}</th><th scope="col" class="px-3 py-3">{t("backupRevision")}</th><th scope="col" class="px-3 py-3">{t("backupLastMailSynced")}</th><th scope="col" class="px-3 py-3">{t("backupEmailPassword")}</th><th scope="col" class="px-3 py-3">{t("backupChatgptPassword")}</th><th scope="col" class="px-3 py-3">TOTP</th><th scope="col" class="px-3 py-3">{t("backupEmailCodeUrl")}</th><th scope="col" class="px-3 py-3">{t("backupNote")}</th><th scope="col" class="px-3 py-3">{t("updatedAt")}</th><th scope="col" class="px-4 py-3 text-right">{t("backupActions")}</th></tr>
+                    <tr><th scope="col" class="px-4 py-3">{t("backupEmail")}</th><th scope="col" class="px-3 py-3">{t("backupAccountStatus")}</th><th scope="col" class="px-3 py-3">{t("backupLifecycle")}</th><th scope="col" class="px-3 py-3">{t("backupPromotion")}</th><th scope="col" class="px-3 py-3">{t("backupSource")}</th><th scope="col" class="px-3 py-3">{t("backupRevision")}</th><th scope="col" class="px-3 py-3">{t("backupLastMailSynced")}</th><th scope="col" class="px-3 py-3">{t("backupEmailPassword")}</th><th scope="col" class="px-3 py-3">{t("backupChatgptPassword")}</th><th scope="col" class="px-3 py-3">TOTP</th><th scope="col" class="px-3 py-3">{t("backupEmailCodeUrl")}</th><th scope="col" class="px-3 py-3">{t("backupNote")}</th><th scope="col" class="px-3 py-3">{t("updatedAt")}</th><th scope="col" class="px-4 py-3 text-right">{t("backupActions")}</th></tr>
                   </thead>
                   <tbody class="divide-y divide-gray-100 dark:divide-border-dark">
                     {resources.accounts.map((account) => (
@@ -498,6 +517,7 @@ export function BackupResourcesPage() {
                         <td class="max-w-48 break-all px-4 py-3 font-medium text-main">{account.email}</td>
                         <td class="px-3 py-3"><AccountStatusBadge status={account.accountStatus} /></td>
                         <td class="whitespace-nowrap px-3 py-3 text-main">{lifecycleLabel(account.lifecycleStatus, t)}</td>
+                        <td class="max-w-56 break-all px-3 py-3 text-main">{account.promotion ? `${account.promotion.state} · ${account.promotion.mode}${account.promotion.coreAccountId ? ` · ${account.promotion.coreAccountId}` : ""}${account.promotion.errorCode ? ` · ${account.promotion.errorCode}` : ""}` : "—"}</td>
                         <td class="whitespace-nowrap px-3 py-3 text-main">{account.sourceSystem ? `${sourceLabel(account.sourceSystem, t)} · ${account.sourceActive ? t("backupSourceActive") : t("backupSourceInactive")}` : sourceLabel(null, t)}</td>
                         <td class="px-3 py-3 text-main">{account.revision}</td>
                         <td class="whitespace-nowrap px-3 py-3 text-muted">{account.lastMailSyncedAt ? formatDate(account.lastMailSyncedAt, lang) : t("backupNotSet")}</td>

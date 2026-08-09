@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   updateAccount: vi.fn(),
   createPhone: vi.fn(),
   clearAccountDetail: vi.fn(),
+  promoteAccount: vi.fn(),
   account: {
     id: "backup-1",
     email: "spare@example.com",
@@ -25,6 +26,17 @@ const mocks = vi.hoisted(() => ({
     hasEmailCodeUrl: false,
     createdAt: "2026-08-01T10:00:00.000Z",
     updatedAt: "2026-08-01T11:00:00.000Z",
+    promotion: {
+      id: "promotion-1",
+      accountId: "backup-1",
+      idempotencyKey: "promotion-key-1",
+      mode: "ephemeral" as const,
+      state: "failed" as const,
+      coreAccountId: null,
+      errorCode: "core_import_failed",
+      createdAt: "2026-08-01T12:30:00.000Z",
+      updatedAt: "2026-08-01T12:31:00.000Z",
+    },
   },
   detail: {
     id: "backup-1",
@@ -46,6 +58,7 @@ const mocks = vi.hoisted(() => ({
     emailCodeUrl: "https://mail.example/code",
     createdAt: "2026-08-01T10:00:00.000Z",
     updatedAt: "2026-08-01T11:00:00.000Z",
+    promotion: null,
   },
 }));
 
@@ -65,6 +78,7 @@ vi.mock("../../../shared/hooks/use-backup-resources", () => ({
     createAccount: vi.fn(),
     updateAccount: mocks.updateAccount,
     deleteAccount: vi.fn(),
+    promoteAccount: mocks.promoteAccount,
     loadAccountDetail: mocks.loadAccountDetail,
     clearAccountDetail: mocks.clearAccountDetail,
     createPhone: mocks.createPhone,
@@ -84,6 +98,7 @@ beforeEach(() => {
   mocks.updateAccount.mockReset().mockResolvedValue(undefined);
   mocks.createPhone.mockReset().mockResolvedValue(undefined);
   mocks.clearAccountDetail.mockReset();
+  mocks.promoteAccount.mockReset().mockResolvedValue(undefined);
 });
 
 afterEach(cleanup);
@@ -165,6 +180,17 @@ describe("BackupResourcesPage", () => {
     expect(screen.getAllByText("4").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Last mail sync").length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Aug 1, 2026/).length).toBeGreaterThan(0);
+  });
+
+  it("shows promotion state and retries only after an explicit click", async () => {
+    renderPage();
+
+    expect(screen.getAllByText(/failed · ephemeral · core_import_failed/).length).toBeGreaterThan(0);
+    expect(mocks.promoteAccount).not.toHaveBeenCalled();
+    fireEvent.click(screen.getAllByRole("button", { name: "Retry promotion" })[0]!);
+
+    await waitFor(() => expect(mocks.promoteAccount).toHaveBeenCalledWith(mocks.account));
+    expect(screen.getByRole("status").textContent).toContain("Promotion updated");
   });
 
   it("uses visible safe fallbacks for unassigned inactive source metadata", () => {

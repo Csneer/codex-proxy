@@ -236,7 +236,7 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   const proxyRoutes = createProxyRoutes(proxyPool, accountPool);
   const usageStats = new UsageStatsStore();
   usageStats.recoverBaseline(accountPool);
-  const webRoutes = createWebRoutes(accountPool, usageStats);
+  const webRoutes = createWebRoutes(accountPool, usageStats, { resolvePromotionService });
 
   app.route("/", createDashboardAuthRoutes());
   app.route("/", authRoutes);
