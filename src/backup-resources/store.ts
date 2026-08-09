@@ -669,7 +669,11 @@ export class BackupResourceStore {
       `).run(operationId, timestamp, leaseId);
       this.db.prepare(`
         UPDATE backup_accounts
-        SET lifecycle_status = 'registered', account_status = ?, registered_at = ?,
+        SET lifecycle_status = CASE
+              WHEN lifecycle_status = 'promoted' THEN 'promoted'
+              ELSE 'registered'
+            END,
+            account_status = ?, registered_at = ?,
             email_password = CASE WHEN ? = 1 THEN ? ELSE email_password END,
             chatgpt_password = ?,
             totp_secret = CASE WHEN ? = 1 THEN ? ELSE totp_secret END,

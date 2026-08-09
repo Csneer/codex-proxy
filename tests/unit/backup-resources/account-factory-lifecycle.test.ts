@@ -269,6 +269,51 @@ describe("BackupResourceStore account-factory lifecycle", () => {
     expect(store.getAccountSyncState(account.id)).toEqual(newer);
   });
 
+  it("never implicitly promotes on complete and never demotes an explicitly linked account", () => {
+    const { store } = createStore();
+    const account = sync(store);
+    const claim = store.claimAccount({ consumerId: "consumer", taskId: "task-promote" })!;
+    const ownership = {
+      schemaVersion: 1 as const,
+      taskId: "task-promote",
+      leaseId: claim.lease.id,
+      idempotencyKey: "complete-promote",
+    };
+    store.commitSubmission({ ...ownership, operationId: "commit-promote" });
+    const completed = store.completeLease({
+      ...ownership,
+      operationId: "complete-before-promote",
+      sourceRevision: 1,
+      password: "password",
+      accessToken: "access-token",
+      refreshToken: "refresh-token",
+    });
+    expect(completed.lifecycleStatus).toBe("registered");
+    expect(store.getPromotion(account.id)).toBeNull();
+
+    store.planPromotion(account.id, {
+      schemaVersion: 1,
+      idempotencyKey: "explicit-promotion",
+      expectedRevision: completed.revision,
+      allowEphemeral: false,
+    });
+    store.markPromotionImporting(account.id, "explicit-promotion");
+    store.markPromotionImported(account.id, "explicit-promotion", "core-account");
+    store.linkPromotion(account.id, "explicit-promotion");
+
+    const laterComplete = store.completeLease({
+      ...ownership,
+      operationId: "complete-after-promote",
+      sourceRevision: 2,
+      password: "updated-password",
+    });
+    expect(laterComplete.lifecycleStatus).toBe("promoted");
+    expect(store.getPromotion(account.id)).toMatchObject({
+      state: "linked",
+      coreAccountId: "core-account",
+    });
+  });
+
   it("rejects an operation id reused to sync a different source identity", () => {
     const { store } = createStore();
     store.syncSourceAccount({
