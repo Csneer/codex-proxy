@@ -22,7 +22,10 @@ const Operation = z.object({
   operationId: Text.optional(),
   idempotencyKey: Text.optional(),
 }).strict();
-const SubmissionCommit = Operation.extend({ idempotencyKey: Text }).strict();
+const SubmissionCommit = Operation.extend({
+  schemaVersion: z.literal(1),
+  idempotencyKey: Text,
+}).strict();
 const Claim = z.object({
   consumerId: Text,
   taskId: Text,

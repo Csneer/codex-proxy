@@ -103,6 +103,7 @@ describe("account-factory v1 routes", () => {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
+        schemaVersion: 1,
         taskId: claim.lease.taskId,
         leaseId: claim.lease.id,
         operationId: "commit-1",
@@ -113,6 +114,38 @@ describe("account-factory v1 routes", () => {
     expect(account.id).toBe(claim.account.id);
     expect(response.status).toBe(404);
     expect(await response.json()).toEqual({ error: "not_found" });
+  });
+
+  it("requires submission commit schema version 1", async () => {
+    const store = createStore();
+    const account = sync(store);
+    const claim = store.claimAccount({ consumerId: "consumer", taskId: "task-1" })!;
+    const app = createApp(store);
+    const path = `/integration/account-factory/v1/accounts/${account.id}/submission-commit`;
+    const payload = {
+      taskId: claim.lease.taskId,
+      leaseId: claim.lease.id,
+      operationId: "commit-1",
+      idempotencyKey: "commit-key-1",
+    };
+    const request = (body: object) => app.request(path, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    const missingVersion = await request(payload);
+    const unsupportedVersion = await request({ ...payload, schemaVersion: 2 });
+    const committed = await request({ ...payload, schemaVersion: 1 });
+
+    expect(missingVersion.status).toBe(400);
+    expect(await missingVersion.json()).toEqual({ error: "invalid_request" });
+    expect(unsupportedVersion.status).toBe(400);
+    expect(await unsupportedVersion.json()).toEqual({ error: "invalid_request" });
+    expect(committed.status).toBe(200);
+    expect(await committed.json()).toMatchObject({
+      lease: { state: "committed", submissionCommitted: true },
+    });
   });
 
   it("binds verification polling to the matching task lease and account", async () => {
@@ -207,7 +240,7 @@ describe("account-factory v1 routes", () => {
     const commit = await app.request(`/integration/account-factory/v1/accounts/${account.id}/submission-commit`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ ...ownership, operationId: "commit-1" }),
+      body: JSON.stringify({ ...ownership, schemaVersion: 1, operationId: "commit-1" }),
     });
     const completePayload = {
       ...ownership,
