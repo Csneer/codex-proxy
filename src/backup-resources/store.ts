@@ -22,6 +22,9 @@ import type {
   AccountFactoryLease,
   AccountFactoryOperationInput,
   AccountFactoryProgressInput,
+  AccountFactoryPromoteDto,
+  AccountFactoryPromotion,
+  AccountFactoryPromotionPlan,
   AccountFactorySourceReconcileInput,
   AccountFactorySourceReconcileResult,
   AccountFactorySourceSystem,
@@ -106,6 +109,18 @@ interface AccountFactoryOperationRow {
   created_at: string;
 }
 
+interface AccountFactoryPromotionRow {
+  id: string;
+  account_id: string;
+  idempotency_key: string;
+  mode: AccountFactoryPromotion["mode"];
+  state: AccountFactoryPromotion["state"];
+  core_account_id: string | null;
+  error_code: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 function accountFactoryAccount(row: AccountFactoryAccountRow): AccountFactoryAccount {
   return {
     id: row.id,
@@ -143,6 +158,20 @@ function accountFactoryLease(row: AccountFactoryLeaseRow): AccountFactoryLease {
   };
 }
 
+function accountFactoryPromotion(row: AccountFactoryPromotionRow): AccountFactoryPromotion {
+  return {
+    id: row.id,
+    accountId: row.account_id,
+    idempotencyKey: row.idempotency_key,
+    mode: row.mode,
+    state: row.state,
+    coreAccountId: row.core_account_id,
+    errorCode: row.error_code,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 function parseOperationResult<T>(row: AccountFactoryOperationRow): T {
   return JSON.parse(row.result_json) as T;
 }
@@ -170,6 +199,13 @@ export class AccountFactoryRevisionConflict extends Error {
   constructor(readonly syncState: AccountFactoryAccountSyncState) {
     super("Account factory source revision conflict");
     this.name = "AccountFactoryRevisionConflict";
+  }
+}
+
+export class AccountFactoryPromotionError extends Error {
+  constructor(readonly code: string) {
+    super(code);
+    this.name = "AccountFactoryPromotionError";
   }
 }
 
@@ -713,6 +749,150 @@ export class BackupResourceStore {
     return row ? this.accountSyncState(row) : null;
   }
 
+  getPromotion(accountId: string): AccountFactoryPromotion | null {
+    const row = this.db.prepare(
+      "SELECT * FROM account_factory_promotions WHERE account_id = ?",
+    ).get(accountId) as AccountFactoryPromotionRow | undefined;
+    return row ? accountFactoryPromotion(row) : null;
+  }
+
+  planPromotion(accountId: string, input: AccountFactoryPromoteDto): AccountFactoryPromotionPlan {
+    if (input.schemaVersion !== 1 || !Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) {
+      throw new AccountFactoryPromotionError("invalid_payload");
+    }
+    const idempotencyKey = assertRequiredText(input.idempotencyKey, "promotion idempotencyKey");
+
+    return this.db.transaction(() => {
+      const account = this.db.prepare("SELECT * FROM backup_accounts WHERE id = ?")
+        .get(accountId) as AccountFactoryAccountRow | undefined;
+      if (!account) throw new AccountFactoryPromotionError("not_found");
+
+      const existing = this.db.prepare(
+        "SELECT * FROM account_factory_promotions WHERE account_id = ? OR idempotency_key = ?",
+      ).get(accountId, idempotencyKey) as AccountFactoryPromotionRow | undefined;
+      if (existing) {
+        if (existing.account_id !== accountId || existing.idempotency_key !== idempotencyKey) {
+          throw new AccountFactoryPromotionError("idempotency_conflict");
+        }
+        return this.promotionPlan(existing, account);
+      }
+
+      if (account.lifecycle_status !== "registered") {
+        throw new AccountFactoryPromotionError("account_not_registered");
+      }
+      if (account.revision !== input.expectedRevision) {
+        throw new AccountFactoryRevisionConflict(this.accountSyncState(account));
+      }
+      const accessToken = this.decryptPromotionSecret(account.access_token, "access_token_required");
+      const refreshToken = account.refresh_token === null ? null : this.cipher.decrypt(account.refresh_token);
+      if (refreshToken === null && !input.allowEphemeral) {
+        throw new AccountFactoryPromotionError("refresh_token_required");
+      }
+      const timestamp = now();
+      const row: AccountFactoryPromotionRow = {
+        id: randomUUID(),
+        account_id: accountId,
+        idempotency_key: idempotencyKey,
+        mode: refreshToken === null ? "ephemeral" : "refreshable",
+        state: "planned",
+        core_account_id: null,
+        error_code: null,
+        created_at: timestamp,
+        updated_at: timestamp,
+      };
+      this.db.prepare(`
+        INSERT INTO account_factory_promotions (
+          id, account_id, idempotency_key, mode, state, core_account_id,
+          error_code, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        row.id,
+        row.account_id,
+        row.idempotency_key,
+        row.mode,
+        row.state,
+        row.core_account_id,
+        row.error_code,
+        row.created_at,
+        row.updated_at,
+      );
+      this.recordEvent(accountId, null, "promotion_planned");
+      return { promotion: accountFactoryPromotion(row), accessToken, refreshToken };
+    })();
+  }
+
+  markPromotionImported(accountId: string, idempotencyKey: string, coreAccountId: string): AccountFactoryPromotion {
+    const key = assertRequiredText(idempotencyKey, "promotion idempotencyKey");
+    const coreId = assertRequiredText(coreAccountId, "coreAccountId");
+    return this.db.transaction(() => {
+      const row = this.requirePromotion(accountId, key);
+      if (row.state === "linked") {
+        if (row.core_account_id !== coreId) throw new AccountFactoryPromotionError("core_identity_conflict");
+        return accountFactoryPromotion(row);
+      }
+      if (row.core_account_id !== null && row.core_account_id !== coreId) {
+        throw new AccountFactoryPromotionError("core_identity_conflict");
+      }
+      const timestamp = now();
+      this.db.prepare(`
+        UPDATE account_factory_promotions
+        SET state = 'imported', core_account_id = ?, error_code = NULL, updated_at = ?
+        WHERE id = ?
+      `).run(coreId, timestamp, row.id);
+      this.recordEvent(accountId, null, "promotion_imported");
+      return accountFactoryPromotion({ ...row, state: "imported", core_account_id: coreId, error_code: null, updated_at: timestamp });
+    })();
+  }
+
+  linkPromotion(accountId: string, idempotencyKey: string): AccountFactoryPromotion {
+    const key = assertRequiredText(idempotencyKey, "promotion idempotencyKey");
+    return this.db.transaction(() => {
+      const row = this.requirePromotion(accountId, key);
+      if (row.state === "linked") return accountFactoryPromotion(row);
+      if (row.state !== "imported" || !row.core_account_id) {
+        throw new AccountFactoryPromotionError("promotion_not_imported");
+      }
+      const account = this.db.prepare("SELECT lifecycle_status FROM backup_accounts WHERE id = ?")
+        .get(accountId) as { lifecycle_status: AccountFactoryAccount["lifecycleStatus"] } | undefined;
+      if (!account || account.lifecycle_status !== "registered") {
+        throw new AccountFactoryPromotionError("account_not_registered");
+      }
+      const timestamp = now();
+      this.db.prepare(`
+        UPDATE account_factory_promotions
+        SET state = 'linked', error_code = NULL, updated_at = ?
+        WHERE id = ?
+      `).run(timestamp, row.id);
+      this.db.prepare(`
+        UPDATE backup_accounts
+        SET lifecycle_status = 'promoted', active_account_id = ?, promotion_mode = ?,
+            last_error_code = NULL, revision = revision + 1, updated_at = ?
+        WHERE id = ?
+      `).run(row.core_account_id, row.mode, timestamp, accountId);
+      this.recordEvent(accountId, null, "promotion_linked");
+      return accountFactoryPromotion({ ...row, state: "linked", error_code: null, updated_at: timestamp });
+    })();
+  }
+
+  failPromotion(accountId: string, idempotencyKey: string, errorCode: string): AccountFactoryPromotion {
+    const key = assertRequiredText(idempotencyKey, "promotion idempotencyKey");
+    const code = assertRequiredText(errorCode, "promotion errorCode");
+    return this.db.transaction(() => {
+      const row = this.requirePromotion(accountId, key);
+      if (row.state === "linked") return accountFactoryPromotion(row);
+      const timestamp = now();
+      this.db.prepare(`
+        UPDATE account_factory_promotions SET state = 'failed', error_code = ?, updated_at = ? WHERE id = ?
+      `).run(code, timestamp, row.id);
+      this.db.prepare(`
+        UPDATE backup_accounts SET last_error_code = ?, updated_at = ?
+        WHERE id = ? AND lifecycle_status = 'registered'
+      `).run(code, timestamp, accountId);
+      this.recordEvent(accountId, null, "promotion_failed", code);
+      return accountFactoryPromotion({ ...row, state: "failed", error_code: code, updated_at: timestamp });
+    })();
+  }
+
   getSyncState(sourceSystem: AccountFactorySourceSystem): AccountFactorySyncState {
     const row = this.db.prepare(`
       SELECT
@@ -850,6 +1030,9 @@ export class BackupResourceStore {
     }
     if (current < 5) {
       this.applySchemaV5();
+    }
+    if (current < 6) {
+      this.applySchemaV6();
     }
 
     this.writeSchemaVersion(BACKUP_RESOURCES_SCHEMA_VERSION);
@@ -1030,6 +1213,44 @@ export class BackupResourceStore {
     migration();
   }
 
+  private applySchemaV6(): void {
+    const promotionModeValues = ACCOUNT_FACTORY_PROMOTION_MODES.map((value) => `'${value}'`).join(", ");
+    const migration = this.db.transaction(() => {
+      this.addColumnIfMissing(
+        "backup_accounts",
+        "promotion_mode",
+        `TEXT CHECK (promotion_mode IS NULL OR promotion_mode IN (${promotionModeValues}))`,
+      );
+    });
+    migration();
+  }
+
+  private promotionPlan(
+    promotion: AccountFactoryPromotionRow,
+    account: AccountFactoryAccountRow,
+  ): AccountFactoryPromotionPlan {
+    return {
+      promotion: accountFactoryPromotion(promotion),
+      accessToken: this.decryptPromotionSecret(account.access_token, "access_token_required"),
+      refreshToken: account.refresh_token === null ? null : this.cipher.decrypt(account.refresh_token),
+    };
+  }
+
+  private decryptPromotionSecret(value: string | null, errorCode: string): string {
+    if (value === null) throw new AccountFactoryPromotionError(errorCode);
+    const decrypted = this.cipher.decrypt(value).trim();
+    if (!decrypted) throw new AccountFactoryPromotionError(errorCode);
+    return decrypted;
+  }
+
+  private requirePromotion(accountId: string, idempotencyKey: string): AccountFactoryPromotionRow {
+    const row = this.db.prepare(
+      "SELECT * FROM account_factory_promotions WHERE account_id = ? AND idempotency_key = ?",
+    ).get(accountId, idempotencyKey) as AccountFactoryPromotionRow | undefined;
+    if (!row) throw new AccountFactoryPromotionError("promotion_not_found");
+    return row;
+  }
+
   private getOperationResult<T>(
     operationId: string | undefined,
     taskId: string | null,
@@ -1121,10 +1342,10 @@ export class BackupResourceStore {
     })();
   }
 
-  private recordEvent(accountId: string, taskId: string | null, eventType: string): void {
+  private recordEvent(accountId: string, taskId: string | null, eventType: string, errorCode: string | null = null): void {
     this.db.prepare(`
-      INSERT INTO account_factory_events (id, account_id, task_id, event_type, created_at)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(randomUUID(), accountId, taskId, eventType, now());
+      INSERT INTO account_factory_events (id, account_id, task_id, event_type, error_code, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(randomUUID(), accountId, taskId, eventType, errorCode, now());
   }
 }

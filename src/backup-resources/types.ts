@@ -40,7 +40,7 @@ export const ACCOUNT_FACTORY_PROMOTION_STATES = [
 export type AccountFactoryPromotionState = typeof ACCOUNT_FACTORY_PROMOTION_STATES[number];
 
 export const BACKUP_RESOURCES_SCHEMA_VERSION_KEY = "schema_version";
-export const BACKUP_RESOURCES_SCHEMA_VERSION = 5;
+export const BACKUP_RESOURCES_SCHEMA_VERSION = 6;
 
 export interface BackupAccountInput {
   email: string;
@@ -251,6 +251,33 @@ export interface AccountFactoryCompleteInput extends AccountFactoryOperationInpu
 
 export interface AccountFactoryFailInput extends AccountFactoryOperationInput {
   errorCode: string;
+}
+
+/** Explicit Phase 4 promotion DTO. Promotion is never implied by complete. */
+export interface AccountFactoryPromoteDto {
+  schemaVersion: 1;
+  idempotencyKey: string;
+  expectedRevision: number;
+  allowEphemeral: boolean;
+}
+
+export interface AccountFactoryPromotion {
+  id: string;
+  accountId: string;
+  idempotencyKey: string;
+  mode: AccountFactoryPromotionMode;
+  state: AccountFactoryPromotionState;
+  coreAccountId: string | null;
+  errorCode: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Internal-only promotion material; route responses must never expose it. */
+export interface AccountFactoryPromotionPlan {
+  promotion: AccountFactoryPromotion;
+  accessToken: string;
+  refreshToken: string | null;
 }
 
 export interface AccountFactoryAccountSyncState {
