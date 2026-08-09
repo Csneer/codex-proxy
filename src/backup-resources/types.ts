@@ -32,7 +32,8 @@ export const ACCOUNT_FACTORY_PROMOTION_MODES = ["refreshable", "ephemeral"] as c
 export type AccountFactoryPromotionMode = typeof ACCOUNT_FACTORY_PROMOTION_MODES[number];
 
 export const ACCOUNT_FACTORY_PROMOTION_STATES = [
-  "planned",
+  "requested",
+  "importing",
   "imported",
   "linked",
   "failed",
@@ -40,7 +41,7 @@ export const ACCOUNT_FACTORY_PROMOTION_STATES = [
 export type AccountFactoryPromotionState = typeof ACCOUNT_FACTORY_PROMOTION_STATES[number];
 
 export const BACKUP_RESOURCES_SCHEMA_VERSION_KEY = "schema_version";
-export const BACKUP_RESOURCES_SCHEMA_VERSION = 6;
+export const BACKUP_RESOURCES_SCHEMA_VERSION = 7;
 
 export interface BackupAccountInput {
   email: string;

@@ -794,7 +794,7 @@ export class BackupResourceStore {
         account_id: accountId,
         idempotency_key: idempotencyKey,
         mode: refreshToken === null ? "ephemeral" : "refreshable",
-        state: "planned",
+        state: "requested",
         core_account_id: null,
         error_code: null,
         created_at: timestamp,
@@ -821,6 +821,24 @@ export class BackupResourceStore {
     })();
   }
 
+  markPromotionImporting(accountId: string, idempotencyKey: string): AccountFactoryPromotion {
+    const key = assertRequiredText(idempotencyKey, "promotion idempotencyKey");
+    return this.db.transaction(() => {
+      const row = this.requirePromotion(accountId, key);
+      if (row.state === "linked" || row.state === "imported" || row.state === "importing") {
+        return accountFactoryPromotion(row);
+      }
+      const timestamp = now();
+      this.db.prepare(`
+        UPDATE account_factory_promotions
+        SET state = 'importing', error_code = NULL, updated_at = ?
+        WHERE id = ?
+      `).run(timestamp, row.id);
+      this.recordEvent(accountId, null, "promotion_importing");
+      return accountFactoryPromotion({ ...row, state: "importing", error_code: null, updated_at: timestamp });
+    })();
+  }
+
   markPromotionImported(accountId: string, idempotencyKey: string, coreAccountId: string): AccountFactoryPromotion {
     const key = assertRequiredText(idempotencyKey, "promotion idempotencyKey");
     const coreId = assertRequiredText(coreAccountId, "coreAccountId");
@@ -829,6 +847,9 @@ export class BackupResourceStore {
       if (row.state === "linked") {
         if (row.core_account_id !== coreId) throw new AccountFactoryPromotionError("core_identity_conflict");
         return accountFactoryPromotion(row);
+      }
+      if (row.state !== "importing" && row.state !== "imported") {
+        throw new AccountFactoryPromotionError("promotion_not_importing");
       }
       if (row.core_account_id !== null && row.core_account_id !== coreId) {
         throw new AccountFactoryPromotionError("core_identity_conflict");
@@ -1034,6 +1055,9 @@ export class BackupResourceStore {
     if (current < 6) {
       this.applySchemaV6();
     }
+    if (current < 7) {
+      this.applySchemaV7();
+    }
 
     this.writeSchemaVersion(BACKUP_RESOURCES_SCHEMA_VERSION);
   }
@@ -1132,7 +1156,7 @@ export class BackupResourceStore {
           idempotency_key TEXT NOT NULL UNIQUE,
           mode TEXT NOT NULL
             CHECK (mode IN (${promotionModeValues})),
-          state TEXT NOT NULL DEFAULT 'planned'
+          state TEXT NOT NULL DEFAULT 'requested'
             CHECK (state IN (${promotionStateValues})),
           core_account_id TEXT,
           error_code TEXT,
@@ -1221,6 +1245,37 @@ export class BackupResourceStore {
         "promotion_mode",
         `TEXT CHECK (promotion_mode IS NULL OR promotion_mode IN (${promotionModeValues}))`,
       );
+    });
+    migration();
+  }
+
+  private applySchemaV7(): void {
+    const promotionModeValues = ACCOUNT_FACTORY_PROMOTION_MODES.map((value) => `'${value}'`).join(", ");
+    const promotionStateValues = ACCOUNT_FACTORY_PROMOTION_STATES.map((value) => `'${value}'`).join(", ");
+    const migration = this.db.transaction(() => {
+      this.db.exec(`
+        CREATE TABLE account_factory_promotions_v7 (
+          id TEXT PRIMARY KEY,
+          account_id TEXT NOT NULL UNIQUE REFERENCES backup_accounts(id),
+          idempotency_key TEXT NOT NULL UNIQUE,
+          mode TEXT NOT NULL CHECK (mode IN (${promotionModeValues})),
+          state TEXT NOT NULL DEFAULT 'requested' CHECK (state IN (${promotionStateValues})),
+          core_account_id TEXT,
+          error_code TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        INSERT INTO account_factory_promotions_v7 (
+          id, account_id, idempotency_key, mode, state, core_account_id,
+          error_code, created_at, updated_at
+        )
+        SELECT id, account_id, idempotency_key, mode,
+          CASE WHEN state = 'planned' THEN 'requested' ELSE state END,
+          core_account_id, error_code, created_at, updated_at
+        FROM account_factory_promotions;
+        DROP TABLE account_factory_promotions;
+        ALTER TABLE account_factory_promotions_v7 RENAME TO account_factory_promotions;
+      `);
     });
     migration();
   }

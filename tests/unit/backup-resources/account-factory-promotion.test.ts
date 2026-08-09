@@ -53,7 +53,7 @@ describe("account-factory promotion store", () => {
     const replay = store.planPromotion(accountId, { ...input, expectedRevision: 0 });
 
     expect(first).toMatchObject({
-      promotion: { accountId, idempotencyKey: "promotion-1", mode: "refreshable", state: "planned" },
+      promotion: { accountId, idempotencyKey: "promotion-1", mode: "refreshable", state: "requested" },
       accessToken: "access-token",
       refreshToken: "refresh-token",
     });
@@ -74,7 +74,7 @@ describe("account-factory promotion store", () => {
     expect(store.getPromotion(accountId)).toBeNull();
 
     expect(store.planPromotion(accountId, { ...base, allowEphemeral: true })).toMatchObject({
-      promotion: { mode: "ephemeral", state: "planned" },
+      promotion: { mode: "ephemeral", state: "requested" },
       accessToken: "access-token",
       refreshToken: null,
     });
@@ -109,5 +109,45 @@ describe("account-factory promotion store", () => {
       expectedRevision: 0,
       allowEphemeral: false,
     })).toThrow("idempotency_conflict");
+  });
+
+  it("migrates the legacy planned state to requested without losing identity", () => {
+    const fixture = registeredAccount();
+    const planned = fixture.store.planPromotion(fixture.accountId, {
+      schemaVersion: 1,
+      idempotencyKey: "legacy-promotion",
+      expectedRevision: 7,
+      allowEphemeral: false,
+    }).promotion;
+    fixture.store.close();
+    stores.pop();
+
+    const db = new Database(fixture.path);
+    db.exec(`
+      ALTER TABLE account_factory_promotions RENAME TO account_factory_promotions_current;
+      CREATE TABLE account_factory_promotions (
+        id TEXT PRIMARY KEY,
+        account_id TEXT NOT NULL UNIQUE REFERENCES backup_accounts(id),
+        idempotency_key TEXT NOT NULL UNIQUE,
+        mode TEXT NOT NULL CHECK (mode IN ('refreshable', 'ephemeral')),
+        state TEXT NOT NULL DEFAULT 'planned' CHECK (state IN ('planned', 'imported', 'linked', 'failed')),
+        core_account_id TEXT,
+        error_code TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      INSERT INTO account_factory_promotions
+        SELECT id, account_id, idempotency_key, mode, 'planned', core_account_id,
+          error_code, created_at, updated_at
+        FROM account_factory_promotions_current;
+      DROP TABLE account_factory_promotions_current;
+      UPDATE backup_metadata SET value = '6' WHERE key = 'schema_version';
+    `);
+    db.close();
+
+    const reopened = new BackupResourceStore(fixture.path, fixture.cipher);
+    stores.push(reopened);
+    expect(reopened.getPromotion(fixture.accountId)).toEqual({ ...planned, state: "requested" });
+    expect(() => reopened.markPromotionImporting(fixture.accountId, "legacy-promotion")).not.toThrow();
   });
 });

@@ -120,18 +120,18 @@ describe("account-factory schema contract", () => {
         INSERT INTO account_factory_promotions (
           id, account_id, idempotency_key, mode, state, created_at, updated_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run("promotion-1", first.id, "operation-1", "refreshable", "planned", "2026-08-09T07:00:00.000Z", "2026-08-09T07:00:00.000Z");
+      `).run("promotion-1", first.id, "operation-1", "refreshable", "requested", "2026-08-09T07:00:00.000Z", "2026-08-09T07:00:00.000Z");
 
       expect(() => db.prepare(`
         INSERT INTO account_factory_promotions (
           id, account_id, idempotency_key, mode, state, created_at, updated_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run("promotion-2", second.id, "operation-1", "ephemeral", "planned", "2026-08-09T07:01:00.000Z", "2026-08-09T07:01:00.000Z")).toThrow(/UNIQUE constraint failed/);
+      `).run("promotion-2", second.id, "operation-1", "ephemeral", "requested", "2026-08-09T07:01:00.000Z", "2026-08-09T07:01:00.000Z")).toThrow(/UNIQUE constraint failed/);
       expect(() => db.prepare(`
         INSERT INTO account_factory_promotions (
           id, account_id, idempotency_key, mode, state, created_at, updated_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run("promotion-3", first.id, "operation-2", "ephemeral", "planned", "2026-08-09T07:01:00.000Z", "2026-08-09T07:01:00.000Z")).toThrow(/UNIQUE constraint failed/);
+      `).run("promotion-3", first.id, "operation-2", "ephemeral", "requested", "2026-08-09T07:01:00.000Z", "2026-08-09T07:01:00.000Z")).toThrow(/UNIQUE constraint failed/);
 
       db.prepare(`
         UPDATE backup_accounts
