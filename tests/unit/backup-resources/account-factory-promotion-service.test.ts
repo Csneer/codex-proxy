@@ -126,6 +126,33 @@ describe("AccountFactoryPromotionService", () => {
     expect(importer.importPromotion.mock.calls[0]).toEqual(importer.importPromotion.mock.calls[1]);
   });
 
+  it("resumes an imported saga at link without invoking core import again", async () => {
+    const { store, path, accountId } = fixture();
+    const importer = successfulImporter("durable-imported-core-id");
+    const originalLink = store.linkPromotion.bind(store);
+    store.linkPromotion = vi.fn(() => {
+      throw new Error("simulated crash before aggregate link");
+    });
+    const service = new AccountFactoryPromotionService(store, importer);
+
+    await expect(service.promote(accountId, input())).rejects.toThrow("simulated crash");
+    expect(store.getPromotion(accountId)).toMatchObject({
+      state: "imported",
+      coreAccountId: "durable-imported-core-id",
+    });
+    const db = new Database(path);
+    expect(db.prepare("SELECT lifecycle_status, active_account_id FROM backup_accounts WHERE id = ?").get(accountId))
+      .toEqual({ lifecycle_status: "registered", active_account_id: null });
+    db.close();
+
+    store.linkPromotion = originalLink;
+    await expect(service.promote(accountId, input())).resolves.toMatchObject({
+      state: "linked",
+      coreAccountId: "durable-imported-core-id",
+    });
+    expect(importer.importPromotion).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects AT-only by default before invoking the importer", async () => {
     const { store, accountId } = fixture(null);
     const importer = successfulImporter();

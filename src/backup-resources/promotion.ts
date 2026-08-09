@@ -24,8 +24,12 @@ export function accountImportPromotionImporter(
   importService: Pick<AccountImportService, "importOne">,
 ): AccountFactoryPromotionImporter {
   return {
-    importPromotion: ({ accessToken, refreshToken }) =>
-      importService.importOne(accessToken, refreshToken ?? undefined),
+    importPromotion: ({ accessToken, refreshToken, mode }) =>
+      importService.importOne(
+        accessToken,
+        refreshToken ?? undefined,
+        mode === "ephemeral" ? { refreshTokenPolicy: "clear" } : undefined,
+      ),
   };
 }
 

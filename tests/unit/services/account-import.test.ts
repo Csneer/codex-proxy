@@ -599,6 +599,21 @@ describe("AccountImportService", () => {
         expect(result.error).toContain("Either token or refreshToken");
       }
     });
+
+    it("clears an existing refresh token only under explicit ephemeral import policy", async () => {
+      const pool = makePool();
+      const scheduler = makeScheduler();
+      const jwt = createValidJwt({ accountId: "ephemeral", email: "same@test.com" });
+      const entryId = pool.addAccount(jwt, "existing-refresh-token");
+      const svc = new AccountImportService(pool, scheduler, makeDeps());
+
+      await svc.importOne(jwt);
+      expect(pool.getEntry(entryId)?.refreshToken).toBe("existing-refresh-token");
+
+      const result = await svc.importOne(jwt, undefined, { refreshTokenPolicy: "clear" });
+      expect(result.ok).toBe(true);
+      expect(pool.getEntry(entryId)?.refreshToken).toBeNull();
+    });
   });
 
   describe("warmup", () => {

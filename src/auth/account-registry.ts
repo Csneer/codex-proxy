@@ -215,6 +215,15 @@ export class AccountRegistry {
     this.persistNow();
   }
 
+  /** Explicitly remove refresh capability; never used by ordinary token refresh/import. */
+  clearRefreshToken(entryId: string): boolean {
+    const entry = this.accounts.get(entryId);
+    if (!entry) return false;
+    entry.refreshToken = null;
+    this.persistNow();
+    return true;
+  }
+
   /**
    * Read a single account's RT from the active persistence backend.
    * Used to detect cross-process updates before consuming a one-time RT.

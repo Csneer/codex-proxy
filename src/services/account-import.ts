@@ -35,6 +35,11 @@ export type ImportOneResult =
   | { ok: true; entryId: string; account: AccountInfo }
   | { ok: false; error: string; kind: "validation" | "refresh_failed" };
 
+export interface ImportOneOptions {
+  /** Ordinary imports preserve an existing RT; ephemeral promotion explicitly clears it. */
+  refreshTokenPolicy?: "preserve" | "clear";
+}
+
 function redactImportError(value: string): string {
   return value
     .replace(/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]*/g, "[REDACTED_JWT]")
@@ -132,6 +137,7 @@ export class AccountImportService {
   async importOne(
     token?: string,
     refreshToken?: string,
+    options: ImportOneOptions = {},
   ): Promise<ImportOneResult> {
     if (!token && !refreshToken) {
       return {
@@ -185,6 +191,9 @@ export class AccountImportService {
       resolved.rt,
       resolved.metadata,
     );
+    if (options.refreshTokenPolicy === "clear") {
+      this.pool.clearRefreshToken(entryId);
+    }
     this.scheduler.scheduleOne(entryId, resolved.token);
 
     // Cache quota from verification (so dashboard shows data immediately)

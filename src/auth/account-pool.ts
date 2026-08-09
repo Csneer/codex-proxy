@@ -165,6 +165,11 @@ export class AccountPool {
     this.evictWsPool(entryId);
   }
 
+  /** Explicit destructive policy used only by approved ephemeral imports. */
+  clearRefreshToken(entryId: string): boolean {
+    return this.registry.clearRefreshToken(entryId);
+  }
+
   /** Drop any pooled WebSocket connections for `entryId`. Used by status
    *  mutations and token refresh to prevent in-flight reuse from carrying
    *  stale auth or routing into a backend the account is no longer welcome
