@@ -3,6 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { BackupResourceStore } from "@src/backup-resources/store.js";
+import { AccountFactoryPromotionError } from "@src/backup-resources/store.js";
+import type { AccountFactoryPromotion } from "@src/backup-resources/types.js";
 import { createTestCipher } from "@fixtures/backup-resources/cipher-fixtures.js";
 import { createAccountFactoryRoutes } from "@src/routes/account-factory.js";
 import {
@@ -21,7 +23,16 @@ function createStore(): BackupResourceStore {
   return store;
 }
 
-function createApp(store: BackupResourceStore, mail: Partial<MailDashboardClient> = {}) {
+function createApp(
+  store: BackupResourceStore,
+  mail: Partial<MailDashboardClient> = {},
+  promote?: (accountId: string, input: {
+    schemaVersion: 1;
+    idempotencyKey: string;
+    expectedRevision: number;
+    allowEphemeral: boolean;
+  }) => Promise<AccountFactoryPromotion>,
+) {
   return createAccountFactoryRoutes({
     resolveStore: () => store,
     resolveMailClient: () => ({
@@ -29,6 +40,7 @@ function createApp(store: BackupResourceStore, mail: Partial<MailDashboardClient
       pollVerificationCode: async () => ({ status: "pending" as const }),
       ...mail,
     }),
+    ...(promote ? { resolvePromotionService: () => ({ promote }) } : {}),
   });
 }
 
@@ -60,7 +72,7 @@ describe("account-factory v1 routes", () => {
     expect(await health.json()).toEqual({
       enabled: true,
       schemaVersion: 1,
-      capabilities: ["claim", "submissionCommit", "poll", "progress", "syncState", "complete", "fail"],
+      capabilities: ["claim", "submissionCommit", "poll", "progress", "syncState", "complete", "fail", "promote"],
     });
     expect(invalid.status).toBe(400);
     expect(await invalid.json()).toEqual({ error: "invalid_request" });
@@ -312,5 +324,65 @@ describe("account-factory v1 routes", () => {
     });
     expect(response.status).toBe(404);
     expect(await response.json()).toEqual({ error: "not_found" });
+  });
+
+  it("promotes explicitly with allowEphemeral defaulted false and returns a secret-free no-store DTO", async () => {
+    const store = createStore();
+    const account = sync(store);
+    const calls: unknown[] = [];
+    const promotion: AccountFactoryPromotion = {
+      id: "promotion-1",
+      accountId: account.id,
+      idempotencyKey: "promote-1",
+      mode: "refreshable",
+      state: "linked",
+      coreAccountId: "core-token-derived-1",
+      errorCode: null,
+      createdAt: "2026-08-09T10:00:00.000Z",
+      updatedAt: "2026-08-09T10:00:01.000Z",
+    };
+    const app = createApp(store, {}, async (accountId, input) => {
+      calls.push({ accountId, input });
+      return promotion;
+    });
+
+    const response = await app.request(`/integration/account-factory/v1/accounts/${account.id}/promote`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ schemaVersion: 1, idempotencyKey: "promote-1", expectedRevision: 4 }),
+    });
+    const responseBody = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(calls).toEqual([{
+      accountId: account.id,
+      input: { schemaVersion: 1, idempotencyKey: "promote-1", expectedRevision: 4, allowEphemeral: false },
+    }]);
+    expect(responseBody).toEqual({ promotion });
+    expect(JSON.stringify(responseBody)).not.toMatch(/accessToken|refreshToken|session|password|secret/i);
+  });
+
+  it("maps AT-only refusal and other promotion errors without invoking implicit complete promotion", async () => {
+    const store = createStore();
+    const account = sync(store);
+    const promote = async () => { throw new AccountFactoryPromotionError("refresh_token_required"); };
+    const app = createApp(store, {}, promote);
+
+    const rejected = await app.request(`/integration/account-factory/v1/accounts/${account.id}/promote`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ schemaVersion: 1, idempotencyKey: "promote-at", expectedRevision: 1 }),
+    });
+    const malformed = await app.request(`/integration/account-factory/v1/accounts/${account.id}/promote`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ schemaVersion: 1, idempotencyKey: "promote-at", expectedRevision: 1, allowEphemeral: "yes" }),
+    });
+
+    expect(rejected.status).toBe(409);
+    expect(await rejected.json()).toEqual({ error: "refresh_token_required" });
+    expect(malformed.status).toBe(400);
+    expect(await malformed.json()).toEqual({ error: "invalid_request" });
   });
 });

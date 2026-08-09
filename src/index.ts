@@ -6,6 +6,8 @@ import { loadConfig, loadFingerprint, getConfig, hasLocalOverride } from "./conf
 import { initContext } from "./context.js";
 import { AccountPool } from "./auth/account-pool.js";
 import { RefreshScheduler } from "./auth/refresh-scheduler.js";
+import { validateManualToken } from "./auth/chatgpt-oauth.js";
+import { refreshAccessToken } from "./auth/oauth-pkce.js";
 
 import { requestId } from "./middleware/request-id.js";
 import { logger } from "./middleware/logger.js";
@@ -25,13 +27,14 @@ import { createGeminiRoutes } from "./routes/gemini.js";
 import { createModelRoutes } from "./routes/models.js";
 import { createWebRoutes } from "./routes/web.js";
 import { CookieJar } from "./proxy/cookie-jar.js";
+import { CodexApi } from "./proxy/codex-api.js";
 import { ProxyPool } from "./proxy/proxy-pool.js";
 import { setWsPoolConfig, getWsPool } from "./proxy/ws-pool.js";
 import { createProxyRoutes } from "./routes/proxies.js";
 import { createResponsesRoutes } from "./routes/responses.js";
 import { startUpdateChecker, stopUpdateChecker } from "./update-checker.js";
 import { startProxyUpdateChecker, stopProxyUpdateChecker, setCloseHandler, getDeployMode } from "./self-update.js";
-import { initProxy } from "./tls/proxy.js";
+import { getProxyUrl as getRuntimeProxyUrl, initProxy } from "./tls/proxy.js";
 import { cleanupStaleLocks } from "./auth/refresh-lock.js";
 import { initTransport, getTransport } from "./tls/transport.js";
 import { loadStaticModels } from "./models/model-store.js";
@@ -52,10 +55,16 @@ import { createRuntimeUpstreamRouter } from "./proxy/upstream-router-bootstrap.j
 import { startOllamaBridge, stopOllamaBridge } from "./ollama/server.js";
 import { createOfficialAgentRoutes } from "./routes/official-agent.js";
 import { createAccountFactoryRoutes } from "./routes/account-factory.js";
+import { AccountImportService } from "./services/account-import.js";
+import { discoverCodexAccountIdentity } from "./services/account-identity-resolver.js";
+import {
+  AccountFactoryPromotionService,
+  accountImportPromotionImporter,
+} from "./backup-resources/promotion.js";
 import { installUncaughtErrorHandlers } from "./logs/error-log.js";
 import { closeCallRecordService, initializeCallRecordService } from "./call-records/service.js";
 import { awaitServerListening } from "./utils/await-listening.js";
-import { closeBackupResourceService } from "./backup-resources/service.js";
+import { closeBackupResourceService, getBackupResourceStore } from "./backup-resources/service.js";
 
 export interface ServerHandle {
   close: () => Promise<void>;
@@ -71,6 +80,37 @@ function urlHostForLocalRequest(host: string): string {
   if (host === "0.0.0.0" || host === "::") return "127.0.0.1";
   if (host.includes(":") && !host.startsWith("[")) return `[${host}]`;
   return host;
+}
+
+function createPromotionImportService(
+  pool: AccountPool,
+  scheduler: RefreshScheduler,
+  cookieJar: CookieJar,
+): AccountImportService {
+  return new AccountImportService(pool, scheduler, {
+    validateToken: validateManualToken,
+    refreshToken: refreshAccessToken,
+    getProxyUrl: getRuntimeProxyUrl,
+    discoverIdentity: (token, metadata, options) =>
+      discoverCodexAccountIdentity(token, metadata, {
+        proxyUrl: options.proxyUrl,
+        accountIdHint: options.accountIdHint,
+      }),
+    warmup: undefined,
+    verifyAccount: async (token, accountId, proxyUrl) => {
+      const api = new CodexApi(token, accountId, cookieJar, null, proxyUrl);
+      try {
+        const usage = await api.getUsage();
+        return { ok: true, usage };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (message.toLowerCase().includes("deactivated")) {
+          return { ok: false, error: "Account has been deactivated" };
+        }
+        return { ok: true };
+      }
+    },
+  });
 }
 
 /**
@@ -179,6 +219,14 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   // Mount routes
   const authRoutes = createAuthRoutes(accountPool, refreshScheduler);
   const accountRoutes = createAccountRoutes(accountPool, refreshScheduler, cookieJar, proxyPool);
+  let promotionService: AccountFactoryPromotionService | null = null;
+  const resolvePromotionService = (): AccountFactoryPromotionService => {
+    promotionService ??= new AccountFactoryPromotionService(
+      getBackupResourceStore(),
+      accountImportPromotionImporter(createPromotionImportService(accountPool, refreshScheduler, cookieJar)),
+    );
+    return promotionService;
+  };
   const chatRoutes = createChatRoutes(accountPool, cookieJar, proxyPool, upstreamRouter);
   const messagesRoutes = createMessagesRoutes(accountPool, cookieJar, proxyPool, upstreamRouter);
   const geminiRoutes = createGeminiRoutes(accountPool, cookieJar, proxyPool, upstreamRouter);
@@ -200,7 +248,7 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   app.route("/", geminiRoutes);
   app.route("/", responsesRoutes);
   app.route("/", createOfficialAgentRoutes());
-  app.route("/", createAccountFactoryRoutes());
+  app.route("/", createAccountFactoryRoutes({ resolvePromotionService }));
   app.route("/", proxyRoutes);
   app.route("/", createModelRoutes(apiKeyPool, accountPool));
   app.route("/", webRoutes);

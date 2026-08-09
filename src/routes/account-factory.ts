@@ -3,9 +3,11 @@ import { z } from "zod";
 import { getConfig } from "../config.js";
 import { getBackupResourceStore } from "../backup-resources/service.js";
 import {
+  AccountFactoryPromotionError,
   AccountFactoryRevisionConflict,
   type BackupResourceStore,
 } from "../backup-resources/store.js";
+import type { AccountFactoryPromotionService } from "../backup-resources/promotion.js";
 import { BACKUP_ACCOUNT_STATUSES } from "../backup-resources/types.js";
 import {
   createMailDashboardClient,
@@ -67,10 +69,17 @@ const VerificationQuery = z.object({
   leaseId: Text,
 }).strict();
 const SyncQuery = z.object({ taskId: Text, leaseId: Text }).strict();
+const Promote = z.object({
+  schemaVersion: z.literal(1),
+  idempotencyKey: Text,
+  expectedRevision: z.number().int().nonnegative(),
+  allowEphemeral: z.boolean().optional().default(false),
+}).strict();
 
-interface RouteDependencies {
+export interface AccountFactoryRouteDependencies {
   resolveStore?: () => BackupResourceStore;
   resolveMailClient?: () => MailDashboardClient;
+  resolvePromotionService?: () => Pick<AccountFactoryPromotionService, "promote">;
 }
 
 async function body<T>(c: Context, schema: z.ZodType<T>): Promise<T | null> {
@@ -97,7 +106,7 @@ function leaseResponse(lease: ReturnType<BackupResourceStore["getLease"]> & {}):
   return { ...safeLease, hasProgress: progress !== null };
 }
 
-export function createAccountFactoryRoutes(dependencies: RouteDependencies = {}): Hono {
+export function createAccountFactoryRoutes(dependencies: AccountFactoryRouteDependencies = {}): Hono {
   const store = dependencies.resolveStore ?? getBackupResourceStore;
   const mail = dependencies.resolveMailClient ?? (() => createMailDashboardClient(getConfig().account_factory.mail_dashboard_base_url));
   const app = new Hono();
@@ -113,6 +122,11 @@ export function createAccountFactoryRoutes(dependencies: RouteDependencies = {})
       c.status(409);
       return c.json({ error: "revision_conflict", ...error.syncState });
     }
+    if (error instanceof AccountFactoryPromotionError) {
+      if (error.code === "invalid_payload") return responseError(c, 400, "invalid_request");
+      if (error.code === "not_found") return responseError(c, 404, "not_found");
+      return responseError(c, 409, error.code);
+    }
     if (error instanceof Error && error.message.includes("not found")) return responseError(c, 404, "not_found");
     if (error instanceof Error && error.message.includes("Invalid")) return responseError(c, 400, "invalid_request");
     return responseError(c, 409, "lease_conflict");
@@ -121,7 +135,7 @@ export function createAccountFactoryRoutes(dependencies: RouteDependencies = {})
   app.get(`${BASE_PATH}/health`, (c) => c.json({
     enabled: true,
     schemaVersion: 1,
-    capabilities: ["claim", "submissionCommit", "poll", "progress", "syncState", "complete", "fail"],
+    capabilities: ["claim", "submissionCommit", "poll", "progress", "syncState", "complete", "fail", "promote"],
   }));
 
   app.post(`${BASE_PATH}/mailboxes/sync`, async (c) => {
@@ -203,6 +217,18 @@ export function createAccountFactoryRoutes(dependencies: RouteDependencies = {})
     if (!leaseForAccount(c, store(), input.taskId, input.leaseId)) return responseError(c, 404, "not_found");
     c.header("Cache-Control", "no-store");
     return c.json(store().completeLease(input));
+  });
+
+  app.post(`${BASE_PATH}/accounts/:id/promote`, async (c) => {
+    const input = await body(c, Promote);
+    if (!input) return responseError(c, 400, "invalid_request");
+    if (!dependencies.resolvePromotionService) return responseError(c, 409, "promotion_unavailable");
+    c.header("Cache-Control", "no-store");
+    const promotion = await dependencies.resolvePromotionService().promote(c.req.param("id"), {
+      ...input,
+      allowEphemeral: input.allowEphemeral ?? false,
+    });
+    return c.json({ promotion });
   });
 
   app.post(`${BASE_PATH}/accounts/:id/fail`, async (c) => {
