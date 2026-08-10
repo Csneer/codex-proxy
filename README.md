@@ -156,7 +156,7 @@ curl http://localhost:8080/v1/chat/completions \
 - **配额采集** — 默认从上游响应头和 WebSocket rate limit 事件被动更新账号额度；用户手动查询单账号额度时会调用 `/backend-api/wham/usage`，并把 `remaining_percent = 100 - used_percent` 写入缓存。
 - **封禁检测** — 上游 403 自动标记 banned；401 token 吊销自动过期并切换账号
 - **API Key Provider 池** — 支持通过 Dashboard 管理第三方 API Key、模型列表、导入导出和启停状态。
-- **备用资源** — 独立管理备用账号与接码手机号；账号套餐状态由用户手工维护，密码、TOTP 和邮箱接码 URL 加密保存且仅在详情中按需读取。
+- **备用资源与 Account Factory** — 从本地邮件服务同步 HME 库存，供浏览器插件租约领取和验证码轮询；密码、TOTP、Session、Access Token、Refresh Token 等凭据加密保存，只在详情中按需读取，也可手工修改或清空。
 - **Web 控制面板** — 账号管理、用量统计、批量操作，中英双语；远程访问需 Dashboard 登录门
 
 ### 🌐 代理池
@@ -814,9 +814,31 @@ curl -N http://localhost:8080/official-agent/threads/{threadId}/turns \
 |------|------|------|
 | `/admin/backup-resources/accounts` | GET/POST | 列出 / 新增备用账号 |
 | `/admin/backup-resources/accounts/:id` | GET/PATCH/DELETE | 查看详情 / 更新 / 删除备用账号 |
+| `/admin/backup-resources/accounts/:id/promote` | POST | 将已注册备用账号显式提升到核心账号池 |
 | `/admin/backup-resources/phones` | GET/POST | 列出 / 新增接码手机号 |
 | `/admin/backup-resources/phones/:id` | GET/PATCH/DELETE | 查看 / 更新 / 删除接码手机号 |
 | `/admin/backup-resources/phones/:id/use` | POST | 记录使用一次 |
+
+备用账号页面支持邮箱/备注搜索、账号状态与生命周期筛选、录入时间排序。列表保持精简，密码、TOTP、接码 URL、Session、Access Token 和 Refresh Token 统一在“查看”详情中显示/复制，在“编辑”中新增、修改或清空。
+
+**Account Factory（独立集成令牌）**
+
+基础路径为 `/integration/account-factory/v1`，供本地邮件同步服务和 Free Account Tool 插件使用。它使用 `X-Account-Factory-Token`，不复用 Dashboard 密码或代理 API Key。
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/health` | GET | 检查 schema 与 claim/commit/poll/complete 等能力 |
+| `/mailboxes/sync` | POST | 从 Mail Dashboard 同步当前 HME 目录 |
+| `/claims` | POST | 创建幂等账号租约 |
+| `/accounts/:id/submission-commit` | POST | 确认邮箱已提交到官网 |
+| `/accounts/:id/verification-code` | GET | 通过 Mail Dashboard 查询当前租约验证码 |
+| `/accounts/:id/progress` | PATCH | 保存脱敏流程进度 |
+| `/accounts/:id/sync-state` | GET | complete 响应未知时对账 |
+| `/accounts/:id/complete` | POST | 回写最终密码、TOTP、Session、AT 和 RT |
+| `/accounts/:id/fail` | POST | 结束失败租约 |
+| `/accounts/:id/promote` | POST | 显式提升到核心账号池 |
+
+当前三项目运行与配置说明见 [ACCOUNT_FACTORY.md](ACCOUNT_FACTORY.md)。
 
 **账号导入导出示例**
 

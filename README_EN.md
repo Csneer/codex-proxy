@@ -127,7 +127,7 @@ If you see streaming AI text, the setup is working. If you get 401, double-check
 - **Passive quota collection** — updates account quota from upstream response headers and WebSocket rate-limit events; `quota.refresh_interval_minutes` only controls local usage snapshots, and `0` disables that timer.
 - **Ban detection** — upstream 403 auto-marks banned; 401 token invalidation auto-expires and switches account
 - **API key provider pool** — manage third-party API keys, model lists, import/export, and enable/disable state from the dashboard.
-- **Backup resources** — independently manage spare accounts and SMS numbers; account tier/status is manually maintained, while passwords, TOTP, and email-code URLs are encrypted and loaded only on demand.
+- **Backup resources and Account Factory** — sync local HME inventory, lease accounts to the browser extension, poll verification mail, and store passwords, TOTP, Session, Access Token, and Refresh Token with local encryption and on-demand detail loading.
 - **Web dashboard** — account management, usage stats, batch operations; dashboard login gate for remote access
 
 ### 3. 🌐 Proxy Pool
@@ -676,9 +676,31 @@ Migration is strict: an old `server.proxy_api_key` is never copied or used as an
 |----------|--------|-------------|
 | `/admin/backup-resources/accounts` | GET/POST | List / create backup accounts |
 | `/admin/backup-resources/accounts/:id` | GET/PATCH/DELETE | Load details / update / delete a backup account |
+| `/admin/backup-resources/accounts/:id/promote` | POST | Explicitly promote a registered backup account into the core pool |
 | `/admin/backup-resources/phones` | GET/POST | List / create SMS numbers |
 | `/admin/backup-resources/phones/:id` | GET/PATCH/DELETE | Get / update / delete an SMS number |
 | `/admin/backup-resources/phones/:id/use` | POST | Record one use |
+
+The backup-account page supports search, account/lifecycle filters, and entry-time sorting. The compact list keeps credentials out of the table; passwords, TOTP, email-code URL, Session, Access Token, and Refresh Token are shown/copied from details and can be added, changed, or cleared from the edit form.
+
+**Account Factory (independent integration token)**
+
+The `/integration/account-factory/v1` surface is used by the local mailbox synchronizer and Free Account Tool. It authenticates with `X-Account-Factory-Token`, not the dashboard password or proxy service key.
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Validate schema and capabilities |
+| `/mailboxes/sync` | POST | Synchronize the current Mail Dashboard HME directory |
+| `/claims` | POST | Create an idempotent account lease |
+| `/accounts/:id/submission-commit` | POST | Confirm the website email-submission boundary |
+| `/accounts/:id/verification-code` | GET | Poll verification mail through Mail Dashboard |
+| `/accounts/:id/progress` | PATCH | Store sanitized workflow progress |
+| `/accounts/:id/sync-state` | GET | Reconcile an unknown completion result |
+| `/accounts/:id/complete` | POST | Store final passwords, TOTP, Session, AT, and RT |
+| `/accounts/:id/fail` | POST | Finish a failed lease |
+| `/accounts/:id/promote` | POST | Explicitly promote into the core account pool |
+
+See [ACCOUNT_FACTORY.md](ACCOUNT_FACTORY.md) for the current three-project runtime, configuration boundaries, verification status, and handoff notes.
 
 **Account Import/Export Examples**
 
