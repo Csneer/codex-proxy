@@ -56,6 +56,7 @@ function getAccountFactoryAllowedOrigin(origin: string | undefined): string | nu
   if (!origin) return null;
   const accountFactory = getConfig().account_factory;
   if (!accountFactory.enabled) return null;
+  if (accountFactory.allowed_extension_ids.includes("*") && origin.startsWith("chrome-extension://")) return origin;
   return accountFactory.allowed_extension_ids.some((id) => origin === `chrome-extension://${id}`) ? origin : null;
 }
 

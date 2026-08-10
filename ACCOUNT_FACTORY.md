@@ -158,9 +158,11 @@ account_factory:
   enabled: true
   token: <local-secret>
   allowed_extension_ids:
-    - <installed-extension-id>
+    - "*" # 仅适用于 loopback + 私有 token 的个人解压扩展
   mail_dashboard_base_url: http://127.0.0.1:4173
 ```
+
+如果扩展 ID 固定，可用具体 ID 替代 `"*"`。解压目录变化会导致 Chrome 扩展 ID 变化；个人本机模式仍同时要求 loopback 来源和独立集成 token。
 
 不要在文档中填写真实 token、Dashboard 密码或扩展运行数据。
 
@@ -184,7 +186,9 @@ Token          = account_factory.token
 Consumer ID    = free-account-tool
 ```
 
-配置入口已由提交 `d78dda1` 恢复显示。插件只接受 loopback HTTP 地址，并先检查服务 health 和 capability。
+配置入口已由提交 `d78dda1` 恢复显示。插件只接受 loopback HTTP 地址，并先检查服务 health、capability 和可用库存数。
+
+邮箱不需要在插件里再次导入：`account-factory-mailbox-sync.timer` 负责将 Mail Dashboard 同步到 Proxy 数据库。启动自动注册时，插件会从 `available` 库存按入库顺序自动领取；MVP 不要求每轮手工选邮箱。
 
 使用顺序：
 

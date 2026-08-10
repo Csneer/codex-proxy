@@ -132,11 +132,18 @@ export function createAccountFactoryRoutes(dependencies: AccountFactoryRouteDepe
     return responseError(c, 409, "lease_conflict");
   });
 
-  app.get(`${BASE_PATH}/health`, (c) => c.json({
-    enabled: true,
-    schemaVersion: 1,
-    capabilities: ["claim", "submissionCommit", "poll", "progress", "syncState", "complete", "fail", "promote"],
-  }));
+  app.get(`${BASE_PATH}/health`, (c) => {
+    const accounts = store().listAccounts();
+    return c.json({
+      enabled: true,
+      schemaVersion: 1,
+      capabilities: ["claim", "submissionCommit", "poll", "progress", "syncState", "complete", "fail", "promote"],
+      inventory: {
+        total: accounts.length,
+        available: accounts.filter((account) => account.lifecycleStatus === "available" && account.sourceActive).length,
+      },
+    });
+  });
 
   app.post(`${BASE_PATH}/mailboxes/sync`, async (c) => {
     const mailboxes = await mail().listMailboxes();

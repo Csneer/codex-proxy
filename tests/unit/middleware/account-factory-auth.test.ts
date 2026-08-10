@@ -103,4 +103,18 @@ describe("account-factory auth", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ ok: true });
   });
+
+  it("supports a local-only wildcard for personal unpacked extension ids", async () => {
+    const response = await app({ config: { allowed_extension_ids: ["*"] } }).request(
+      "/integration/account-factory/v1/health",
+      {
+        headers: {
+          origin: "chrome-extension://changing-unpacked-id",
+          "x-account-factory-token": "test-factory-token",
+        },
+      },
+    );
+
+    expect(response.status).toBe(200);
+  });
 });

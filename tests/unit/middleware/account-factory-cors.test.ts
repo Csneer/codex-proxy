@@ -53,4 +53,21 @@ describe("account-factory CORS", () => {
     expect(loopback.status).toBe(403);
     expect(unconfigured.status).toBe(403);
   });
+
+  it("reflects a chrome-extension origin when the personal-tool wildcard is enabled", async () => {
+    mocks.getConfig.mockReturnValue({
+      server: { cors: [] },
+      account_factory: { enabled: true, allowed_extension_ids: ["*"] },
+    });
+    const response = await createApp().request("/integration/account-factory/v1/claims", {
+      method: "OPTIONS",
+      headers: {
+        Origin: "chrome-extension://changing-unpacked-id",
+        "Access-Control-Request-Method": "POST",
+      },
+    });
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe("chrome-extension://changing-unpacked-id");
+  });
 });

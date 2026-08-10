@@ -60,7 +60,9 @@ afterEach(() => {
 
 describe("account-factory v1 routes", () => {
   it("returns capability health and rejects malformed claims", async () => {
-    const app = createApp(createStore());
+    const store = createStore();
+    sync(store);
+    const app = createApp(store);
 
     const health = await app.request("/integration/account-factory/v1/health");
     const invalid = await app.request("/integration/account-factory/v1/claims", {
@@ -73,6 +75,7 @@ describe("account-factory v1 routes", () => {
       enabled: true,
       schemaVersion: 1,
       capabilities: ["claim", "submissionCommit", "poll", "progress", "syncState", "complete", "fail", "promote"],
+      inventory: { total: 1, available: 1 },
     });
     expect(invalid.status).toBe(400);
     expect(await invalid.json()).toEqual({ error: "invalid_request" });
