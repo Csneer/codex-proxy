@@ -50,6 +50,9 @@ export interface BackupAccountInput {
   chatgptPassword?: string | null;
   totpSecret?: string | null;
   emailCodeUrl?: string | null;
+  session?: string | null;
+  accessToken?: string | null;
+  refreshToken?: string | null;
   note?: string | null;
 }
 
@@ -60,6 +63,9 @@ export interface BackupAccountPatch {
   chatgptPassword?: string | null;
   totpSecret?: string | null;
   emailCodeUrl?: string | null;
+  session?: string | null;
+  accessToken?: string | null;
+  refreshToken?: string | null;
   note?: string | null;
 }
 
@@ -77,6 +83,9 @@ export interface BackupAccountSummary {
   hasChatgptPassword: boolean;
   hasTotpSecret: boolean;
   hasEmailCodeUrl: boolean;
+  hasSession: boolean;
+  hasAccessToken: boolean;
+  hasRefreshToken: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -86,6 +95,9 @@ export interface BackupAccountDetail extends BackupAccountSummary {
   chatgptPassword: string | null;
   totpSecret: string | null;
   emailCodeUrl: string | null;
+  session: string | null;
+  accessToken: string | null;
+  refreshToken: string | null;
 }
 
 export interface BackupPhoneInput {

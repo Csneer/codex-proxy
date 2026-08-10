@@ -48,6 +48,9 @@ interface AccountRow {
   chatgpt_password: string | null;
   totp_secret: string | null;
   email_code_url: string | null;
+  session_json: string | null;
+  access_token: string | null;
+  refresh_token: string | null;
   note: string | null;
   lifecycle_status: AccountFactoryAccount["lifecycleStatus"];
   source_system: AccountFactorySourceSystem | null;
@@ -214,6 +217,9 @@ const SECRET_COLUMNS = {
   chatgptPassword: "chatgpt_password",
   totpSecret: "totp_secret",
   emailCodeUrl: "email_code_url",
+  session: "session_json",
+  accessToken: "access_token",
+  refreshToken: "refresh_token",
 } as const;
 const KEY_CHECK_NAME = "encryption_key_check";
 const KEY_CHECK_VALUE = "codex-proxy-backup-resources-v1";
@@ -242,6 +248,9 @@ function accountSummary(row: AccountRow): BackupAccountSummary {
     hasChatgptPassword: row.chatgpt_password !== null,
     hasTotpSecret: row.totp_secret !== null,
     hasEmailCodeUrl: row.email_code_url !== null,
+    hasSession: row.session_json !== null,
+    hasAccessToken: row.access_token !== null,
+    hasRefreshToken: row.refresh_token !== null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -325,6 +334,9 @@ export class BackupResourceStore {
       chatgptPassword: row.chatgpt_password === null ? null : this.cipher.decrypt(row.chatgpt_password),
       totpSecret: row.totp_secret === null ? null : this.cipher.decrypt(row.totp_secret),
       emailCodeUrl: row.email_code_url === null ? null : this.cipher.decrypt(row.email_code_url),
+      session: row.session_json === null ? null : this.cipher.decrypt(row.session_json),
+      accessToken: row.access_token === null ? null : this.cipher.decrypt(row.access_token),
+      refreshToken: row.refresh_token === null ? null : this.cipher.decrypt(row.refresh_token),
     };
   }
 
@@ -333,8 +345,11 @@ export class BackupResourceStore {
     const timestamp = now();
     this.db.prepare(`
       INSERT INTO backup_accounts (
-        id, email, email_normalized, account_status, email_password, chatgpt_password, totp_secret, email_code_url, note, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        id, email, email_normalized, account_status,
+        email_password, chatgpt_password, totp_secret, email_code_url,
+        session_json, access_token, refresh_token,
+        note, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       input.email,
@@ -344,6 +359,9 @@ export class BackupResourceStore {
       this.encryptNullable(input.chatgptPassword),
       this.encryptNullable(input.totpSecret),
       this.encryptNullable(input.emailCodeUrl),
+      this.encryptNullable(input.session),
+      this.encryptNullable(input.accessToken),
+      this.encryptNullable(input.refreshToken),
       input.note ?? null,
       timestamp,
       timestamp,

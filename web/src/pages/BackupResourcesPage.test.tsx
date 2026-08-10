@@ -25,6 +25,9 @@ const mocks = vi.hoisted(() => ({
     hasChatgptPassword: true,
     hasTotpSecret: false,
     hasEmailCodeUrl: false,
+    hasSession: true,
+    hasAccessToken: true,
+    hasRefreshToken: true,
     createdAt: "2026-08-01T10:00:00.000Z",
     updatedAt: "2026-08-01T11:00:00.000Z",
     promotion: {
@@ -53,10 +56,16 @@ const mocks = vi.hoisted(() => ({
     hasChatgptPassword: true,
     hasTotpSecret: false,
     hasEmailCodeUrl: false,
+    hasSession: true,
+    hasAccessToken: true,
+    hasRefreshToken: true,
     emailPassword: "mail-secret",
     chatgptPassword: "chatgpt-secret",
     totpSecret: "totp-secret",
     emailCodeUrl: "https://mail.example/code",
+    session: '{"cookie":"session-secret"}',
+    accessToken: "access-secret",
+    refreshToken: "refresh-secret",
     createdAt: "2026-08-01T10:00:00.000Z",
     updatedAt: "2026-08-01T11:00:00.000Z",
     promotion: null,
@@ -120,14 +129,14 @@ describe("BackupResourcesPage", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "View" })[0]!);
 
     const dialog = screen.getByRole("dialog", { name: "Account details" });
-    expect(dialog.querySelectorAll(".inset-surface")).toHaveLength(5);
+    expect(dialog.querySelectorAll(".inset-surface")).toHaveLength(8);
   });
 
   it("exposes a visible copy action for every populated detail value", () => {
     renderPage();
     fireEvent.click(screen.getAllByRole("button", { name: "View" })[0]!);
 
-    expect(screen.getAllByRole("button", { name: "Copy" })).toHaveLength(6);
+    expect(screen.getAllByRole("button", { name: "Copy" })).toHaveLength(9);
   });
 
   it("omits untouched secret fields from an account edit", async () => {
@@ -141,6 +150,28 @@ describe("BackupResourcesPage", () => {
       accountStatus: "plus",
       note: "short-lived",
     });
+  });
+
+  it("manually updates and clears session credentials", async () => {
+    renderPage();
+    fireEvent.click(screen.getAllByRole("button", { name: "Edit" })[0]!);
+
+    fireEvent.input(screen.getByRole("textbox", { name: "Session" }), { target: { value: "manual-session" } });
+    fireEvent.input(screen.getByLabelText("Access token"), { target: { value: "manual-access" } });
+    const refreshField = screen.getByText("Refresh token").closest("label");
+    const clearRefresh = refreshField?.querySelector('input[type="checkbox"]');
+    expect(clearRefresh).toBeTruthy();
+    fireEvent.click(clearRefresh!);
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(mocks.updateAccount).toHaveBeenCalledWith("backup-1", {
+      email: "spare@example.com",
+      accountStatus: "plus",
+      note: "short-lived",
+      session: "manual-session",
+      accessToken: "manual-access",
+      refreshToken: null,
+    }));
   });
 
   it("shows and manually updates the persisted account status", async () => {

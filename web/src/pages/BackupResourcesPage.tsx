@@ -14,7 +14,14 @@ import {
 import { CopyButton } from "../components/CopyButton";
 
 type ResourceTab = "accounts" | "phones";
-type SecretField = "emailPassword" | "chatgptPassword" | "totpSecret" | "emailCodeUrl";
+type SecretField =
+  | "emailPassword"
+  | "chatgptPassword"
+  | "totpSecret"
+  | "emailCodeUrl"
+  | "session"
+  | "accessToken"
+  | "refreshToken";
 type AccountStatusFilter = "all" | BackupAccountStatus;
 type AccountLifecycleFilter = "all" | BackupAccountLifecycleStatus;
 type AccountCreatedSort = "newest" | "oldest";
@@ -137,6 +144,7 @@ function SecretInput({
   hasExisting,
   clear,
   onClear,
+  multiline = false,
 }: {
   label: string;
   value: string;
@@ -144,19 +152,33 @@ function SecretInput({
   hasExisting: boolean;
   clear: boolean;
   onClear: (clear: boolean) => void;
+  multiline?: boolean;
 }) {
   const t = useT();
+  const placeholder = hasExisting ? t("backupSecretKeepPlaceholder") : t("backupSecretOptionalPlaceholder");
   return (
     <Field label={label}>
-      <input
-        class={inputClass}
-        type="password"
-        autocomplete="new-password"
-        value={value}
-        disabled={clear}
-        placeholder={hasExisting ? t("backupSecretKeepPlaceholder") : t("backupSecretOptionalPlaceholder")}
-        onInput={(event) => onInput((event.currentTarget as HTMLInputElement).value)}
-      />
+      {multiline ? (
+        <textarea
+          aria-label={label}
+          class={`${inputClass} min-h-28 resize-y font-mono`}
+          value={value}
+          disabled={clear}
+          placeholder={placeholder}
+          onInput={(event) => onInput((event.currentTarget as HTMLTextAreaElement).value)}
+        />
+      ) : (
+        <input
+          aria-label={label}
+          class={inputClass}
+          type="password"
+          autocomplete="new-password"
+          value={value}
+          disabled={clear}
+          placeholder={placeholder}
+          onInput={(event) => onInput((event.currentTarget as HTMLInputElement).value)}
+        />
+      )}
       {hasExisting && (
         <label class="mt-0.5 flex min-h-8 items-center gap-2 text-xs font-normal text-slate-500 dark:text-text-dim">
           <input type="checkbox" checked={clear} onChange={(event) => onClear((event.currentTarget as HTMLInputElement).checked)} />
@@ -182,14 +204,33 @@ function AccountForm({
   const [email, setEmail] = useState(account?.email ?? "");
   const [accountStatus, setAccountStatus] = useState<BackupAccountStatus>(account?.accountStatus ?? "unregistered");
   const [note, setNote] = useState(account?.note ?? "");
-  const [secrets, setSecrets] = useState<Record<SecretField, string>>({ emailPassword: "", chatgptPassword: "", totpSecret: "", emailCodeUrl: "" });
-  const [cleared, setCleared] = useState<Record<SecretField, boolean>>({ emailPassword: false, chatgptPassword: false, totpSecret: false, emailCodeUrl: false });
+  const [secrets, setSecrets] = useState<Record<SecretField, string>>({
+    emailPassword: "",
+    chatgptPassword: "",
+    totpSecret: "",
+    emailCodeUrl: "",
+    session: "",
+    accessToken: "",
+    refreshToken: "",
+  });
+  const [cleared, setCleared] = useState<Record<SecretField, boolean>>({
+    emailPassword: false,
+    chatgptPassword: false,
+    totpSecret: false,
+    emailCodeUrl: false,
+    session: false,
+    accessToken: false,
+    refreshToken: false,
+  });
 
   const hasExisting: Record<SecretField, boolean> = {
     emailPassword: account?.hasEmailPassword ?? false,
     chatgptPassword: account?.hasChatgptPassword ?? false,
     totpSecret: account?.hasTotpSecret ?? false,
     emailCodeUrl: account?.hasEmailCodeUrl ?? false,
+    session: account?.hasSession ?? false,
+    accessToken: account?.hasAccessToken ?? false,
+    refreshToken: account?.hasRefreshToken ?? false,
   };
 
   const submit = async (event: Event) => {
@@ -230,7 +271,16 @@ function AccountForm({
           <SecretInput label={t("backupEmailCodeUrl")} value={secrets.emailCodeUrl} hasExisting={hasExisting.emailCodeUrl} clear={cleared.emailCodeUrl}
             onInput={(value) => setSecrets((current) => ({ ...current, emailCodeUrl: value }))}
             onClear={(clear) => setCleared((current) => ({ ...current, emailCodeUrl: clear }))} />
+          <SecretInput label={t("backupAccessToken")} value={secrets.accessToken} hasExisting={hasExisting.accessToken} clear={cleared.accessToken}
+            onInput={(value) => setSecrets((current) => ({ ...current, accessToken: value }))}
+            onClear={(clear) => setCleared((current) => ({ ...current, accessToken: clear }))} />
+          <SecretInput label={t("backupRefreshToken")} value={secrets.refreshToken} hasExisting={hasExisting.refreshToken} clear={cleared.refreshToken}
+            onInput={(value) => setSecrets((current) => ({ ...current, refreshToken: value }))}
+            onClear={(clear) => setCleared((current) => ({ ...current, refreshToken: clear }))} />
         </div>
+        <SecretInput label={t("backupSession")} value={secrets.session} hasExisting={hasExisting.session} clear={cleared.session} multiline
+          onInput={(value) => setSecrets((current) => ({ ...current, session: value }))}
+          onClear={(clear) => setCleared((current) => ({ ...current, session: clear }))} />
         <Field label={t("backupNote")}>
           <textarea class={`${inputClass} min-h-24 resize-y`} value={note} onInput={(event) => setNote((event.currentTarget as HTMLTextAreaElement).value)} />
         </Field>
@@ -333,6 +383,9 @@ function AccountDetail({ resources, onClose }: { resources: ReturnType<typeof us
           <SecretDetail label={t("backupChatgptPassword")} value={resources.detail.chatgptPassword} />
           <SecretDetail label={t("backupTotpSecret")} value={resources.detail.totpSecret} />
           <SecretDetail label={t("backupEmailCodeUrl")} value={resources.detail.emailCodeUrl} />
+          <SecretDetail label={t("backupSession")} value={resources.detail.session} />
+          <SecretDetail label={t("backupAccessToken")} value={resources.detail.accessToken} />
+          <SecretDetail label={t("backupRefreshToken")} value={resources.detail.refreshToken} />
           <div class="inset-surface min-w-0 rounded-xl p-3">
             <div class="flex flex-wrap items-start justify-between gap-2">
               <div class="min-w-0 flex-1">

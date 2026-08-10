@@ -10,6 +10,7 @@ import type { AccountFactoryPromotionService } from "../../backup-resources/prom
 import { BACKUP_ACCOUNT_STATUSES } from "../../backup-resources/types.js";
 
 const NullableText = z.string().max(10_000).nullable();
+const NullableLargeSecret = z.string().max(1024 * 1024).nullable();
 const AccountStatusSchema = z.enum(BACKUP_ACCOUNT_STATUSES);
 const AccountCreateSchema = z.object({
   email: z.string().trim().min(1).max(320),
@@ -18,6 +19,9 @@ const AccountCreateSchema = z.object({
   chatgptPassword: NullableText.optional(),
   totpSecret: NullableText.optional(),
   emailCodeUrl: NullableText.optional(),
+  session: NullableLargeSecret.optional(),
+  accessToken: NullableLargeSecret.optional(),
+  refreshToken: NullableLargeSecret.optional(),
   note: NullableText.optional(),
 }).strict();
 const AccountPatchSchema = AccountCreateSchema.partial().refine((value) => Object.keys(value).length > 0);

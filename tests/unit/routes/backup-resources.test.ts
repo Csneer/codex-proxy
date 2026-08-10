@@ -26,31 +26,74 @@ describe("backup resource admin routes", () => {
     const createResponse = await app.request("/admin/backup-resources/accounts", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email: "user@example.com", accountStatus: "plus", emailPassword: "secret", totpSecret: "123456" }),
+      body: JSON.stringify({
+        email: "user@example.com",
+        accountStatus: "plus",
+        emailPassword: "secret",
+        totpSecret: "123456",
+        session: '{"cookie":"session-secret"}',
+        accessToken: "access-secret",
+        refreshToken: "refresh-secret",
+      }),
     });
     expect(createResponse.status).toBe(201);
     const created = await createResponse.json();
-    expect(created).toMatchObject({ email: "user@example.com", accountStatus: "plus", hasEmailPassword: true, hasTotpSecret: true });
+    expect(created).toMatchObject({
+      email: "user@example.com",
+      accountStatus: "plus",
+      hasEmailPassword: true,
+      hasTotpSecret: true,
+      hasSession: true,
+      hasAccessToken: true,
+      hasRefreshToken: true,
+    });
     expect(created).not.toHaveProperty("emailPassword");
+    expect(created).not.toHaveProperty("session");
+    expect(created).not.toHaveProperty("accessToken");
+    expect(created).not.toHaveProperty("refreshToken");
 
     const list = await (await app.request("/admin/backup-resources/accounts")).json();
     expect(list).toEqual([{ ...created, promotion: null }]);
-    expect(JSON.stringify(list)).not.toContain("secret");
+    expect(JSON.stringify(list)).not.toContain("session-secret");
+    expect(JSON.stringify(list)).not.toContain("access-secret");
+    expect(JSON.stringify(list)).not.toContain("refresh-secret");
 
     const detailResponse = await app.request(`/admin/backup-resources/accounts/${created.id}`);
     expect(detailResponse.headers.get("cache-control")).toBe("no-store");
-    expect(await detailResponse.json()).toMatchObject({ emailPassword: "secret", totpSecret: "123456" });
+    expect(await detailResponse.json()).toMatchObject({
+      emailPassword: "secret",
+      totpSecret: "123456",
+      session: '{"cookie":"session-secret"}',
+      accessToken: "access-secret",
+      refreshToken: "refresh-secret",
+    });
 
     const patchResponse = await app.request(`/admin/backup-resources/accounts/${created.id}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email: "changed@example.com", accountStatus: "pro", totpSecret: null }),
+      body: JSON.stringify({
+        email: "changed@example.com",
+        accountStatus: "pro",
+        totpSecret: null,
+        session: "new-session",
+        accessToken: null,
+        refreshToken: "new-refresh-secret",
+      }),
     });
     expect(await patchResponse.json()).toMatchObject({
       email: "changed@example.com",
       accountStatus: "pro",
       hasEmailPassword: true,
       hasTotpSecret: false,
+      hasSession: true,
+      hasAccessToken: false,
+      hasRefreshToken: true,
+    });
+
+    expect(await (await app.request(`/admin/backup-resources/accounts/${created.id}`)).json()).toMatchObject({
+      session: "new-session",
+      accessToken: null,
+      refreshToken: "new-refresh-secret",
     });
   });
 
@@ -78,7 +121,7 @@ describe("backup resource admin routes", () => {
       revision: 1,
       lastMailSyncedAt: expect.any(String),
     });
-    for (const forbidden of ["emailPassword", "chatgptPassword", "totpSecret", "emailCodeUrl", "accessToken", "refreshToken", "sessionJson", "progress", "lastErrorCode"]) {
+    for (const forbidden of ["emailPassword", "chatgptPassword", "totpSecret", "emailCodeUrl", "session", "accessToken", "refreshToken", "sessionJson", "progress", "lastErrorCode"]) {
       expect(list[0]).not.toHaveProperty(forbidden);
     }
   });
