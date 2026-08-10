@@ -64,6 +64,36 @@ describe("BackupResourceStore account-factory lifecycle", () => {
     });
   });
 
+  it("adopts an existing manual account when the mail source syncs the same email", () => {
+    const { store } = createStore();
+    const manual = store.createAccount({
+      email: "existing@example.com",
+      accountStatus: "free",
+      chatgptPassword: "preserved-password",
+    });
+
+    const synced = store.syncSourceAccount({
+      sourceSystem: "mail_dashboard",
+      externalId: "existing@example.com",
+      email: "EXISTING@example.com",
+      sourceRevision: "existing@example.com:apple-label",
+      appleLabel: "apple-label",
+    });
+
+    expect(synced).toMatchObject({
+      id: manual.id,
+      sourceSystem: "mail_dashboard",
+      externalId: "existing@example.com",
+      appleLabel: "apple-label",
+      lifecycleStatus: "available",
+    });
+    expect(store.getAccount(manual.id)).toMatchObject({
+      chatgptPassword: "preserved-password",
+      accountStatus: "free",
+    });
+    expect(store.listAccounts()).toHaveLength(1);
+  });
+
   it("deactivates only missing source records without changing leases or lifecycle state", () => {
     const { store } = createStore();
     const missing = sync(store, "mail-missing");

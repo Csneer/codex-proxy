@@ -488,9 +488,17 @@ export class BackupResourceStore {
       );
       if (replay) return replay;
       const timestamp = now();
-      const current = this.db.prepare(
+      let current = this.db.prepare(
         "SELECT * FROM backup_accounts WHERE source_system = ? AND external_id = ?",
       ).get(sourceSystem, externalId) as AccountFactoryAccountRow | undefined;
+      if (!current) {
+        const existingByEmail = this.db.prepare(
+          "SELECT * FROM backup_accounts WHERE email_normalized = ?",
+        ).get(normalizeEmail(email)) as AccountFactoryAccountRow | undefined;
+        if (existingByEmail && existingByEmail.source_system === null) {
+          current = existingByEmail;
+        }
+      }
       if (current && current.last_source_revision === sourceRevision && current.source_active === (input.active === false ? 0 : 1)) {
         const result = accountFactoryAccount(current);
         this.recordOperation(operationId, null, "sync", `${sourceSystem}:${externalId}`, result);
@@ -499,13 +507,16 @@ export class BackupResourceStore {
       if (current) {
         this.db.prepare(`
           UPDATE backup_accounts
-          SET email = ?, email_normalized = ?, apple_label = ?, source_active = ?,
+          SET email = ?, email_normalized = ?, source_system = ?, external_id = ?,
+              apple_label = ?, source_active = ?,
               last_mail_synced_at = ?, last_source_revision = ?, revision = revision + 1,
               last_applied_operation_id = ?, updated_at = ?
           WHERE id = ?
         `).run(
           email,
           normalizeEmail(email),
+          sourceSystem,
+          externalId,
           input.appleLabel ?? null,
           input.active === false ? 0 : 1,
           timestamp,
