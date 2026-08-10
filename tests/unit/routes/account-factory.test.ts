@@ -74,11 +74,52 @@ describe("account-factory v1 routes", () => {
     expect(await health.json()).toEqual({
       enabled: true,
       schemaVersion: 1,
-      capabilities: ["claim", "submissionCommit", "poll", "progress", "syncState", "complete", "fail", "promote"],
-      inventory: { total: 1, available: 1 },
+      capabilities: ["claim", "candidateSelection", "submissionCommit", "poll", "progress", "syncState", "complete", "fail", "promote"],
+      inventory: { total: 1, available: 1, mailDashboardAvailable: 1 },
     });
     expect(invalid.status).toBe(400);
     expect(await invalid.json()).toEqual({ error: "invalid_request" });
+  });
+
+  it("returns random strict candidates and claims only from selected accounts", async () => {
+    const store = createStore();
+    const first = sync(store);
+    const second = store.syncSourceAccount({
+      sourceSystem: "mail_dashboard",
+      externalId: "mailbox-2",
+      email: "mailbox-2@example.com",
+      sourceRevision: "revision-2",
+    });
+    store.syncSourceAccount({
+      sourceSystem: "mail_dashboard",
+      externalId: "mailbox-blocked",
+      email: "blocked@example.com",
+      sourceRevision: "blocked",
+      registrationEligible: false,
+    });
+    const app = createApp(store);
+
+    const candidates = await app.request("/integration/account-factory/v1/candidates?limit=10");
+    expect(candidates.status).toBe(200);
+    expect(candidates.headers.get("cache-control")).toBe("no-store");
+    expect((await candidates.json()).accounts.map((account: { id: string }) => account.id).sort())
+      .toEqual([first.id, second.id].sort());
+
+    const selected = await app.request("/integration/account-factory/v1/claims", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ consumerId: "consumer", taskId: "selected-task", selectedAccountIds: [second.id] }),
+    });
+    expect(selected.status).toBe(201);
+    expect(await selected.json()).toMatchObject({ account: { id: second.id } });
+
+    const unavailable = await app.request("/integration/account-factory/v1/claims", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ consumerId: "consumer", taskId: "selected-missing", selectedAccountIds: ["missing"] }),
+    });
+    expect(unavailable.status).toBe(409);
+    expect(await unavailable.json()).toEqual({ error: "selected_inventory_unavailable" });
   });
 
   it("reconciles the mailbox snapshot after source upserts", async () => {

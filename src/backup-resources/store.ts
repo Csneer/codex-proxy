@@ -610,6 +610,9 @@ export class BackupResourceStore {
     const consumerId = input.consumerId.trim();
     const operationId = assertOperationId(input.operationId);
     const ttlMs = input.leaseTtlMs ?? 5 * 60_000;
+    const selectedAccountIds = Array.from(new Set(
+      (input.selectedAccountIds ?? []).map((value) => value.trim()).filter(Boolean),
+    ));
     if (!consumerId || !Number.isFinite(ttlMs) || ttlMs <= 0) throw new Error("Invalid account factory claim input");
 
     return this.db.transaction(() => {
@@ -627,6 +630,9 @@ export class BackupResourceStore {
       }
       const timestamp = now();
       this.expireReclaimableLeases(timestamp);
+      const selectionFilter = selectedAccountIds.length > 0
+        ? ` AND id IN (${selectedAccountIds.map(() => "?").join(", ")})`
+        : "";
       const account = this.db.prepare(`
         SELECT * FROM backup_accounts
         WHERE lifecycle_status = 'available' AND source_active = 1
@@ -636,8 +642,9 @@ export class BackupResourceStore {
           AND session_json IS NULL
           AND access_token IS NULL
           AND refresh_token IS NULL
+          ${selectionFilter}
         ORDER BY created_at ASC, id ASC LIMIT 1
-      `).get() as AccountFactoryAccountRow | undefined;
+      `).get(...selectedAccountIds) as AccountFactoryAccountRow | undefined;
       if (!account) {
         this.recordOperation(operationId, taskId, "claim", taskId, null);
         return null;
@@ -661,6 +668,31 @@ export class BackupResourceStore {
       this.recordOperation(operationId, taskId, "claim", taskId, result);
       return result;
     })();
+  }
+
+  listClaimableAccounts(limit = 10, preferredAccountIds: string[] = []): AccountFactoryAccount[] {
+    const safeLimit = Math.max(1, Math.min(50, Math.trunc(limit) || 10));
+    const preferred = Array.from(new Set(preferredAccountIds.map((value) => value.trim()).filter(Boolean))).slice(0, 50);
+    const rows = this.db.prepare(`
+      SELECT * FROM backup_accounts
+      WHERE lifecycle_status = 'available' AND source_active = 1
+        AND source_system = 'mail_dashboard'
+        AND account_status = 'unregistered'
+        AND chatgpt_password IS NULL
+        AND totp_secret IS NULL
+        AND session_json IS NULL
+        AND access_token IS NULL
+        AND refresh_token IS NULL
+    `).all() as AccountFactoryAccountRow[];
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    const selectedRows = preferred.map((id) => byId.get(id)).filter((row): row is AccountFactoryAccountRow => Boolean(row));
+    const selectedIds = new Set(selectedRows.map((row) => row.id));
+    const randomRows = rows
+      .filter((row) => !selectedIds.has(row.id))
+      .map((row) => ({ row, order: Math.random() }))
+      .sort((left, right) => left.order - right.order)
+      .map(({ row }) => row);
+    return [...selectedRows, ...randomRows].slice(0, safeLimit).map(accountFactoryAccount);
   }
 
   getLease(taskId: string): AccountFactoryLease | null {

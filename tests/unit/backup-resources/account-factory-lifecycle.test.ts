@@ -186,6 +186,37 @@ describe("BackupResourceStore account-factory lifecycle", () => {
     });
   });
 
+  it("lists only strict candidates and limits claims to the selected account set", () => {
+    const { store } = createStore();
+    const first = sync(store, "mail-first");
+    const second = sync(store, "mail-second");
+    store.syncSourceAccount({
+      sourceSystem: "mail_dashboard",
+      externalId: "mail-blocked",
+      email: "mail-blocked@example.com",
+      sourceRevision: "blocked",
+      registrationEligible: false,
+    });
+    store.createAccount({
+      email: "registered@example.com",
+      accountStatus: "free",
+      chatgptPassword: "already-used",
+    });
+    store.createAccount({ email: "manual-unregistered@example.com" });
+
+    expect(store.listClaimableAccounts(10).map((account) => account.id).sort()).toEqual([first.id, second.id].sort());
+    expect(store.claimAccount({
+      consumerId: "consumer",
+      taskId: "selected-task",
+      selectedAccountIds: [second.id],
+    })).toMatchObject({ account: { id: second.id } });
+    expect(store.claimAccount({
+      consumerId: "consumer",
+      taskId: "missing-selected-task",
+      selectedAccountIds: ["not-available"],
+    })).toBeNull();
+  });
+
   it("reclaims an expired uncommitted lease but never reclaims a committed submission", () => {
     const { store, path } = createStore();
     const account = sync(store);

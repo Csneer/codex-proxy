@@ -33,6 +33,11 @@ const Claim = z.object({
   taskId: Text,
   leaseTtlMs: z.number().int().positive().max(24 * 60 * 60 * 1000).optional(),
   operationId: Text.optional(),
+  selectedAccountIds: z.array(Text).min(1).max(50).optional(),
+}).strict();
+const CandidateQuery = z.object({
+  limit: z.coerce.number().int().min(1).max(50).optional().default(10),
+  selectedAccountIds: z.string().max(4096).optional(),
 }).strict();
 const Progress = Operation.extend({
   progress: z.unknown().refine((value) => value !== undefined),
@@ -134,23 +139,42 @@ export function createAccountFactoryRoutes(dependencies: AccountFactoryRouteDepe
 
   app.get(`${BASE_PATH}/health`, (c) => {
     const accounts = store().listAccounts();
+    const claimable = accounts.filter((account) => (
+      account.lifecycleStatus === "available"
+      && account.sourceActive
+      && account.accountStatus === "unregistered"
+      && !account.hasChatgptPassword
+      && !account.hasTotpSecret
+      && !account.hasSession
+      && !account.hasAccessToken
+      && !account.hasRefreshToken
+    ));
     return c.json({
       enabled: true,
       schemaVersion: 1,
-      capabilities: ["claim", "submissionCommit", "poll", "progress", "syncState", "complete", "fail", "promote"],
+      capabilities: ["claim", "candidateSelection", "submissionCommit", "poll", "progress", "syncState", "complete", "fail", "promote"],
       inventory: {
         total: accounts.length,
-        available: accounts.filter((account) => (
-          account.lifecycleStatus === "available"
-          && account.sourceActive
-          && account.accountStatus === "unregistered"
-          && !account.hasChatgptPassword
-          && !account.hasTotpSecret
-          && !account.hasSession
-          && !account.hasAccessToken
-          && !account.hasRefreshToken
-        )).length,
+        available: claimable.length,
+        mailDashboardAvailable: claimable.filter((account) => account.sourceSystem === "mail_dashboard").length,
       },
+    });
+  });
+
+  app.get(`${BASE_PATH}/candidates`, (c) => {
+    const query = CandidateQuery.safeParse(c.req.query());
+    if (!query.success) return responseError(c, 400, "invalid_request");
+    const selectedAccountIds = Array.from(new Set(
+      (query.data.selectedAccountIds ?? "").split(",").map((value) => value.trim()).filter(Boolean),
+    )).slice(0, 50);
+    c.header("Cache-Control", "no-store");
+    return c.json({
+      accounts: store().listClaimableAccounts(query.data.limit, selectedAccountIds).map((account) => ({
+        id: account.id,
+        email: account.email,
+        appleLabel: account.appleLabel,
+        sourceSystem: account.sourceSystem,
+      })),
     });
   });
 
@@ -184,7 +208,7 @@ export function createAccountFactoryRoutes(dependencies: AccountFactoryRouteDepe
     const input = await body(c, Claim);
     if (!input) return responseError(c, 400, "invalid_request");
     const result = store().claimAccount(input);
-    if (!result) return responseError(c, 409, "no_inventory");
+    if (!result) return responseError(c, 409, input.selectedAccountIds?.length ? "selected_inventory_unavailable" : "no_inventory");
     c.status(result.replayed ? 200 : 201);
     return c.json({
       account: result.account,

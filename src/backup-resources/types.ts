@@ -224,6 +224,7 @@ export interface AccountFactoryClaimInput {
   taskId: string;
   leaseTtlMs?: number;
   operationId?: string;
+  selectedAccountIds?: string[];
 }
 
 export interface AccountFactoryClaimResult {

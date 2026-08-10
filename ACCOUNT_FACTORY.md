@@ -190,14 +190,16 @@ Consumer ID    = free-account-tool
 
 邮箱不需要在插件里再次导入：`account-factory-mailbox-sync.timer` 负责将 Mail Dashboard 同步到 Proxy 数据库。只有 Dashboard 中 `group=unused` 的邮箱具备注册资格；`finished / trash / unknown` 会被阻止。Proxy 还会排除已有 `free / plus` 状态或 ChatGPT 密码、TOTP、Session、Access Token、Refresh Token 的账号。
 
-首次部署此资格规则后，需要打开或刷新一次 Mail Dashboard 页面，把旧浏览器 `localStorage` 分组迁移到服务端；在完成迁移前，历史邮箱按 unknown 保守处理，不会被误领。启动自动注册时，插件从严格 `available` 库存按入库顺序领取；MVP 暂不要求每轮手工选邮箱。
+首次部署此资格规则后，需要打开或刷新一次 Mail Dashboard 页面，把旧浏览器 `localStorage` 分组迁移到服务端；在完成迁移前，历史邮箱按 unknown 保守处理，不会被误领。
+
+插件通过 `GET /candidates?limit=10` 随机读取最多 10 个 Mail Dashboard 候选，并保存用户勾选的账号 ID。`POST /claims` 的 `selectedAccountIds` 将领取范围限制在所选账号中；所选账号已被使用时返回 `selected_inventory_unavailable`，不会回退到其它后台库存。
 
 使用顺序：
 
 1. 确认两个服务和同步 timer 正常。
 2. 首次升级后刷新 Mail Dashboard，并等待一次同步日志出现 `eligible/blocked` 摘要。
-3. 打开 Proxy 备用资源页面，确认存在严格 `available` 邮箱。
-4. 在插件选择 `Codex Proxy Local` 并开始注册。
+3. 在插件选择 `Codex Proxy Local`，点击“检查”或“换一批”，勾选本轮候选邮箱。
+4. 自动运行轮数设置为不超过已勾选邮箱数量，然后开始注册。
 5. 注册完成后检查插件“远端同步”计数。
 6. 在 Proxy 中筛选 `free + registered`，点击“查看”核对 Session/AT/RT。
 7. 需要加入核心轮转池时再点击“提升”。
@@ -227,8 +229,9 @@ mail_dashboard retired        207
 | 方法 | 路径 | 用途 |
 | --- | --- | --- |
 | GET | `/health` | schema/capability 检查 |
+| GET | `/candidates` | 随机列出最多 10 个 Mail Dashboard 严格候选，并优先保留已选 ID |
 | POST | `/mailboxes/sync` | 同步邮件目录 |
-| POST | `/claims` | 领取账号 |
+| POST | `/claims` | 仅从 `selectedAccountIds` 中领取账号 |
 | POST | `/accounts/:id/submission-commit` | 邮箱提交确认 |
 | GET | `/accounts/:id/verification-code` | 验证码轮询 |
 | PATCH | `/accounts/:id/progress` | 进度回写 |
