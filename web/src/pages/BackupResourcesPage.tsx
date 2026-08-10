@@ -582,27 +582,31 @@ export function BackupResourcesPage() {
               </div>
 
               {visibleAccounts.length === 0 ? <EmptyState text={t("backupNoMatchingAccounts")} /> : <>
-                <div class="glass-surface hidden overflow-x-auto rounded-xl md:block">
-                <table aria-label={t("backupAccountsTab")} class="w-full min-w-[1400px] text-left text-xs">
+                <div class="glass-surface hidden overflow-hidden rounded-xl md:block">
+                <table aria-label={t("backupAccountsTab")} class="w-full table-fixed text-left text-xs">
+                  <colgroup>
+                    <col class="w-[36%]" />
+                    <col class="w-[24%]" />
+                    <col class="w-[16%]" />
+                    <col class="w-[24%]" />
+                  </colgroup>
                   <thead class="border-b border-gray-200 text-muted dark:border-border-dark">
-                    <tr><th scope="col" class="px-4 py-3">{t("backupEmail")}</th><th scope="col" class="px-3 py-3">{t("backupAccountStatus")}</th><th scope="col" class="px-3 py-3">{t("backupLifecycle")}</th><th scope="col" class="px-3 py-3">{t("backupPromotion")}</th><th scope="col" class="px-3 py-3">{t("backupSource")}</th><th scope="col" class="px-3 py-3">{t("backupRevision")}</th><th scope="col" class="px-3 py-3">{t("backupLastMailSynced")}</th><th scope="col" class="px-3 py-3">{t("backupEmailPassword")}</th><th scope="col" class="px-3 py-3">{t("backupChatgptPassword")}</th><th scope="col" class="px-3 py-3">TOTP</th><th scope="col" class="px-3 py-3">{t("backupEmailCodeUrl")}</th><th scope="col" class="px-3 py-3">{t("backupNote")}</th><th scope="col" class="px-3 py-3">{t("backupCreatedAt")}</th><th scope="col" class="px-4 py-3 text-right">{t("backupActions")}</th></tr>
+                    <tr><th scope="col" class="px-4 py-3">{t("backupEmail")}</th><th scope="col" class="px-3 py-3">{t("backupAccountStatus")}</th><th scope="col" class="px-3 py-3">{t("backupSource")}</th><th scope="col" class="px-4 py-3 text-right">{t("backupActions")}</th></tr>
                   </thead>
                   <tbody class="divide-y divide-gray-100 dark:divide-border-dark">
                     {visibleAccounts.map((account) => (
                       <tr key={account.id} class="align-middle transition-colors hover:bg-primary-container/20">
-                        <td class="max-w-48 break-all px-4 py-3 font-medium text-main">{account.email}</td>
-                        <td class="px-3 py-3"><AccountStatusBadge status={account.accountStatus} /></td>
-                        <td class="whitespace-nowrap px-3 py-3 text-main">{lifecycleLabel(account.lifecycleStatus, t)}</td>
-                        <td class="max-w-56 break-all px-3 py-3 text-main">{account.promotion ? `${account.promotion.state} · ${account.promotion.mode}${account.promotion.coreAccountId ? ` · ${account.promotion.coreAccountId}` : ""}${account.promotion.errorCode ? ` · ${account.promotion.errorCode}` : ""}` : "—"}</td>
-                        <td class="whitespace-nowrap px-3 py-3 text-main">{account.sourceSystem ? `${sourceLabel(account.sourceSystem, t)} · ${account.sourceActive ? t("backupSourceActive") : t("backupSourceInactive")}` : sourceLabel(null, t)}</td>
-                        <td class="px-3 py-3 text-main">{account.revision}</td>
-                        <td class="whitespace-nowrap px-3 py-3 text-muted">{account.lastMailSyncedAt ? formatDate(account.lastMailSyncedAt, lang) : t("backupNotSet")}</td>
-                        <td class="px-3 py-3"><Presence present={account.hasEmailPassword} /></td>
-                        <td class="px-3 py-3"><Presence present={account.hasChatgptPassword} /></td>
-                        <td class="px-3 py-3"><Presence present={account.hasTotpSecret} /></td>
-                        <td class="px-3 py-3"><Presence present={account.hasEmailCodeUrl} /></td>
-                        <td class="max-w-44 truncate px-3 py-3 text-muted" title={account.note}>{account.note || "—"}</td>
-                        <td class="whitespace-nowrap px-3 py-3 text-muted">{formatDate(account.createdAt, lang)}</td>
+                        <td class="min-w-0 px-4 py-3">
+                          <p class="break-all font-medium text-main">{account.email}</p>
+                          <p class="mt-1 truncate text-muted" title={account.note}>{account.note || t("backupNoNote")}</p>
+                          <p class="mt-1 text-[11px] text-slate-400">{t("backupCreatedAt")}: {formatDate(account.createdAt, lang)}</p>
+                        </td>
+                        <td class="px-3 py-3">
+                          <AccountStatusBadge status={account.accountStatus} />
+                          <p class="mt-2 font-medium text-main">{lifecycleLabel(account.lifecycleStatus, t)}</p>
+                          {account.promotion && <p class="mt-1 break-all text-[11px] text-muted">{account.promotion.state} · {account.promotion.mode}{account.promotion.errorCode ? ` · ${account.promotion.errorCode}` : ""}</p>}
+                        </td>
+                        <td class="break-words px-3 py-3 text-main">{account.sourceSystem ? `${sourceLabel(account.sourceSystem, t)} · ${account.sourceActive ? t("backupSourceActive") : t("backupSourceInactive")}` : sourceLabel(null, t)}</td>
                         <td class="px-4 py-3">{actionButtons(account)}</td>
                       </tr>
                     ))}
@@ -618,12 +622,6 @@ export function BackupResourcesPage() {
                     </div>
                     <AccountFactoryMetadata account={account} />
                     <p class="mt-3 line-clamp-2 text-xs text-slate-500 dark:text-text-dim">{account.note || t("backupNoNote")}</p>
-                    <div class="mt-3 grid grid-cols-2 gap-2 text-xs">
-                      <span>{t("backupEmailPassword")}: <Presence present={account.hasEmailPassword} /></span>
-                      <span>{t("backupChatgptPassword")}: <Presence present={account.hasChatgptPassword} /></span>
-                      <span>TOTP: <Presence present={account.hasTotpSecret} /></span>
-                      <span>{t("backupEmailCodeUrl")}: <Presence present={account.hasEmailCodeUrl} /></span>
-                    </div>
                     <p class="mt-3 text-[11px] text-slate-400">{t("backupCreatedAt")}: {formatDate(account.createdAt, lang)}</p>
                     <div class="mt-3">{actionButtons(account)}</div>
                   </article>

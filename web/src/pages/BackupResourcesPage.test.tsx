@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/preact";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/preact";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../../shared/i18n/context";
 import { BackupResourcesPage } from "./BackupResourcesPage";
@@ -168,7 +168,19 @@ describe("BackupResourcesPage", () => {
   it("renders the desktop account list on the shared glass surface", () => {
     renderPage();
 
-    expect(screen.getByRole("table").parentElement?.classList.contains("glass-surface")).toBe(true);
+    const table = screen.getByRole("table");
+    expect(table.parentElement?.classList.contains("glass-surface")).toBe(true);
+    expect(table.parentElement?.classList.contains("overflow-x-auto")).toBe(false);
+    expect(table.classList.contains("table-fixed")).toBe(true);
+    expect(within(table).getAllByRole("columnheader").map((header) => header.textContent)).toEqual([
+      "Email",
+      "Account status",
+      "Source",
+      "Actions",
+    ]);
+    for (const removed of ["Email password", "ChatGPT password", "TOTP", "Email code URL", "Revision", "Last mail sync"]) {
+      expect(within(table).queryByRole("columnheader", { name: removed })).toBeNull();
+    }
   });
 
   it("filters, searches, and sorts accounts by entry time", () => {
