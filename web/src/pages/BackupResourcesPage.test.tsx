@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   createPhone: vi.fn(),
   clearAccountDetail: vi.fn(),
   promoteAccount: vi.fn(),
+  extraAccounts: [] as Array<Record<string, unknown>>,
   account: {
     id: "backup-1",
     email: "spare@example.com",
@@ -64,7 +65,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("../../../shared/hooks/use-backup-resources", () => ({
   useBackupResources: () => ({
-    accounts: [mocks.account],
+    accounts: [mocks.account, ...mocks.extraAccounts],
     phones: [],
     accountsLoading: false,
     phonesLoading: false,
@@ -99,6 +100,7 @@ beforeEach(() => {
   mocks.createPhone.mockReset().mockResolvedValue(undefined);
   mocks.clearAccountDetail.mockReset();
   mocks.promoteAccount.mockReset().mockResolvedValue(undefined);
+  mocks.extraAccounts.splice(0);
 });
 
 afterEach(cleanup);
@@ -167,6 +169,38 @@ describe("BackupResourcesPage", () => {
     renderPage();
 
     expect(screen.getByRole("table").parentElement?.classList.contains("glass-surface")).toBe(true);
+  });
+
+  it("filters, searches, and sorts accounts by entry time", () => {
+    mocks.extraAccounts.push({
+      ...mocks.account,
+      id: "backup-2",
+      email: "fresh@example.com",
+      note: "fresh inventory",
+      accountStatus: "free",
+      lifecycleStatus: "available",
+      createdAt: "2026-08-02T10:00:00.000Z",
+      promotion: null,
+    });
+    renderPage();
+
+    let rows = screen.getByRole("table").querySelectorAll("tbody tr");
+    expect(rows[0]?.textContent).toContain("fresh@example.com");
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Entry time sort" }), { target: { value: "oldest" } });
+    rows = screen.getByRole("table").querySelectorAll("tbody tr");
+    expect(rows[0]?.textContent).toContain("spare@example.com");
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Lifecycle filter" }), { target: { value: "available" } });
+    expect(screen.getByRole("table").textContent).toContain("fresh@example.com");
+    expect(screen.getByRole("table").textContent).not.toContain("spare@example.com");
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Account status filter" }), { target: { value: "plus" } });
+    expect(screen.getByText("No backup accounts match the current filters.")).toBeTruthy();
+    fireEvent.change(screen.getByRole("combobox", { name: "Account status filter" }), { target: { value: "free" } });
+
+    fireEvent.input(screen.getByRole("searchbox", { name: "Search accounts" }), { target: { value: "no-result" } });
+    expect(screen.getByText("No backup accounts match the current filters.")).toBeTruthy();
   });
 
   it("shows sanitized account-factory status metadata in both responsive layouts", () => {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "preact/hooks";
+import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
 import type { ComponentChildren } from "preact";
 import { useI18n, useT } from "../../../shared/i18n/context";
 import {
@@ -15,6 +15,9 @@ import { CopyButton } from "../components/CopyButton";
 
 type ResourceTab = "accounts" | "phones";
 type SecretField = "emailPassword" | "chatgptPassword" | "totpSecret" | "emailCodeUrl";
+type AccountStatusFilter = "all" | BackupAccountStatus;
+type AccountLifecycleFilter = "all" | BackupAccountLifecycleStatus;
+type AccountCreatedSort = "newest" | "oldest";
 
 const inputClass = "w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-border-dark dark:bg-bg-dark dark:text-text-main";
 const buttonBase = "min-h-10 rounded-lg border px-3 py-2 text-xs font-medium transition";
@@ -22,6 +25,7 @@ const secondaryButton = `${buttonBase} border-gray-200 text-muted hover:border-p
 const dangerButton = `${buttonBase} border-gray-200 text-red-500 hover:border-red-300 hover:text-red-600 dark:border-border-dark dark:text-red-400`;
 const primaryButton = "min-h-10 rounded-lg bg-primary-action px-4 py-2 text-xs font-semibold text-white transition hover:bg-primary-action-hover disabled:cursor-not-allowed disabled:opacity-60";
 const accountStatuses: BackupAccountStatus[] = ["plus", "free", "unregistered", "pro"];
+const lifecycleStatuses: BackupAccountLifecycleStatus[] = ["available", "leased", "registering", "registered", "promoted", "invalid", "retired"];
 
 function formatDate(value: string, lang: string): string {
   const date = new Date(value);
@@ -359,6 +363,34 @@ export function BackupResourcesPage() {
   const [busy, setBusy] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null);
+  const [accountSearch, setAccountSearch] = useState("");
+  const [accountStatusFilter, setAccountStatusFilter] = useState<AccountStatusFilter>("all");
+  const [accountLifecycleFilter, setAccountLifecycleFilter] = useState<AccountLifecycleFilter>("all");
+  const [accountCreatedSort, setAccountCreatedSort] = useState<AccountCreatedSort>("newest");
+
+  const visibleAccounts = useMemo(() => {
+    const query = accountSearch.trim().toLocaleLowerCase();
+    return resources.accounts
+      .filter((account) => accountStatusFilter === "all" || account.accountStatus === accountStatusFilter)
+      .filter((account) => accountLifecycleFilter === "all" || account.lifecycleStatus === accountLifecycleFilter)
+      .filter((account) => {
+        if (!query) return true;
+        return [
+          account.email,
+          account.note,
+          account.accountStatus,
+          accountStatusLabel(account.accountStatus, t),
+          account.lifecycleStatus,
+          lifecycleLabel(account.lifecycleStatus, t),
+          account.sourceSystem ?? "",
+          sourceLabel(account.sourceSystem, t),
+        ].some((value) => value.toLocaleLowerCase().includes(query));
+      })
+      .sort((left, right) => {
+        const comparison = new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime();
+        return accountCreatedSort === "oldest" ? comparison : -comparison;
+      });
+  }, [accountCreatedSort, accountLifecycleFilter, accountSearch, accountStatusFilter, resources.accounts, t]);
 
   const notify = useCallback((text: string, error = false) => {
     setMessage({ text, error });
@@ -506,13 +538,57 @@ export function BackupResourcesPage() {
             </div>
           ) : resources.accounts.length === 0 ? <EmptyState text={t("backupEmptyAccounts")} /> : (
             <>
-              <div class="glass-surface hidden overflow-x-auto rounded-xl md:block">
+              <div class="glass-surface mb-3 grid gap-3 rounded-xl p-3 md:grid-cols-2 md:items-end xl:grid-cols-[minmax(220px,1fr)_180px_180px_180px_auto]">
+                <Field label={t("backupSearchAccounts")}>
+                  <input
+                    type="search"
+                    class={inputClass}
+                    value={accountSearch}
+                    placeholder={t("backupSearchAccountsPlaceholder")}
+                    onInput={(event) => setAccountSearch((event.currentTarget as HTMLInputElement).value)}
+                  />
+                </Field>
+                <Field label={t("backupAccountStatusFilter")}>
+                  <select
+                    class={inputClass}
+                    value={accountStatusFilter}
+                    onChange={(event) => setAccountStatusFilter((event.currentTarget as HTMLSelectElement).value as AccountStatusFilter)}
+                  >
+                    <option value="all">{t("filterAll")}</option>
+                    {accountStatuses.map((status) => <option key={status} value={status}>{accountStatusLabel(status, t)}</option>)}
+                  </select>
+                </Field>
+                <Field label={t("backupLifecycleFilter")}>
+                  <select
+                    class={inputClass}
+                    value={accountLifecycleFilter}
+                    onChange={(event) => setAccountLifecycleFilter((event.currentTarget as HTMLSelectElement).value as AccountLifecycleFilter)}
+                  >
+                    <option value="all">{t("filterAll")}</option>
+                    {lifecycleStatuses.map((status) => <option key={status} value={status}>{lifecycleLabel(status, t)}</option>)}
+                  </select>
+                </Field>
+                <Field label={t("backupCreatedSort")}>
+                  <select
+                    class={inputClass}
+                    value={accountCreatedSort}
+                    onChange={(event) => setAccountCreatedSort((event.currentTarget as HTMLSelectElement).value as AccountCreatedSort)}
+                  >
+                    <option value="newest">{t("backupCreatedNewest")}</option>
+                    <option value="oldest">{t("backupCreatedOldest")}</option>
+                  </select>
+                </Field>
+                <p class="pb-2 text-xs text-muted">{t("backupVisibleAccounts", { visible: visibleAccounts.length, total: resources.accounts.length })}</p>
+              </div>
+
+              {visibleAccounts.length === 0 ? <EmptyState text={t("backupNoMatchingAccounts")} /> : <>
+                <div class="glass-surface hidden overflow-x-auto rounded-xl md:block">
                 <table aria-label={t("backupAccountsTab")} class="w-full min-w-[1400px] text-left text-xs">
                   <thead class="border-b border-gray-200 text-muted dark:border-border-dark">
-                    <tr><th scope="col" class="px-4 py-3">{t("backupEmail")}</th><th scope="col" class="px-3 py-3">{t("backupAccountStatus")}</th><th scope="col" class="px-3 py-3">{t("backupLifecycle")}</th><th scope="col" class="px-3 py-3">{t("backupPromotion")}</th><th scope="col" class="px-3 py-3">{t("backupSource")}</th><th scope="col" class="px-3 py-3">{t("backupRevision")}</th><th scope="col" class="px-3 py-3">{t("backupLastMailSynced")}</th><th scope="col" class="px-3 py-3">{t("backupEmailPassword")}</th><th scope="col" class="px-3 py-3">{t("backupChatgptPassword")}</th><th scope="col" class="px-3 py-3">TOTP</th><th scope="col" class="px-3 py-3">{t("backupEmailCodeUrl")}</th><th scope="col" class="px-3 py-3">{t("backupNote")}</th><th scope="col" class="px-3 py-3">{t("updatedAt")}</th><th scope="col" class="px-4 py-3 text-right">{t("backupActions")}</th></tr>
+                    <tr><th scope="col" class="px-4 py-3">{t("backupEmail")}</th><th scope="col" class="px-3 py-3">{t("backupAccountStatus")}</th><th scope="col" class="px-3 py-3">{t("backupLifecycle")}</th><th scope="col" class="px-3 py-3">{t("backupPromotion")}</th><th scope="col" class="px-3 py-3">{t("backupSource")}</th><th scope="col" class="px-3 py-3">{t("backupRevision")}</th><th scope="col" class="px-3 py-3">{t("backupLastMailSynced")}</th><th scope="col" class="px-3 py-3">{t("backupEmailPassword")}</th><th scope="col" class="px-3 py-3">{t("backupChatgptPassword")}</th><th scope="col" class="px-3 py-3">TOTP</th><th scope="col" class="px-3 py-3">{t("backupEmailCodeUrl")}</th><th scope="col" class="px-3 py-3">{t("backupNote")}</th><th scope="col" class="px-3 py-3">{t("backupCreatedAt")}</th><th scope="col" class="px-4 py-3 text-right">{t("backupActions")}</th></tr>
                   </thead>
                   <tbody class="divide-y divide-gray-100 dark:divide-border-dark">
-                    {resources.accounts.map((account) => (
+                    {visibleAccounts.map((account) => (
                       <tr key={account.id} class="align-middle transition-colors hover:bg-primary-container/20">
                         <td class="max-w-48 break-all px-4 py-3 font-medium text-main">{account.email}</td>
                         <td class="px-3 py-3"><AccountStatusBadge status={account.accountStatus} /></td>
@@ -526,7 +602,7 @@ export function BackupResourcesPage() {
                         <td class="px-3 py-3"><Presence present={account.hasTotpSecret} /></td>
                         <td class="px-3 py-3"><Presence present={account.hasEmailCodeUrl} /></td>
                         <td class="max-w-44 truncate px-3 py-3 text-muted" title={account.note}>{account.note || "—"}</td>
-                        <td class="whitespace-nowrap px-3 py-3 text-muted">{formatDate(account.updatedAt, lang)}</td>
+                        <td class="whitespace-nowrap px-3 py-3 text-muted">{formatDate(account.createdAt, lang)}</td>
                         <td class="px-4 py-3">{actionButtons(account)}</td>
                       </tr>
                     ))}
@@ -534,7 +610,7 @@ export function BackupResourcesPage() {
                 </table>
               </div>
               <div class="grid gap-3 md:hidden">
-                {resources.accounts.map((account) => (
+                {visibleAccounts.map((account) => (
                   <article key={account.id} class="glass-surface rounded-xl p-4">
                     <div class="flex flex-wrap items-start justify-between gap-2">
                       <p class="min-w-0 flex-1 break-all text-sm font-semibold text-main">{account.email}</p>
@@ -548,11 +624,12 @@ export function BackupResourcesPage() {
                       <span>TOTP: <Presence present={account.hasTotpSecret} /></span>
                       <span>{t("backupEmailCodeUrl")}: <Presence present={account.hasEmailCodeUrl} /></span>
                     </div>
-                    <p class="mt-3 text-[11px] text-slate-400">{formatDate(account.updatedAt, lang)}</p>
+                    <p class="mt-3 text-[11px] text-slate-400">{t("backupCreatedAt")}: {formatDate(account.createdAt, lang)}</p>
                     <div class="mt-3">{actionButtons(account)}</div>
                   </article>
                 ))}
               </div>
+              </>}
             </>
           )}
         </div>
