@@ -171,6 +171,7 @@ export interface AccountFactorySyncInput {
   email: string;
   sourceRevision: string;
   active?: boolean;
+  registrationEligible?: boolean;
   appleLabel?: string | null;
   operationId?: string;
 }

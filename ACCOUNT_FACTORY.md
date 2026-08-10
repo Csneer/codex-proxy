@@ -188,30 +188,33 @@ Consumer ID    = free-account-tool
 
 配置入口已由提交 `d78dda1` 恢复显示。插件只接受 loopback HTTP 地址，并先检查服务 health、capability 和可用库存数。
 
-邮箱不需要在插件里再次导入：`account-factory-mailbox-sync.timer` 负责将 Mail Dashboard 同步到 Proxy 数据库。启动自动注册时，插件会从 `available` 库存按入库顺序自动领取；MVP 不要求每轮手工选邮箱。
+邮箱不需要在插件里再次导入：`account-factory-mailbox-sync.timer` 负责将 Mail Dashboard 同步到 Proxy 数据库。只有 Dashboard 中 `group=unused` 的邮箱具备注册资格；`finished / trash / unknown` 会被阻止。Proxy 还会排除已有 `free / plus` 状态或 ChatGPT 密码、TOTP、Session、Access Token、Refresh Token 的账号。
+
+首次部署此资格规则后，需要打开或刷新一次 Mail Dashboard 页面，把旧浏览器 `localStorage` 分组迁移到服务端；在完成迁移前，历史邮箱按 unknown 保守处理，不会被误领。启动自动注册时，插件从严格 `available` 库存按入库顺序领取；MVP 暂不要求每轮手工选邮箱。
 
 使用顺序：
 
 1. 确认两个服务和同步 timer 正常。
-2. 打开 Proxy 备用资源页面，确认存在 `available` 邮箱。
-3. 在插件选择 `Codex Proxy Local` 并开始注册。
-4. 注册完成后检查插件“远端同步”计数。
-5. 在 Proxy 中筛选 `free + registered`，点击“查看”核对 Session/AT/RT。
-6. 需要加入核心轮转池时再点击“提升”。
+2. 首次升级后刷新 Mail Dashboard，并等待一次同步日志出现 `eligible/blocked` 摘要。
+3. 打开 Proxy 备用资源页面，确认存在严格 `available` 邮箱。
+4. 在插件选择 `Codex Proxy Local` 并开始注册。
+5. 注册完成后检查插件“远端同步”计数。
+6. 在 Proxy 中筛选 `free + registered`，点击“查看”核对 Session/AT/RT。
+7. 需要加入核心轮转池时再点击“提升”。
 
 ## 6. 当前运行快照
 
 2026-08-10 采样：
 
 ```text
-Mail Dashboard Apple 目录     199
-Proxy mail_dashboard active   199
-Proxy manual/unset            18
-Proxy 总备用账号              217
-available                     217
-registered/promoted           0
-带 Session/AT/RT              0 / 0 / 0
+Mail Dashboard Apple 目录     209
+同步资格摘要                  0 eligible / 209 blocked（旧分组未迁移时）
+Proxy 严格可领取              1
+mail_dashboard registered     2
+mail_dashboard retired        207
 ```
+
+`available` 的统计和 claim 使用同一严格条件：账号必须 active、unregistered、lifecycle=available，且不存在任何 GPT 凭据。Dashboard 页面完成历史分组迁移后，真正的 unused 邮箱会在下一轮同步恢复为 available。
 
 因此当前页面显示大量“未注册/未设置”是库存尚未消费的结果，不是同步或存储错误。完成第一条真实插件注册后，相应账号才会变为 `registered` 并出现可复制凭据。
 
@@ -249,22 +252,11 @@ Account Factory 使用 `X-Account-Factory-Token`；Dashboard API 使用 Dashboar
 
 最近完成的验证：
 
-- Account Factory 生命周期测试：12/12 通过。
-- 备用账号 Admin CRUD 测试：4/4 通过。
-- 备用资源前端测试：13/13 通过。
+- Account Factory 本轮目标测试：27/27 通过，包含邮箱资格、生命周期和路由。
 - `npm run build` 通过。
-- 实际服务 API 完成新增、查看解密、修改、清空和删除 Session/AT/RT 冒烟验证。
+- 实际同步日志输出 `accounts / eligible / blocked / deactivated` 摘要。
+- 实际数据库严格可领取统计与 health/claim 条件一致。
 - `codex-proxy-source.service` 重启后 active。
-
-当前关键提交：
-
-```text
-dce05e1 feat: manage backup session credentials
-f1a3e06 fix: compact backup account list
-da5a9ec feat: filter and sort backup accounts
-809b09c fix: adopt matching mailbox inventory accounts
-dbea993 task: add promotion dashboard controls
-```
 
 ## 9. 已知边界和后续工作
 

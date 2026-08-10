@@ -3,6 +3,7 @@ export interface MailboxSourceRecord {
   externalId: string;
   sourceRevision: string;
   appleLabel: string | null;
+  registrationEligible?: boolean;
 }
 
 export type VerificationCodeResult =
@@ -78,11 +79,14 @@ export function createMailDashboardClient(
         const email = text(item.email)?.toLowerCase();
         if (!email) return [];
         const appleLabel = text(item.appleLabel) ?? text(item.label);
+        const group = text(item.group)?.toLowerCase() ?? "unknown";
+        const registrationEligible = item.registrationEligible === true && group === "unused";
         return [{
           email,
           externalId: email,
-          sourceRevision: `${email}:${appleLabel ?? ""}`,
+          sourceRevision: `${email}:${appleLabel ?? ""}:${group}:${registrationEligible ? "eligible" : "blocked"}`,
           appleLabel,
+          registrationEligible,
         }];
       });
     },

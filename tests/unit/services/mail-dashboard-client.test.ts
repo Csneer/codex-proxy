@@ -15,8 +15,8 @@ describe("MailDashboardClient", () => {
   it("normalizes usable mailbox records and omits malformed entries", async () => {
     const request = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({
       emails: [
-        { email: "  FIRST@EXAMPLE.COM ", appleLabel: "Primary" },
-        { email: "second@example.com", label: "Fallback label" },
+        { email: "  FIRST@EXAMPLE.COM ", appleLabel: "Primary", group: "unused", registrationEligible: true },
+        { email: "second@example.com", label: "Fallback label", group: "finished", registrationEligible: false },
         { email: "" },
         { label: "missing email" },
         null,
@@ -28,14 +28,16 @@ describe("MailDashboardClient", () => {
       {
         email: "first@example.com",
         externalId: "first@example.com",
-        sourceRevision: "first@example.com:Primary",
+        sourceRevision: "first@example.com:Primary:unused:eligible",
         appleLabel: "Primary",
+        registrationEligible: true,
       },
       {
         email: "second@example.com",
         externalId: "second@example.com",
-        sourceRevision: "second@example.com:Fallback label",
+        sourceRevision: "second@example.com:Fallback label:finished:blocked",
         appleLabel: "Fallback label",
+        registrationEligible: false,
       },
     ]);
     expect(request).toHaveBeenCalledWith(

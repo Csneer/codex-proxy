@@ -140,7 +140,16 @@ export function createAccountFactoryRoutes(dependencies: AccountFactoryRouteDepe
       capabilities: ["claim", "submissionCommit", "poll", "progress", "syncState", "complete", "fail", "promote"],
       inventory: {
         total: accounts.length,
-        available: accounts.filter((account) => account.lifecycleStatus === "available" && account.sourceActive).length,
+        available: accounts.filter((account) => (
+          account.lifecycleStatus === "available"
+          && account.sourceActive
+          && account.accountStatus === "unregistered"
+          && !account.hasChatgptPassword
+          && !account.hasTotpSecret
+          && !account.hasSession
+          && !account.hasAccessToken
+          && !account.hasRefreshToken
+        )).length,
       },
     });
   });
@@ -154,12 +163,21 @@ export function createAccountFactoryRoutes(dependencies: AccountFactoryRouteDepe
       sourceRevision: mailbox.sourceRevision,
       appleLabel: mailbox.appleLabel,
       active: true,
+      registrationEligible: mailbox.registrationEligible,
     }));
     const reconciliation = store().reconcileSourceAccounts({
       sourceSystem: "mail_dashboard",
       activeExternalIds: mailboxes.map((mailbox) => mailbox.externalId),
     });
-    return c.json({ accounts, reconciliation });
+    return c.json({
+      accounts,
+      reconciliation,
+      summary: {
+        total: mailboxes.length,
+        eligible: mailboxes.filter((mailbox) => mailbox.registrationEligible === true).length,
+        blocked: mailboxes.filter((mailbox) => mailbox.registrationEligible !== true).length,
+      },
+    });
   });
 
   app.post(`${BASE_PATH}/claims`, async (c) => {

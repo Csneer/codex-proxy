@@ -85,13 +85,47 @@ describe("BackupResourceStore account-factory lifecycle", () => {
       sourceSystem: "mail_dashboard",
       externalId: "existing@example.com",
       appleLabel: "apple-label",
-      lifecycleStatus: "available",
+      lifecycleStatus: "registered",
     });
     expect(store.getAccount(manual.id)).toMatchObject({
       chatgptPassword: "preserved-password",
       accountStatus: "free",
     });
     expect(store.listAccounts()).toHaveLength(1);
+  });
+
+  it("retires used mailbox records and restores only evidence-free unregistered mailboxes", () => {
+    const { store } = createStore();
+    const used = store.syncSourceAccount({
+      sourceSystem: "mail_dashboard",
+      externalId: "used@example.com",
+      email: "used@example.com",
+      sourceRevision: "used:finished",
+      registrationEligible: false,
+    });
+
+    expect(used.lifecycleStatus).toBe("retired");
+    expect(store.claimAccount({ consumerId: "consumer", taskId: "task-used" })).toBeNull();
+
+    const restored = store.syncSourceAccount({
+      sourceSystem: "mail_dashboard",
+      externalId: "used@example.com",
+      email: "used@example.com",
+      sourceRevision: "used:unused",
+      registrationEligible: true,
+    });
+    expect(restored.lifecycleStatus).toBe("available");
+
+    const knownGpt = store.createAccount({
+      email: "known@example.com",
+      accountStatus: "free",
+      chatgptPassword: "already-registered",
+    });
+    expect(knownGpt.lifecycleStatus).toBe("available");
+    expect(store.claimAccount({ consumerId: "consumer", taskId: "task-known" })).toMatchObject({
+      account: { id: restored.id },
+    });
+    expect(store.claimAccount({ consumerId: "consumer", taskId: "task-known-2" })).toBeNull();
   });
 
   it("deactivates only missing source records without changing leases or lifecycle state", () => {

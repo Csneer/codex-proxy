@@ -233,6 +233,26 @@ function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
+function hasGptRegistrationEvidence(row: AccountRow): boolean {
+  return row.account_status !== "unregistered"
+    || row.chatgpt_password !== null
+    || row.totp_secret !== null
+    || row.session_json !== null
+    || row.access_token !== null
+    || row.refresh_token !== null;
+}
+
+function sourceSyncLifecycleStatus(row: AccountFactoryAccountRow, registrationEligible: boolean): AccountFactoryAccountRow["lifecycle_status"] {
+  if (row.lifecycle_status === "available") {
+    if (hasGptRegistrationEvidence(row)) return "registered";
+    if (!registrationEligible) return "retired";
+  }
+  if (row.lifecycle_status === "retired" && registrationEligible && !hasGptRegistrationEvidence(row)) {
+    return "available";
+  }
+  return row.lifecycle_status;
+}
+
 function accountSummary(row: AccountRow): BackupAccountSummary {
   return {
     id: row.id,
@@ -517,7 +537,16 @@ export class BackupResourceStore {
           current = existingByEmail;
         }
       }
-      if (current && current.last_source_revision === sourceRevision && current.source_active === (input.active === false ? 0 : 1)) {
+      const registrationEligible = input.registrationEligible !== false;
+      const nextLifecycleStatus = current
+        ? sourceSyncLifecycleStatus(current, registrationEligible)
+        : (registrationEligible ? "available" : "retired");
+      if (
+        current
+        && current.last_source_revision === sourceRevision
+        && current.source_active === (input.active === false ? 0 : 1)
+        && current.lifecycle_status === nextLifecycleStatus
+      ) {
         const result = accountFactoryAccount(current);
         this.recordOperation(operationId, null, "sync", `${sourceSystem}:${externalId}`, result);
         return result;
@@ -526,7 +555,7 @@ export class BackupResourceStore {
         this.db.prepare(`
           UPDATE backup_accounts
           SET email = ?, email_normalized = ?, source_system = ?, external_id = ?,
-              apple_label = ?, source_active = ?,
+              apple_label = ?, source_active = ?, lifecycle_status = ?,
               last_mail_synced_at = ?, last_source_revision = ?, revision = revision + 1,
               last_applied_operation_id = ?, updated_at = ?
           WHERE id = ?
@@ -537,6 +566,7 @@ export class BackupResourceStore {
           externalId,
           input.appleLabel ?? null,
           input.active === false ? 0 : 1,
+          nextLifecycleStatus,
           timestamp,
           sourceRevision,
           operationId ?? null,
@@ -549,11 +579,12 @@ export class BackupResourceStore {
             id, email, email_normalized, account_status, lifecycle_status, source_system,
             external_id, apple_label, source_active, last_mail_synced_at, revision,
             last_source_revision, last_applied_operation_id, created_at, updated_at
-          ) VALUES (?, ?, ?, 'unregistered', 'available', ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, 'unregistered', ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
         `).run(
           randomUUID(),
           email,
           normalizeEmail(email),
+          nextLifecycleStatus,
           sourceSystem,
           externalId,
           input.appleLabel ?? null,
@@ -599,6 +630,12 @@ export class BackupResourceStore {
       const account = this.db.prepare(`
         SELECT * FROM backup_accounts
         WHERE lifecycle_status = 'available' AND source_active = 1
+          AND account_status = 'unregistered'
+          AND chatgpt_password IS NULL
+          AND totp_secret IS NULL
+          AND session_json IS NULL
+          AND access_token IS NULL
+          AND refresh_token IS NULL
         ORDER BY created_at ASC, id ASC LIMIT 1
       `).get() as AccountFactoryAccountRow | undefined;
       if (!account) {
