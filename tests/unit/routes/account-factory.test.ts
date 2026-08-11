@@ -74,7 +74,7 @@ describe("account-factory v1 routes", () => {
     expect(await health.json()).toEqual({
       enabled: true,
       schemaVersion: 1,
-      capabilities: ["claim", "candidateSelection", "submissionCommit", "poll", "progress", "syncState", "complete", "fail", "promote"],
+      capabilities: ["claim", "claimRecovery", "candidateSelection", "submissionCommit", "poll", "progress", "syncState", "complete", "fail", "promote"],
       inventory: { total: 1, available: 1, mailDashboardAvailable: 1 },
     });
     expect(invalid.status).toBe(400);
@@ -120,6 +120,41 @@ describe("account-factory v1 routes", () => {
     });
     expect(unavailable.status).toBe(409);
     expect(await unavailable.json()).toEqual({ error: "selected_inventory_unavailable" });
+  });
+
+  it("recovers an existing claim by task id without claiming new inventory", async () => {
+    const store = createStore();
+    const account = sync(store);
+    const untouched = store.syncSourceAccount({
+      sourceSystem: "mail_dashboard",
+      externalId: "mailbox-recovery-spare",
+      email: "mailbox-recovery-spare@example.com",
+      sourceRevision: "revision-recovery-spare",
+    });
+    const claim = store.claimAccount({
+      consumerId: "consumer",
+      taskId: "task-recovery",
+      selectedAccountIds: [account.id],
+    })!;
+    const app = createApp(store);
+
+    const recovered = await app.request(
+      "/integration/account-factory/v1/claims/recovery?taskId=task-recovery",
+    );
+    const missing = await app.request(
+      "/integration/account-factory/v1/claims/recovery?taskId=task-without-lease",
+    );
+
+    expect(recovered.status).toBe(200);
+    expect(recovered.headers.get("cache-control")).toBe("no-store");
+    expect(await recovered.json()).toMatchObject({
+      replayed: true,
+      account: { id: account.id, email: account.email },
+      lease: { id: claim.lease.id, taskId: "task-recovery" },
+    });
+    expect(missing.status).toBe(404);
+    expect(await missing.json()).toEqual({ error: "not_found" });
+    expect(store.listClaimableAccounts(10).map((item) => item.id)).toEqual([untouched.id]);
   });
 
   it("reconciles the mailbox snapshot after source upserts", async () => {

@@ -830,6 +830,7 @@ curl -N http://localhost:8080/official-agent/threads/{threadId}/turns \
 | `/health` | GET | 检查 schema 与 claim/commit/poll/complete 等能力 |
 | `/mailboxes/sync` | POST | 从 Mail Dashboard 同步当前 HME 目录 |
 | `/claims` | POST | 创建幂等账号租约 |
+| `/claims/recovery` | GET | 按原 taskId 只读恢复既有租约，不领取新账号 |
 | `/accounts/:id/submission-commit` | POST | 确认邮箱已提交到官网 |
 | `/accounts/:id/verification-code` | GET | 通过 Mail Dashboard 查询当前租约验证码 |
 | `/accounts/:id/progress` | PATCH | 保存脱敏流程进度 |

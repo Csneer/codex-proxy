@@ -1,6 +1,6 @@
 # Codex Proxy Account Factory 集成与交接
 
-更新时间：2026-08-10
+更新时间：2026-08-11
 
 本文替代此前仅描述“调用记录 MVP”的旧交接内容。调用记录仍是现有功能，但当前跨项目交接重点是：
 
@@ -186,7 +186,7 @@ Token          = account_factory.token
 Consumer ID    = free-account-tool
 ```
 
-配置入口已由提交 `d78dda1` 恢复显示。插件只接受 loopback HTTP 地址，并先检查服务 health、capability 和可用库存数。
+配置入口已由提交 `d78dda1` 恢复显示。插件接受 HTTP(S) 地址，可使用本机 loopback 或私有隧道入口，并先检查服务 health、capability 和可用库存数。
 
 邮箱不需要在插件里再次导入：`account-factory-mailbox-sync.timer` 负责将 Mail Dashboard 同步到 Proxy 数据库。只有 Dashboard 中 `group=unused` 的邮箱具备注册资格；`finished / trash / unknown` 会被阻止。Proxy 还会排除已有 `free / plus` 状态或 ChatGPT 密码、TOTP、Session、Access Token、Refresh Token 的账号。
 
@@ -232,6 +232,7 @@ mail_dashboard retired        207
 | GET | `/candidates` | 随机列出最多 10 个 Mail Dashboard 严格候选，并优先保留已选 ID |
 | POST | `/mailboxes/sync` | 同步邮件目录 |
 | POST | `/claims` | 仅从 `selectedAccountIds` 中领取账号 |
+| GET | `/claims/recovery?taskId=...` | checkpoint 丢失时只读恢复既有租约；不存在时返回 404，不领取新账号 |
 | POST | `/accounts/:id/submission-commit` | 邮箱提交确认 |
 | GET | `/accounts/:id/verification-code` | 验证码轮询 |
 | PATCH | `/accounts/:id/progress` | 进度回写 |

@@ -39,6 +39,7 @@ const CandidateQuery = z.object({
   limit: z.coerce.number().int().min(1).max(50).optional().default(10),
   selectedAccountIds: z.string().max(4096).optional(),
 }).strict();
+const ClaimRecoveryQuery = z.object({ taskId: Text }).strict();
 const Progress = Operation.extend({
   progress: z.unknown().refine((value) => value !== undefined),
 }).strict().refine((value) => Boolean(value.operationId || value.idempotencyKey), {
@@ -152,7 +153,7 @@ export function createAccountFactoryRoutes(dependencies: AccountFactoryRouteDepe
     return c.json({
       enabled: true,
       schemaVersion: 1,
-      capabilities: ["claim", "candidateSelection", "submissionCommit", "poll", "progress", "syncState", "complete", "fail", "promote"],
+      capabilities: ["claim", "claimRecovery", "candidateSelection", "submissionCommit", "poll", "progress", "syncState", "complete", "fail", "promote"],
       inventory: {
         total: accounts.length,
         available: claimable.length,
@@ -215,6 +216,19 @@ export function createAccountFactoryRoutes(dependencies: AccountFactoryRouteDepe
       lease: leaseResponse(result.lease),
       replayed: result.replayed,
     });
+  });
+
+  app.get(`${BASE_PATH}/claims/recovery`, (c) => {
+    const query = ClaimRecoveryQuery.safeParse(c.req.query());
+    if (!query.success) return responseError(c, 400, "invalid_request");
+    const lease = store().getLease(query.data.taskId);
+    if (!lease || !["leased", "committed"].includes(lease.state)) {
+      return responseError(c, 404, "not_found");
+    }
+    const account = store().getAccount(lease.accountId);
+    if (!account) return responseError(c, 404, "not_found");
+    c.header("Cache-Control", "no-store");
+    return c.json({ account, lease: leaseResponse(lease), replayed: true });
   });
 
   app.post(`${BASE_PATH}/accounts/:id/submission-commit`, async (c) => {
