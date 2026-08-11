@@ -24,6 +24,8 @@ export class MailDashboardError extends Error {
 
 type FetchLike = typeof fetch;
 
+export const MAIL_DASHBOARD_REQUEST_TIMEOUT_MS = 30_000;
+
 function baseUrl(value: string): string {
   return value.endsWith("/") ? value.slice(0, -1) : value;
 }
@@ -62,7 +64,7 @@ export function createMailDashboardClient(
       return await parse(await request(`${endpoint}${path}`, {
         ...init,
         headers: { Accept: "application/json", ...init?.headers },
-        signal: AbortSignal.timeout(10_000),
+        signal: AbortSignal.timeout(MAIL_DASHBOARD_REQUEST_TIMEOUT_MS),
       }));
     } catch (error) {
       if (error instanceof MailDashboardError) throw error;

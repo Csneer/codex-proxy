@@ -12,6 +12,33 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 describe("MailDashboardClient", () => {
+  it("allows an 11-second response within the 30-second request timeout", async () => {
+    vi.useFakeTimers();
+    const timeout = vi.spyOn(AbortSignal, "timeout").mockImplementation((delay) => {
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(), delay);
+      return controller.signal;
+    });
+    const request = vi.fn<typeof fetch>((_input, init) => new Promise<Response>((resolve, reject) => {
+      const responseTimer = setTimeout(() => resolve(jsonResponse({ emails: [] })), 11_000);
+      init?.signal?.addEventListener("abort", () => {
+        clearTimeout(responseTimer);
+        reject(new Error("request aborted"));
+      }, { once: true });
+    }));
+    const client = createMailDashboardClient("http://127.0.0.1:4173", request);
+
+    try {
+      const result = client.listMailboxes();
+      await vi.advanceTimersByTimeAsync(11_000);
+
+      await expect(result).resolves.toEqual([]);
+      expect(timeout).toHaveBeenCalledWith(30_000);
+    } finally {
+      timeout.mockRestore();
+      vi.useRealTimers();
+    }
+  });
   it("normalizes usable mailbox records and omits malformed entries", async () => {
     const request = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({
       emails: [
