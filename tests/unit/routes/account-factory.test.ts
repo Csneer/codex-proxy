@@ -74,7 +74,7 @@ describe("account-factory v1 routes", () => {
     expect(await health.json()).toEqual({
       enabled: true,
       schemaVersion: 1,
-      capabilities: ["claim", "claimRecovery", "candidateSelection", "submissionCommit", "poll", "progress", "syncState", "complete", "fail", "promote"],
+      capabilities: ["claim", "claimRecovery", "candidateSelection", "submissionCommit", "poll", "progress", "syncState", "complete", "evidence", "fail", "promote"],
       inventory: { total: 1, available: 1, mailDashboardAvailable: 1 },
     });
     expect(invalid.status).toBe(400);
@@ -381,6 +381,53 @@ describe("account-factory v1 routes", () => {
     expect(stale.status).toBe(409);
     expect(await stale.json()).toEqual({ error: "revision_conflict", ...completedBody });
     expect(JSON.stringify(completedBody)).not.toContain("secret");
+  });
+
+  it("accepts partial completion without a password and allows later evidence updates", async () => {
+    const store = createStore();
+    const account = sync(store);
+    const claim = store.claimAccount({ consumerId: "consumer", taskId: "task-partial" })!;
+    const app = createApp(store);
+    const ownership = { leaseId: claim.lease.id, taskId: "task-partial", idempotencyKey: "partial-key" };
+    await app.request(`/integration/account-factory/v1/accounts/${account.id}/submission-commit`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ...ownership, schemaVersion: 1, operationId: "partial-commit" }),
+    });
+    const completed = await app.request(`/integration/account-factory/v1/accounts/${account.id}/complete`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ...ownership, schemaVersion: 1, operationId: "partial-complete", sourceRevision: 1, session: { user: { email: account.email } }, note: "late note" }),
+    });
+    expect(completed.status).toBe(200);
+    expect(store.getAccount(account.id)).toMatchObject({ chatgptPassword: null, hasSession: true, note: "late note" });
+    const evidence = await app.request(`/integration/account-factory/v1/accounts/${account.id}/evidence`, {
+      method: "PATCH", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: account.email, eligibilityStatus: "eligible", eligibilityReason: "eligible", eligibilityCheckedAt: "2026-08-14T00:00:00.000Z" }),
+    });
+    expect(evidence.status).toBe(200);
+    expect(store.getAccount(account.id)).toMatchObject({ eligibilityStatus: "eligible", eligibilityReason: "eligible", note: "late note" });
+  });
+
+  it("rejects blank passwords and completion requests without account evidence", async () => {
+    const store = createStore();
+    const account = sync(store);
+    const claim = store.claimAccount({ consumerId: "consumer", taskId: "task-empty-complete" })!;
+    const app = createApp(store);
+    const ownership = { leaseId: claim.lease.id, taskId: "task-empty-complete", idempotencyKey: "empty-key" };
+    await app.request(`/integration/account-factory/v1/accounts/${account.id}/submission-commit`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ...ownership, schemaVersion: 1, operationId: "empty-commit" }),
+    });
+    const base = { ...ownership, schemaVersion: 1, sourceRevision: 1 };
+    const blankPassword = await app.request(`/integration/account-factory/v1/accounts/${account.id}/complete`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ...base, operationId: "blank-password", chatgptPassword: "   " }),
+    });
+    const empty = await app.request(`/integration/account-factory/v1/accounts/${account.id}/complete`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ...base, operationId: "empty-complete" }),
+    });
+    expect(blankPassword.status).toBe(400);
+    expect(empty.status).toBe(400);
   });
 
   it("rejects complete when leaseId does not own the task/account", async () => {

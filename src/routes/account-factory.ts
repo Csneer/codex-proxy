@@ -18,6 +18,9 @@ import {
 const BASE_PATH = "/integration/account-factory/v1";
 const Text = z.string().trim().min(1).max(512);
 const Secret = z.string().max(1024 * 1024);
+const NonBlankSecret = Secret.refine((value) => value.trim().length > 0, {
+  message: "secret must not be blank",
+});
 const Operation = z.object({
   leaseId: Text,
   taskId: Text,
@@ -50,8 +53,8 @@ const Complete = Operation.extend({
   operationId: Text,
   idempotencyKey: Text,
   sourceRevision: z.number().int().nonnegative(),
-  password: Secret.optional(),
-  chatgptPassword: Secret.optional(),
+  password: NonBlankSecret.optional(),
+  chatgptPassword: NonBlankSecret.optional(),
   emailPassword: Secret.nullable().optional(),
   totpSecret: Secret.nullable().optional(),
   session: z.union([Secret, z.record(z.unknown())]).nullable().optional(),
@@ -64,8 +67,33 @@ const Complete = Operation.extend({
   eligibilityCheckedAt: z.string().datetime({ offset: true }).nullable().optional(),
   validityStatus: Text.nullable().optional(),
   note: Text.nullable().optional(),
-}).strict().refine((value) => Boolean(value.password || value.chatgptPassword), {
-  message: "password is required",
+}).strict().refine((value) => [
+  value.password,
+  value.chatgptPassword,
+  value.emailPassword,
+  value.totpSecret,
+  value.session,
+  value.accessToken,
+  value.refreshToken,
+  value.accountStatus,
+  value.registrationRoute,
+  value.eligibilityStatus,
+  value.eligibilityReason,
+  value.eligibilityCheckedAt,
+  value.validityStatus,
+  value.note,
+].some((field) => field !== undefined), {
+  message: "completion evidence is required",
+});
+const EvidencePatch = z.object({
+  email: z.string().trim().email().max(320).optional(),
+  note: Text.nullable().optional(),
+  eligibilityStatus: Text.nullable().optional(),
+  eligibilityReason: Secret.nullable().optional(),
+  eligibilityCheckedAt: z.string().datetime({ offset: true }).nullable().optional(),
+  validityStatus: Text.nullable().optional(),
+}).strict().refine((value) => Object.keys(value).some((key) => key !== "email"), {
+  message: "evidence is required",
 });
 const Fail = Operation.extend({ errorCode: Text }).strict().refine((value) => Boolean(value.operationId || value.idempotencyKey), {
   message: "operation identity is required",
@@ -154,7 +182,7 @@ export function createAccountFactoryRoutes(dependencies: AccountFactoryRouteDepe
     return c.json({
       enabled: true,
       schemaVersion: 1,
-      capabilities: ["claim", "claimRecovery", "candidateSelection", "submissionCommit", "poll", "progress", "syncState", "complete", "fail", "promote"],
+      capabilities: ["claim", "claimRecovery", "candidateSelection", "submissionCommit", "poll", "progress", "syncState", "complete", "evidence", "fail", "promote"],
       inventory: {
         total: accounts.length,
         available: claimable.length,
@@ -281,6 +309,26 @@ export function createAccountFactoryRoutes(dependencies: AccountFactoryRouteDepe
     if (!leaseForAccount(c, store(), input.taskId, input.leaseId)) return responseError(c, 404, "not_found");
     c.header("Cache-Control", "no-store");
     return c.json(store().completeLease(input));
+  });
+
+  app.patch(`${BASE_PATH}/accounts/:id/evidence`, async (c) => {
+    const input = await body(c, EvidencePatch);
+    if (!input) return responseError(c, 400, "invalid_request");
+    const id = c.req.param("id");
+    const current = store().getAccount(id);
+    if (!current || (input.email && current.email.toLowerCase() !== input.email.toLowerCase())) return responseError(c, 404, "not_found");
+    if (input.note !== undefined) store().updateAccount(id, { note: input.note });
+    if ([input.eligibilityStatus, input.eligibilityReason, input.eligibilityCheckedAt, input.validityStatus].some((value) => value !== undefined)) {
+      store().updateEligibility(
+        id,
+        input.eligibilityStatus ?? current.eligibilityStatus,
+        input.eligibilityReason ?? current.eligibilityReason,
+        input.eligibilityCheckedAt ?? current.eligibilityCheckedAt ?? new Date().toISOString(),
+        input.validityStatus,
+      );
+    }
+    c.header("Cache-Control", "no-store");
+    return c.json({ ok: true, account: store().listAccounts().find((account) => account.id === id) });
   });
 
   app.post(`${BASE_PATH}/accounts/:id/promote`, async (c) => {

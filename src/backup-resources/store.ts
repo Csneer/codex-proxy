@@ -757,7 +757,6 @@ export class BackupResourceStore {
       throw new Error("Invalid account factory completion revision");
     }
     const chatgptPassword = input.chatgptPassword ?? input.password;
-    if (!chatgptPassword?.trim()) throw new Error("Account factory chatgpt password is required");
 
     return this.db.transaction(() => {
       const replay = this.getOperationResult<AccountFactoryAccountSyncState>(operationId, taskId, "completed", leaseId);
@@ -787,7 +786,7 @@ export class BackupResourceStore {
             END,
             account_status = ?, registered_at = ?,
             email_password = CASE WHEN ? = 1 THEN ? ELSE email_password END,
-            chatgpt_password = ?,
+            chatgpt_password = CASE WHEN ? = 1 THEN ? ELSE chatgpt_password END,
             totp_secret = CASE WHEN ? = 1 THEN ? ELSE totp_secret END,
             session_json = CASE WHEN ? = 1 THEN ? ELSE session_json END,
             access_token = CASE WHEN ? = 1 THEN ? ELSE access_token END,
@@ -806,7 +805,8 @@ export class BackupResourceStore {
         timestamp,
         input.emailPassword === undefined ? 0 : 1,
         this.encryptNullable(input.emailPassword),
-        this.cipher.encrypt(chatgptPassword),
+        chatgptPassword === undefined ? 0 : 1,
+        this.encryptNullable(chatgptPassword),
         input.totpSecret === undefined ? 0 : 1,
         this.encryptNullable(input.totpSecret),
         input.session === undefined ? 0 : 1,
