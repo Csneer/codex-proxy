@@ -79,6 +79,9 @@ export interface BackupAccountSummary {
   revision: number;
   lastMailSyncedAt: string | null;
   note: string;
+  eligibilityStatus: string | null;
+  eligibilityReason: string | null;
+  eligibilityCheckedAt: string | null;
   hasEmailPassword: boolean;
   hasChatgptPassword: boolean;
   hasTotpSecret: boolean;
@@ -262,6 +265,7 @@ export interface AccountFactoryCompleteInput extends AccountFactoryOperationInpu
   eligibilityReason?: string | null;
   eligibilityCheckedAt?: string | null;
   validityStatus?: string | null;
+  note?: string | null;
 }
 
 export interface AccountFactoryFailInput extends AccountFactoryOperationInput {

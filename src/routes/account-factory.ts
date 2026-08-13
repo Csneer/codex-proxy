@@ -63,6 +63,7 @@ const Complete = Operation.extend({
   eligibilityReason: Secret.nullable().optional(),
   eligibilityCheckedAt: z.string().datetime({ offset: true }).nullable().optional(),
   validityStatus: Text.nullable().optional(),
+  note: Text.nullable().optional(),
 }).strict().refine((value) => Boolean(value.password || value.chatgptPassword), {
   message: "password is required",
 });

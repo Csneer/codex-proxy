@@ -37,6 +37,10 @@ const PromoteSchema = z.object({
   expectedRevision: z.number().int().nonnegative(),
   allowEphemeral: z.boolean().optional().default(false),
 }).strict();
+const EligibilityCheckSchema = z.object({
+  accountIds: z.array(z.string().trim().min(1)).max(10).optional(),
+  promoId: z.string().trim().min(1).max(256).optional().default("plus-1-month-free"),
+}).strict();
 
 async function parseBody<T>(c: Context, schema: z.ZodType<T>): Promise<T | null> {
   try {
@@ -55,6 +59,19 @@ function invalid(c: Context): Response {
 function notFound(c: Context): Response {
   c.status(404);
   return c.json({ error: "not_found" });
+}
+
+function eligibilityToken(accessToken: string | null, session: string | null): string | null {
+  const direct = accessToken?.trim();
+  if (direct?.startsWith("eyJ")) return direct;
+  if (!session) return null;
+  try {
+    const parsed = JSON.parse(session) as { accessToken?: unknown; access_token?: unknown };
+    const nested = typeof parsed.accessToken === "string" ? parsed.accessToken.trim() : typeof parsed.access_token === "string" ? parsed.access_token.trim() : "";
+    return nested.startsWith("eyJ") ? nested : null;
+  } catch {
+    return session.trim().startsWith("eyJ") ? session.trim() : null;
+  }
 }
 
 export function createBackupResourceRoutes(
@@ -97,6 +114,51 @@ export function createBackupResourceRoutes(
     if (!body) return invalid(c);
     c.status(201);
     return c.json(resolveStore().createAccount(body));
+  });
+  app.post("/admin/backup-resources/accounts/check-eligibility", async (c) => {
+    const body = await parseBody(c, EligibilityCheckSchema);
+    if (!body) return invalid(c);
+    const store = resolveStore();
+    const requested = body.accountIds?.length
+      ? body.accountIds.map((id) => store.getAccount(id)).filter((account) => account !== null)
+      : store.listAccounts().filter((account) => account.hasAccessToken || account.hasSession).slice(0, 10).map((account) => store.getAccount(account.id)).filter((account) => account !== null);
+    const prepared = requested.slice(0, 10).map((account) => ({ account, token: eligibilityToken(account.accessToken, account.session) }));
+    const candidates = prepared.filter((item): item is typeof item & { token: string } => Boolean(item.token));
+    const results: Array<{ id: string; email: string; status: string; reason: string | null }> = [];
+    const checkedAt = new Date().toISOString();
+    for (const { account, token } of prepared) {
+      if (token) continue;
+      store.updateEligibility(account.id, "failed", "missing-jwt-access-token", checkedAt);
+      results.push({ id: account.id, email: account.email, status: "failed", reason: "missing-jwt-access-token" });
+    }
+    if (candidates.length === 0) return c.json({ checked: results.length, limit: 10, results });
+    try {
+      const response = await fetch("https://cha.nerver.cc/api/v1/check", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ tokens: candidates.map((item) => item.token), promoId: body.promoId }),
+        signal: AbortSignal.timeout(20_000),
+      });
+      const payload = await response.json() as unknown;
+      if (!response.ok) throw new Error(`http-${response.status}`);
+      const rawItems = Array.isArray(payload) ? payload : payload && typeof payload === "object"
+        ? ((payload as { results?: unknown[]; items?: unknown[]; data?: unknown[] }).results ?? (payload as { items?: unknown[] }).items ?? (payload as { data?: unknown[] }).data ?? (candidates.length === 1 ? [payload] : []))
+        : [];
+      const items = rawItems.filter((item): item is { email?: string; token_ok?: boolean; eligible?: boolean; reason?: string } => Boolean(item && typeof item === "object"));
+      for (const { account } of candidates) {
+        const data = items.find((item) => item.email?.trim().toLowerCase() === account.email.trim().toLowerCase()) ?? (candidates.length === 1 ? items[0] : undefined);
+        const status = data?.token_ok === false ? "failed" : data?.eligible === true ? "eligible" : data?.eligible === false ? "ineligible" : "unknown";
+        store.updateEligibility(account.id, status, data?.reason ?? (data ? null : "result-not-found"), checkedAt, data?.token_ok === true ? "valid" : data?.token_ok === false ? "invalid" : null);
+        results.push({ id: account.id, email: account.email, status, reason: data?.reason ?? (data ? null : "result-not-found") });
+      }
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "check-failed";
+      for (const { account } of candidates) {
+        store.updateEligibility(account.id, "failed", reason, checkedAt);
+        results.push({ id: account.id, email: account.email, status: "failed", reason });
+      }
+    }
+    return c.json({ checked: results.length, limit: 10, results });
   });
   app.get("/admin/backup-resources/accounts/:id", (c) => {
     const account = resolveStore().getAccount(c.req.param("id"));

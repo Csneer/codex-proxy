@@ -31,6 +31,9 @@ export interface BackupAccount {
   revision: number;
   lastMailSyncedAt: string | null;
   note: string;
+  eligibilityStatus: string | null;
+  eligibilityReason: string | null;
+  eligibilityCheckedAt: string | null;
   hasEmailPassword: boolean;
   hasChatgptPassword: boolean;
   hasTotpSecret: boolean;
@@ -186,6 +189,11 @@ export function useBackupResources() {
     await loadAccounts();
   }, [loadAccounts, mutate]);
 
+  const checkEligibility = useCallback(async (accountIds?: string[]) => {
+    await mutate("/accounts/check-eligibility", "POST", accountIds?.length ? { accountIds: accountIds.slice(0, 10) } : {});
+    await loadAccounts();
+  }, [loadAccounts, mutate]);
+
   const loadAccountDetail = useCallback(async (id: string) => {
     const request = ++detailRequest.current;
     setDetail(null);
@@ -245,6 +253,7 @@ export function useBackupResources() {
     updateAccount,
     deleteAccount,
     promoteAccount,
+    checkEligibility,
     loadAccountDetail,
     clearAccountDetail,
     createPhone,

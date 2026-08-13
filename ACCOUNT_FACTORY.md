@@ -1,6 +1,6 @@
 # Codex Proxy Account Factory 集成与交接
 
-更新时间：2026-08-11
+更新时间：2026-08-12
 
 本文替代此前仅描述“调用记录 MVP”的旧交接内容。调用记录仍是现有功能，但当前跨项目交接重点是：
 
@@ -80,6 +80,7 @@ http://127.0.0.1:8080/#/backup-resources
 当前支持：
 
 - 搜索邮箱、备注、账号状态和来源。
+- 在账号状态区域展示优惠资格；“检测资格”会按当前筛选结果选取有 AT/Session 的账号，每次最多 10 个。
 - 按账号状态、生命周期筛选。
 - 按录入时间排序。
 - 列表压缩为：邮箱、账号状态、来源、操作，避免横向滚动。
@@ -162,7 +163,7 @@ account_factory:
   mail_dashboard_base_url: http://127.0.0.1:4173
 ```
 
-如果扩展 ID 固定，可用具体 ID 替代 `"*"`。解压目录变化会导致 Chrome 扩展 ID 变化；个人本机模式仍同时要求 loopback 来源和独立集成 token。
+如果扩展 ID 固定，可用具体 ID 替代 `"*"`。解压目录变化会导致 Chrome 扩展 ID 变化；当前主要使用场景仍是本机 localhost 或加密 ZeroTier/隧道入口，依赖独立集成 token 控制访问。
 
 不要在文档中填写真实 token、Dashboard 密码或扩展运行数据。
 
@@ -192,7 +193,7 @@ Consumer ID    = free-account-tool
 
 首次部署此资格规则后，需要打开或刷新一次 Mail Dashboard 页面，把旧浏览器 `localStorage` 分组迁移到服务端；在完成迁移前，历史邮箱按 unknown 保守处理，不会被误领。
 
-插件通过 `GET /candidates?limit=10` 随机读取最多 10 个 Mail Dashboard 候选，并保存用户勾选的账号 ID。`POST /claims` 的 `selectedAccountIds` 将领取范围限制在所选账号中；所选账号已被使用时返回 `selected_inventory_unavailable`，不会回退到其它后台库存。
+插件通过 `GET /candidates?limit=10` 随机读取最多 10 个 Mail Dashboard 候选，并保存用户勾选的账号 ID。`POST /claims` 的 `selectedAccountIds` 将领取范围限制在所选账号中；所选账号已被使用时返回 `selected_inventory_unavailable`，不会回退到其它后台库存。若旧版插件曾覆盖本地 checkpoint，新版会在步骤 5、9、10 需要账号工厂上下文时，按原 `taskId` 调用 `GET /claims/recovery` 恢复既有租约。
 
 使用顺序：
 
@@ -200,25 +201,27 @@ Consumer ID    = free-account-tool
 2. 首次升级后刷新 Mail Dashboard，并等待一次同步日志出现 `eligible/blocked` 摘要。
 3. 在插件选择 `Codex Proxy Local`，点击“检查”或“换一批”，勾选本轮候选邮箱。
 4. 自动运行轮数设置为不超过已勾选邮箱数量，然后开始注册。
-5. 注册完成后检查插件“远端同步”计数。
+5. 注册完成后检查插件第 10 步或“远端同步”计数；如果浏览器中途异常，可单独再次执行第 10 步作为兜底。
 6. 在 Proxy 中筛选 `free + registered`，点击“查看”核对 Session/AT/RT。
 7. 需要加入核心轮转池时再点击“提升”。
 
 ## 6. 当前运行快照
 
-2026-08-10 采样：
+2026-08-12 采样：
 
 ```text
-Mail Dashboard Apple 目录     209
-同步资格摘要                  0 eligible / 209 blocked（旧分组未迁移时）
-Proxy 严格可领取              1
-mail_dashboard registered     2
-mail_dashboard retired        207
+Mail Dashboard Apple 目录     434
+同步资格摘要                  370 eligible / 64 blocked / 0 deactivated
+Proxy health 可领取            364
+mail_dashboard available       363
+mail_dashboard registered      42
+mail_dashboard registering     15
+mail_dashboard retired         14
 ```
 
-`available` 的统计和 claim 使用同一严格条件：账号必须 active、unregistered、lifecycle=available，且不存在任何 GPT 凭据。Dashboard 页面完成历史分组迁移后，真正的 unused 邮箱会在下一轮同步恢复为 available。
+`available` 的统计和 claim 使用同一严格条件：账号必须 active、unregistered、lifecycle=available，且不存在任何 GPT 凭据。health 的 `inventory.available` 只统计真正可 claim 的严格库存，因此会小于数据库里单纯按 lifecycle 汇总的 available 数。
 
-因此当前页面显示大量“未注册/未设置”是库存尚未消费的结果，不是同步或存储错误。完成第一条真实插件注册后，相应账号才会变为 `registered` 并出现可复制凭据。
+因此当前页面显示大量“未注册/未设置”是库存尚未消费的结果，不是同步或存储错误。当前链路已经可以稳定领取、注册、保存本地账号并同步回 Proxy；详情页中已有注册完成账号可直接查看和复制凭据。
 
 ## 7. 关键接口
 
@@ -237,7 +240,7 @@ mail_dashboard retired        207
 | GET | `/accounts/:id/verification-code` | 验证码轮询 |
 | PATCH | `/accounts/:id/progress` | 进度回写 |
 | GET | `/accounts/:id/sync-state` | complete 对账 |
-| POST | `/accounts/:id/complete` | 最终账号回写 |
+| POST | `/accounts/:id/complete` | 最终账号、注册备注和资格状态回写 |
 | POST | `/accounts/:id/fail` | 失败处理 |
 | POST | `/accounts/:id/promote` | 显式提升 |
 
@@ -256,15 +259,14 @@ Account Factory 使用 `X-Account-Factory-Token`；Dashboard API 使用 Dashboar
 
 最近完成的验证：
 
-- Account Factory 本轮目标测试：27/27 通过，包含邮箱资格、生命周期和路由。
-- `npm run build` 通过。
-- 实际同步日志输出 `accounts / eligible / blocked / deactivated` 摘要。
-- 实际数据库严格可领取统计与 health/claim 条件一致。
-- `codex-proxy-source.service` 重启后 active。
+- Account Factory 路由测试：12/12 通过，覆盖 `claims/recovery`。
+- 插件账号工厂定向测试：24/24 通过，覆盖 checkpoint 保留、租约恢复和消息恢复。
+- 插件 `npm run check` 通过；Proxy `npm run build`、`npx tsc --noEmit` 通过。
+- 实际同步日志输出 `accounts / eligible / blocked / deactivated` 摘要，当前 timer 按 5 分钟稳定运行。
+- `codex-proxy-source.service`、`mail-code-dashboard.service`、`account-factory-mailbox-sync.timer` 当前均为 active。
 
 ## 9. 已知边界和后续工作
 
-- 需要用真实浏览器注册完成一条端到端链路；当前库存尚未产生 registered 账号。
 - complete 不自动 promotion，这是当前有意设计。
 - Mail Dashboard 使用 Apple 私有接口，可能受 Apple 变更影响。
 - 当前面向本机或加密 ZeroTier 网络的个人工具，不按公网发布系统设计。

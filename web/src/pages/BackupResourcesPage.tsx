@@ -538,6 +538,18 @@ export function BackupResourcesPage() {
     }
   };
 
+  const checkEligibility = async () => {
+    setBusy(true);
+    try {
+      await resources.checkEligibility(visibleAccounts.filter((account) => account.hasAccessToken || account.hasSession).slice(0, 10).map((account) => account.id));
+      notify("资格检测完成（最多 10 个账号）");
+    } catch (error) {
+      notify(error instanceof Error ? error.message : String(error), true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const actionButtons = (account: BackupAccount) => (
     <div class="flex flex-wrap justify-end gap-1.5">
       {account.lifecycleStatus === "registered" && account.promotion?.state !== "linked" && (
@@ -561,6 +573,7 @@ export function BackupResourcesPage() {
         </div>
         <div class="flex flex-wrap gap-2">
           <button class={secondaryButton} onClick={() => tab === "accounts" ? void resources.loadAccounts() : void resources.loadPhones()}>{t("refresh")}</button>
+          {tab === "accounts" && <button class={secondaryButton} disabled={busy} onClick={() => void checkEligibility()}>检测资格（最多 10 个）</button>}
           <button class={primaryButton} onClick={() => { setTab("accounts"); setAccountForm(null); }}>{t("backupAddAccount")}</button>
           <button class={secondaryButton} onClick={() => { setTab("phones"); setPhoneForm(null); }}>{t("backupAddPhone")}</button>
         </div>
@@ -656,6 +669,7 @@ export function BackupResourcesPage() {
                         </td>
                         <td class="px-3 py-3">
                           <AccountStatusBadge status={account.accountStatus} />
+                          {account.eligibilityStatus && <span class="mt-1 inline-flex rounded bg-primary-container px-1.5 py-0.5 text-[10px] text-primary">资格: {account.eligibilityStatus}</span>}
                           <p class="mt-2 font-medium text-main">{lifecycleLabel(account.lifecycleStatus, t)}</p>
                           {account.promotion && <p class="mt-1 break-all text-[11px] text-muted">{account.promotion.state} · {account.promotion.mode}{account.promotion.errorCode ? ` · ${account.promotion.errorCode}` : ""}</p>}
                         </td>

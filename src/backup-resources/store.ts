@@ -52,6 +52,10 @@ interface AccountRow {
   access_token: string | null;
   refresh_token: string | null;
   note: string | null;
+  eligibility_status?: string | null;
+  eligibility_reason?: string | null;
+  eligibility_checked_at?: string | null;
+  validity_status?: string | null;
   lifecycle_status: AccountFactoryAccount["lifecycleStatus"];
   source_system: AccountFactorySourceSystem | null;
   source_active: number;
@@ -264,6 +268,9 @@ function accountSummary(row: AccountRow): BackupAccountSummary {
     revision: row.revision,
     lastMailSyncedAt: row.last_mail_synced_at,
     note: row.note ?? "",
+    eligibilityStatus: row.eligibility_status ?? null,
+    eligibilityReason: row.eligibility_reason ?? null,
+    eligibilityCheckedAt: row.eligibility_checked_at ?? null,
     hasEmailPassword: row.email_password !== null,
     hasChatgptPassword: row.chatgpt_password !== null,
     hasTotpSecret: row.totp_secret !== null,
@@ -343,6 +350,13 @@ export class BackupResourceStore {
   listAccounts(): BackupAccountSummary[] {
     const rows = this.db.prepare("SELECT * FROM backup_accounts ORDER BY created_at DESC, id DESC").all() as AccountRow[];
     return rows.map(accountSummary);
+  }
+
+  updateEligibility(id: string, status: string | null, reason: string | null, checkedAt: string, validityStatus?: string | null): BackupAccountSummary | null {
+    const result = this.db.prepare(`UPDATE backup_accounts SET eligibility_status = ?, eligibility_reason = ?, eligibility_checked_at = ?, validity_status = COALESCE(?, validity_status), updated_at = ? WHERE id = ?`).run(status, reason, checkedAt, validityStatus ?? null, checkedAt, id);
+    if (result.changes === 0) return null;
+    const row = this.db.prepare("SELECT * FROM backup_accounts WHERE id = ?").get(id) as AccountRow;
+    return accountSummary(row);
   }
 
   getAccount(id: string): BackupAccountDetail | null {
@@ -779,6 +793,7 @@ export class BackupResourceStore {
             access_token = CASE WHEN ? = 1 THEN ? ELSE access_token END,
             refresh_token = CASE WHEN ? = 1 THEN ? ELSE refresh_token END,
             registration_route = COALESCE(?, registration_route),
+            note = COALESCE(?, note),
             eligibility_status = COALESCE(?, eligibility_status),
             eligibility_reason = COALESCE(?, eligibility_reason),
             eligibility_checked_at = COALESCE(?, eligibility_checked_at),
@@ -801,6 +816,7 @@ export class BackupResourceStore {
         input.refreshToken === undefined ? 0 : 1,
         this.encryptNullable(input.refreshToken),
         input.registrationRoute ?? null,
+        input.note ?? null,
         input.eligibilityStatus ?? null,
         input.eligibilityReason ?? null,
         input.eligibilityCheckedAt ?? null,
