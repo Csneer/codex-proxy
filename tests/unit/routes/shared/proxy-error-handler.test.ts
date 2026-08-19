@@ -234,6 +234,39 @@ describe("handleCodexApiError", () => {
       expect(result.action).toBe("respond");
       expect(result.errorBody).toBe(upstreamBody);
     });
+
+    it("retries a structured server overload without mutating account health", () => {
+      const err = new CodexApiError(503, JSON.stringify({
+        error: { code: "server_is_overloaded", message: "The server is overloaded" },
+      }));
+
+      const result = handleCodexApiError(err, pool as never, entryId, model, tag, false);
+
+      expect(result).toMatchObject({
+        action: "retry",
+        releaseBeforeRetry: true,
+        status: 503,
+      });
+      expect(pool.markStatus).not.toHaveBeenCalled();
+      expect(pool.applyRateLimit429).not.toHaveBeenCalled();
+    });
+
+    it("retries an early server error only once", () => {
+      const err = new CodexApiError(500, JSON.stringify({
+        error: { code: "server_error", message: "temporary backend failure" },
+      }));
+
+      const first = handleCodexApiError(err, pool as never, entryId, model, tag, false);
+      expect(first).toMatchObject({
+        action: "retry",
+        releaseBeforeRetry: true,
+        markEarlyServerErrorRetried: true,
+        status: 500,
+      });
+
+      const second = handleCodexApiError(err, pool as never, entryId, model, tag, false, undefined, true);
+      expect(second).toMatchObject({ action: "respond", status: 500 });
+    });
   });
 
   // ── ErrorAction shape ──

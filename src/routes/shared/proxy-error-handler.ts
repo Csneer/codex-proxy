@@ -12,6 +12,8 @@ import {
   isCfChallengeError,
   isCfPathBlockError,
   isQuotaExhaustedError,
+  isServerOverloadedError,
+  isEarlyServerError,
   isTokenInvalidError,
   isModelNotSupportedError,
 } from "../../proxy/error-classification.js";
@@ -36,6 +38,7 @@ export type ErrorAction =
       action: "retry";
       releaseBeforeRetry?: boolean;
       markModelRetried?: boolean;
+      markEarlyServerErrorRetried?: boolean;
       /** Fallback status/message when no retry account is available. */
       status: number;
       message: string;
@@ -64,6 +67,7 @@ export function handleCodexApiError(
   tag: string,
   modelRetried: boolean,
   cookieJar?: CookieJar,
+  earlyServerErrorRetried = false,
 ): ErrorAction {
   const email = pool.getEntry(entryId)?.email ?? "?";
 
@@ -84,6 +88,23 @@ export function handleCodexApiError(
   }
 
   console.error(`[${tag}] Account ${entryId} | Codex API error:`, err.message);
+
+  // A server_error frame before any visible output is a transient backend
+  // failure. Retry it once on a fresh account/connection; never classify it
+  // as quota, rate-limit, ban, or overload.
+  if (isEarlyServerError(err)) {
+    if (!earlyServerErrorRetried) {
+      console.warn(`[${tag}] Account ${entryId} (${email}) | 500 early server error, trying different account...`);
+      return {
+        action: "retry",
+        releaseBeforeRetry: true,
+        markEarlyServerErrorRetried: true,
+        status: 500,
+        message: err.message,
+      };
+    }
+    return { action: "respond", status: 500, message: err.message };
+  }
 
   // 2. Rate-limited — write into cachedQuota.rate_limit (single source of
   // truth). applyRateLimit429 internally never shrinks an existing reset_at,
@@ -107,6 +128,20 @@ export function handleCodexApiError(
       `[${tag}] Account ${entryId} (${email}) | 402 quota exhausted, trying different account...`,
     );
     return { action: "retry", status: 402, message: err.message };
+  }
+
+  // 503 server capacity — transient upstream condition. Retry on another
+  // account when available, but do not mutate account health or quota state.
+  if (isServerOverloadedError(err)) {
+    console.warn(
+      `[${tag}] Account ${entryId} (${email}) | 503 server overloaded, trying different account...`,
+    );
+    return {
+      action: "retry",
+      releaseBeforeRetry: true,
+      status: 503,
+      message: err.message,
+    };
   }
 
   // 4. Cloudflare challenge (403 HTML/challenge response) — cooldown, not ban.

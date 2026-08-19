@@ -121,6 +121,32 @@ describe("createWebSocketResponse — early-stream error rejection", () => {
     }
   });
 
+  it("rejects with CodexApiError(503) when first frame is server_is_overloaded", async () => {
+    const promise = createWebSocketResponse("wss://test/ws", {}, BASE_REQUEST);
+    promise.catch(() => { /* asserted below */ });
+    const ws = await waitForOpen();
+
+    ws.emit("message", JSON.stringify({
+      type: "error",
+      error: { code: "server_is_overloaded", message: "The server is overloaded" },
+    }));
+
+    await expect(promise).rejects.toMatchObject({ status: 503 });
+  });
+
+  it("rejects with CodexApiError(500) when first frame is server_error", async () => {
+    const promise = createWebSocketResponse("wss://test/ws", {}, BASE_REQUEST);
+    promise.catch(() => { /* asserted below */ });
+    const ws = await waitForOpen();
+
+    ws.emit("message", JSON.stringify({
+      type: "response.failed",
+      error: { code: "server_error", message: "Temporary backend failure" },
+    }));
+
+    await expect(promise).rejects.toMatchObject({ status: 500 });
+  });
+
   it("rejects with CodexApiError(400) when first frame is previous_response_not_found", async () => {
     // The proxy maintains a per-response affinity map in memory. When the map
     // is lost (process restart, 4h TTL expiry) or a request is forced onto a

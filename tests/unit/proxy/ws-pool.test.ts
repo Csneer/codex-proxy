@@ -311,6 +311,48 @@ describe("PersistentWs", () => {
     expect((err as CodexApiError).status).toBe(429);
   });
 
+  it("classifies server_is_overloaded as a transient 503 without evicting the pooled WS", async () => {
+    const { ws, persistent, onDead } = newPersistentWs();
+    persistent.tryAcquire();
+    const promise = persistent.send({
+      request: { type: "response.create", model: "m", instructions: "", input: [] },
+      signal: undefined,
+      onRateLimits: undefined,
+      reused: true,
+    });
+    await nextTick();
+    ws.pushMessage({
+      type: "error",
+      error: { code: "server_is_overloaded", message: "The server is overloaded" },
+    });
+    const err = await promise.then(() => null, (e: unknown) => e);
+    expect(err).toBeInstanceOf(CodexApiError);
+    expect((err as CodexApiError).status).toBe(503);
+    expect(persistent.isAlive()).toBe(true);
+    expect(onDead).not.toHaveBeenCalled();
+  });
+
+  it("classifies an early server_error as a transient 500", async () => {
+    const { ws, persistent, onDead } = newPersistentWs();
+    persistent.tryAcquire();
+    const promise = persistent.send({
+      request: { type: "response.create", model: "m", instructions: "", input: [] },
+      signal: undefined,
+      onRateLimits: undefined,
+      reused: true,
+    });
+    await nextTick();
+    ws.pushMessage({
+      type: "error",
+      error: { code: "server_error", message: "Temporary backend failure" },
+    });
+    const err = await promise.then(() => null, (e: unknown) => e);
+    expect(err).toBeInstanceOf(CodexApiError);
+    expect((err as CodexApiError).status).toBe(500);
+    expect(persistent.isAlive()).toBe(true);
+    expect(onDead).not.toHaveBeenCalled();
+  });
+
   it("keeps codex.response.metadata buffered so a following classified error can reject", async () => {
     const { ws, persistent } = newPersistentWs();
     persistent.tryAcquire();
@@ -508,8 +550,11 @@ describe("PersistentWs", () => {
       expect(ws.pingCount).toBe(1);
     });
 
-    it("skips ping while a request is in-flight (active stream keeps the LB alive)", async () => {
-      const { ws, persistent } = newPersistentWs({ pingIntervalMs: 1_000 });
+    it("continues pinging while a request is in-flight", async () => {
+      const { ws, persistent } = newPersistentWs({
+        pingIntervalMs: 1_000,
+        livenessTimeoutMs: 0,
+      });
       persistent.tryAcquire();
       void persistent.send({
         request: { type: "response.create", model: "m", instructions: "", input: [] },
@@ -519,7 +564,7 @@ describe("PersistentWs", () => {
       });
       await vi.advanceTimersByTimeAsync(0); // let send() start
       vi.advanceTimersByTime(3_500);
-      expect(ws.pingCount).toBe(0); // busy → no pings while streaming
+      expect(ws.pingCount).toBe(3);
     });
   });
 

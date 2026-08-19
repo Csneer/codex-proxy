@@ -10,6 +10,7 @@
 
 ### Changed
 
+- WebSocket 连接池在请求进行中也持续发送 keepalive ping，避免长时间推理阶段被 NAT/LB 以 1006 静默断开；同时把上游 `server_is_overloaded`（503）和首帧 `server_error`（500）识别为可控的早期瞬时错误并按策略重试，减少客户端收到 `stream disconnected before completion`。
 - 备用资源账号新增手工维护的 `plus` / `free` / `unregistered` / `pro` 状态：状态随账号保存并在桌面表格、移动卡片与详情中显示，编辑表单可直接修改；已有 `backup-resources.sqlite` 自动增加受约束的 `account_status` 列，旧记录默认 `unregistered`。详情页同时补齐每个已填写值的显式复制操作并修复长文本横向溢出。
 - 动态模型目录现在从实时响应、按 plan 缓存和旧缓存格式统一排除 ChatGPT UI 专用的 `auto` 选择器，同时继续接纳其他后端模型；清理 WebSocket metadata 判定函数中重复且不可达的表达式。
 - Codex Desktop 默认指纹同步到 `26.730.61639` / build `6234`。
