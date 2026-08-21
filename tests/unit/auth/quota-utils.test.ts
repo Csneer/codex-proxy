@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { toQuota } from "@src/auth/quota-utils.js";
+import { toQuota, getRateLimitIdForModel } from "@src/auth/quota-utils.js";
 import type { CodexUsageResponse } from "@src/proxy/codex-api.js";
 
 function makeUsageResponse(overrides?: Partial<CodexUsageResponse>): CodexUsageResponse {
@@ -310,6 +310,24 @@ describe("toQuota", () => {
         rate_limit_reset_credits: null,
       }));
       expect(quota2.reset_credits_available).toBeNull();
+    });
+  });
+
+  describe("getRateLimitIdForModel", () => {
+    it("maps spark model variants to codex_bengalfox", () => {
+      expect(getRateLimitIdForModel("gpt-5.3-codex-spark")).toBe("codex_bengalfox");
+      expect(getRateLimitIdForModel("gpt-5.3-spark")).toBe("codex_bengalfox");
+      expect(getRateLimitIdForModel("spark-preview")).toBe("codex_bengalfox");
+      expect(getRateLimitIdForModel("codex_bengalfox")).toBe("codex_bengalfox");
+    });
+
+    it("returns null for non-spark models or empty values", () => {
+      expect(getRateLimitIdForModel("gpt-5.3-codex")).toBeNull();
+      expect(getRateLimitIdForModel("gpt-5.4")).toBeNull();
+      expect(getRateLimitIdForModel("o3-mini")).toBeNull();
+      expect(getRateLimitIdForModel("")).toBeNull();
+      expect(getRateLimitIdForModel(null)).toBeNull();
+      expect(getRateLimitIdForModel(undefined)).toBeNull();
     });
   });
 });
