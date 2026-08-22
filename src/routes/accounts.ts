@@ -171,6 +171,9 @@ export function createAccountRoutes(pool: AccountPool, scheduler: RefreshSchedul
   });
 
   app.get("/auth/accounts", (c) => {
+    // Quota data (including reset credits) is mutable and must not be served
+    // from an intermediary/browser cache after a manual quota refresh.
+    c.header("Cache-Control", "no-store");
     const accounts = querySvc.listFresh();
     return c.json({
       accounts,

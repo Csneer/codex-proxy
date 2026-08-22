@@ -393,7 +393,7 @@ export function AccountList({ accounts, loading, onDelete, onRefresh, refreshing
           displayAccounts.slice(0, visibleCount).map((acct, i) => (
             <AccountCard key={acct.id} account={acct} index={i} onDelete={onDelete} proxies={proxies} onProxyChange={onProxyChange} selected={selectedIds.has(acct.id)} onToggleSelect={toggleSelect} onRefreshQuota={async (id) => {
               const encoded = encodeURIComponent(id);
-              const resp = await fetch(`/auth/accounts/${encoded}/quota`);
+              const resp = await fetch(`/auth/accounts/${encoded}/quota`, { cache: "no-store" });
               if (!resp.ok) {
                 console.warn(`[AccountList] Failed to refresh quota for account ${id}: ${resp.status}`);
               }

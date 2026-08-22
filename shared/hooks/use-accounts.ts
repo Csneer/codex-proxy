@@ -28,7 +28,7 @@ export function useAccounts() {
   const loadAccounts = useCallback(async () => {
     setRefreshing(true);
     try {
-      const resp = await fetch("/auth/accounts?quota=true");
+      const resp = await fetch("/auth/accounts?quota=true", { cache: "no-store" });
       const data = await resp.json();
       setList(data.accounts || []);
       if (data.persistence_health && typeof data.persistence_health === "object") {
