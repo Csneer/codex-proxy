@@ -210,6 +210,8 @@ context 或 max-token 开关可用。
 | POST | `/auth/accounts/health-check` | 检查账号连通性（`{ ids?, stagger_ms?, concurrency? }`） |
 | POST | `/auth/accounts/:id/refresh` | 刷新单个账号 token 和状态 |
 | GET | `/auth/accounts/:id/quota` | 查看配额和用量 |
+| GET | `/auth/accounts/:id/reset-credits` | 查看 ChatGPT/Codex 可用额度重置卡 |
+| POST | `/auth/accounts/:id/reset-credits/consume` | 消耗 1 张重置卡并重置 5 小时速率窗口（`{ redeem_request_id? }`） |
 | POST | `/auth/accounts/:id/reset-usage` | 重置用量计数 |
 
 ### 导出

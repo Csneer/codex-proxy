@@ -258,6 +258,8 @@ switches are supported.
 | POST | `/auth/accounts/health-check` | Check accounts (`{ ids?, stagger_ms?, concurrency? }`) |
 | POST | `/auth/accounts/:id/refresh` | Refresh single account |
 | GET | `/auth/accounts/:id/quota` | Get quota/usage |
+| GET | `/auth/accounts/:id/reset-credits` | Get available ChatGPT/Codex rate-limit reset cards |
+| POST | `/auth/accounts/:id/reset-credits/consume` | Consume one reset card (`{ redeem_request_id? }`) and reset the 5-hour rate-limit window |
 | POST | `/auth/accounts/:id/reset-usage` | Reset usage counters |
 
 ### Export

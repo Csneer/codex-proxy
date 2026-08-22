@@ -791,6 +791,8 @@ curl -N http://localhost:8080/official-agent/threads/{threadId}/turns \
 | `/auth/accounts/health-check` | POST | 批量检测账号可用性 |
 | `/auth/accounts/:id/refresh` | POST | 刷新并探测单个账号 |
 | `/auth/accounts/:id/quota` | GET | 主动查询单个账号额度 |
+| `/auth/accounts/:id/reset-credits` | GET | 查询 ChatGPT/Codex 可用额度重置卡 |
+| `/auth/accounts/:id/reset-credits/consume` | POST | 消耗 1 张重置卡并重置 5 小时速率窗口 |
 | `/auth/accounts/:id/cookies` | GET/POST/DELETE | 管理账号 Cloudflare cookies |
 | `/auth/quota/warnings` | GET | 当前额度预警状态 |
 

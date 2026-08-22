@@ -653,6 +653,8 @@ Migration is strict: an old `server.proxy_api_key` is never copied or used as an
 | `/auth/accounts/health-check` | POST | Batch account health check |
 | `/auth/accounts/:id/refresh` | POST | Refresh and probe one account |
 | `/auth/accounts/:id/quota` | GET | Actively query one account quota |
+| `/auth/accounts/:id/reset-credits` | GET | Query available ChatGPT/Codex rate-limit reset cards |
+| `/auth/accounts/:id/reset-credits/consume` | POST | Consume one reset card and reset the 5-hour rate-limit window |
 | `/auth/accounts/:id/cookies` | GET/POST/DELETE | Manage account Cloudflare cookies |
 | `/auth/quota/warnings` | GET | Current quota warning state |
 
