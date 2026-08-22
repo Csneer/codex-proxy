@@ -11,6 +11,7 @@ import {
 } from "../../../shared/utils/format";
 import type { Account, AccountQuotaWindow, ProxyEntry } from "../../../shared/types";
 import { derivedStatus } from "../lib/accountStatus";
+import { adminFetch } from "../../../shared/http/admin-fetch.js";
 
 /** Default credit→USD rate matching the config schema default (1000 credits = $40).
  *  Surfacing this through a settings hook lives in a follow-up PR. */
@@ -224,7 +225,7 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
         const err = await onConsumeResetCredit(account.id);
         if (err) alert(err);
       } else {
-        const resp = await fetch(`/auth/accounts/${encodeURIComponent(account.id)}/reset-credits/consume`, {
+        const resp = await adminFetch(`/auth/accounts/${encodeURIComponent(account.id)}/reset-credits/consume`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
         });
