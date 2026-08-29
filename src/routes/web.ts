@@ -16,6 +16,7 @@ import { createCallRecordRoutes } from "./admin/call-records.js";
 import { createUiAppearanceRoutes } from "./admin/ui-appearance.js";
 import { createCallObservabilityRoutes } from "./admin/call-observability.js";
 import { createBackupResourceRoutes } from "./admin/backup-resources.js";
+import { createQuotaSummaryRoutes } from "./quota-summary.js";
 import type { UsageStatsStore } from "../auth/usage-stats.js";
 import type { AccountFactoryPromotionService } from "../backup-resources/promotion.js";
 
@@ -66,6 +67,7 @@ export function createWebRoutes(
   app.route("/", createUiAppearanceRoutes());
   app.route("/", createCallObservabilityRoutes());
   app.route("/", createBackupResourceRoutes(undefined, dependencies.resolvePromotionService));
+  app.route("/", createQuotaSummaryRoutes(accountPool));
 
   return app;
 }

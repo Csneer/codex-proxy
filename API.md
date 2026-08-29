@@ -471,6 +471,29 @@ hard-coding one.
 | GET | `/admin/usage-stats/summary` | Cumulative usage by account/model |
 | GET | `/admin/usage-stats/history` | Time-series data (`?granularity=hourly&hours=24`) |
 
+### LAN Quota Summary
+
+`GET /api/quota-summary` aggregates cached quota for every account whose status
+is `active`, for consumption by systems on the local network. It does not
+require the Dashboard key, but only accepts loopback, RFC1918 IPv4, IPv4
+link-local, IPv6 ULA, or IPv6 link-local clients; public clients receive `403`.
+When `server.trust_proxy` is enabled, the client address is resolved from
+`X-Forwarded-For` / `X-Real-IP`.
+
+```bash
+curl http://172.16.100.175:8080/api/quota-summary
+```
+
+`windows` groups quota by the actual `limit_window_seconds`: `five_hour`
+(18000), `seven_day` (604800), and `thirty_day` (2592000). Other durations and
+windows whose duration is absent are returned in `other`, so 30-day capacity is
+never mixed into the seven-day total. `remaining_percent_total` is the sum of
+reported percentage points (for example, 80% + 60% = 140). The response also
+includes averages, reported/missing/exhausted account counts, reset ranges, and
+source windows. This endpoint reads the cache and never triggers an upstream
+quota request; use `oldest_quota_fetched_at` and `newest_quota_fetched_at` to
+judge freshness.
+
 ### Quota Warnings
 
 | Method | Path | Description |

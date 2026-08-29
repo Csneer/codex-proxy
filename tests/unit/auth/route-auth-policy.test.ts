@@ -15,6 +15,8 @@ describe("route authentication policy", () => {
     ["POST", "/responses", "service"],
     ["POST", "/responses/review", "service"],
     ["GET", "/official-agent/apps", "independent"],
+    ["GET", "/api/quota-summary", "independent"],
+    ["POST", "/api/quota-summary", "management"],
     ["GET", "/auth/accounts/export", "management"],
     ["POST", "/auth/login-start", "management"],
     ["POST", "/api/proxies/import", "management"],

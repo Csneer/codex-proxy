@@ -15,6 +15,7 @@ export function classifyRequestPath(path: string, method = "GET"): RequestAuthSu
   const normalizedMethod = method.toUpperCase();
   if (PUBLIC_METHOD_PATHS.has(`${normalizedMethod} ${path}`)) return "public";
   if (normalizedMethod === "GET" && path.startsWith("/assets/")) return "public";
+  if (normalizedMethod === "GET" && path === "/api/quota-summary") return "independent";
   if (
     path === "/responses" ||
     path.startsWith("/responses/") ||

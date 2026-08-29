@@ -414,6 +414,25 @@ item。实际 app id 请先通过 `/official-agent/apps` 探测，不要默认�
 | GET | `/admin/usage-stats/summary` | 按账号/模型的累计用量 |
 | GET | `/admin/usage-stats/history` | 时序数据（`?granularity=hourly&hours=24`） |
 
+### 局域网额度汇总
+
+`GET /api/quota-summary` 汇总所有 `status=active` 账号的缓存额度，供局域网内的
+外部系统读取。该端点不需要 Dashboard 密钥，但只接受回环地址、RFC1918 IPv4、
+IPv4 link-local、IPv6 ULA 或 IPv6 link-local 来源；公网来源返回 `403`。启用
+`server.trust_proxy` 后，来源地址按 `X-Forwarded-For` / `X-Real-IP` 判定。
+
+```bash
+curl http://172.16.100.175:8080/api/quota-summary
+```
+
+返回的 `windows` 按实际 `limit_window_seconds` 分类：`five_hour`（18000 秒）、
+`seven_day`（604800 秒）、`thirty_day`（2592000 秒），其他或上游未提供时长的
+窗口进入 `other`，不会把 30 天额度混入周额度。`remaining_percent_total` 是各已
+上报账号的剩余百分比点之和（例如 80% + 60% = 140），并同时返回平均值、已上报
+/缺失账号数、耗尽账号数、重置时间范围和实际来源窗口。查询只读缓存，不会触发
+上游额度请求；可用 `oldest_quota_fetched_at` / `newest_quota_fetched_at` 判断数据
+新鲜度。
+
 ### 配额告警
 
 | 方法 | 路径 | 说明 |
