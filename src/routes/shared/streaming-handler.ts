@@ -16,6 +16,8 @@ import { getReasoningReplayCache } from "../../proxy/reasoning-replay-cache.js";
 import { getWsPool } from "../../proxy/ws-pool.js";
 import { completeCallRecord } from "../../call-records/capture.js";
 import { createStreamResponseCapture } from "../../call-records/stream-response.js";
+import { updateLogEntry } from "../../logs/entry.js";
+import { calculateLogMetrics } from "../../logs/metrics.js";
 
 export interface HandleStreamingOptions {
   c: Context;
@@ -83,6 +85,8 @@ export function handleStreaming(options: HandleStreamingOptions): Response {
   const responseCapture = createStreamResponseCapture(req.callRecord?.maxBodyBytes ?? 1_048_576);
 
   return stream(c, async (s) => {
+    const streamStartMs = Date.now();
+    let firstTokenMs: number | null = null;
     let clientAborted = false;
     let streamFailed = true;
     s.onAbort(() => {
@@ -154,6 +158,7 @@ export function handleStreaming(options: HandleStreamingOptions): Response {
           responseCompleted = true;
           recordStreamAffinity();
         },
+        onFirstToken: (ts) => { firstTokenMs = ts; },
         usageHint,
         onResponseMetadata: (metadata) => {
           metadataCollector.onResponseMetadata(metadata);
@@ -225,6 +230,9 @@ export function handleStreaming(options: HandleStreamingOptions): Response {
           includeReasoningInHighInputWarning: true,
         });
       }
+      const metrics = calculateLogMetrics({ startMs: streamStartMs, firstTokenMs, endMs: Date.now(), model: req.model, usage: usageInfo ?? null, isStreaming: true });
+      c.set("metrics", metrics);
+      updateLogEntry(requestId, { status: streamCompletedWithoutError ? 200 : (clientAborted ? 499 : 500), latencyMs: metrics.durationMs, ttftMs: metrics.ttftMs, durationMs: metrics.durationMs, costUsd: metrics.costUsd, tokensPerSecond: metrics.tokensPerSecond, usage: usageInfo ?? null, metrics });
       releaseAccount(accountPool, capturedEntryId, annotateImageGenOutcome(usageInfo, req.expectsImageGen), released);
     }
   });

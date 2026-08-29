@@ -236,10 +236,13 @@ describe("E2E: POST /v1/messages", () => {
     ["low", "low"],
     ["medium", "medium"],
     ["high", "high"],
-    ["xhigh", "xhigh"],
-    ["max", "max"],
-    ["ultra", "xhigh"],
-    ["ultracode", "xhigh"],
+    // The fixture's gpt-5.4 catalog advertises up to high; unsupported
+    // explicit levels are clamped to the nearest advertised effort.
+    ["xhigh", "high"],
+    ["max", "high"],
+    ["ultra", "high"],
+    // ultracode is not a recognized Anthropic effort and falls through.
+    ["ultracode", undefined],
   ])(
     "maps output_config effort %s to Codex effort %s without enabling thinking blocks",
     async (effort, expectedEffort) => {
@@ -256,10 +259,14 @@ describe("E2E: POST /v1/messages", () => {
       const upstreamRequest = JSON.parse(transportBody) as {
         reasoning?: { effort?: string; summary?: string };
       };
-      expect(upstreamRequest.reasoning).toEqual({
-        effort: expectedEffort,
-        summary: "auto",
-      });
+      if (expectedEffort) {
+        expect(upstreamRequest.reasoning).toEqual({
+          effort: expectedEffort,
+          summary: "auto",
+        });
+      } else {
+        expect(upstreamRequest.reasoning).toBeUndefined();
+      }
 
       const body = await res.json() as { content?: Array<{ type?: string }> };
       expect(body.content?.some((block) => block.type === "thinking")).toBe(false);

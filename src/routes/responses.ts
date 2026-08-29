@@ -20,7 +20,7 @@ import { getConfig } from "../config.js";
 import { apiKeyAuth } from "../middleware/api-key-auth.js";
 import { errorHandler } from "../middleware/error-handler.js";
 import { prepareSchema, isRecord } from "../translation/shared-utils.js";
-import { parseModelName, resolveModelId, buildDisplayModelName } from "../models/model-store.js";
+import { parseModelName, resolveModelId, buildDisplayModelName, isRequestableModel } from "../models/model-store.js";
 import { handleProxyRequest } from "./shared/proxy-handler.js";
 import { handleDirectRequest } from "./shared/direct-request-handler.js";
 import type { UpstreamRouter } from "../proxy/upstream-router.js";
@@ -34,6 +34,8 @@ import { PASSTHROUGH_FORMAT } from "./responses-passthrough.js";
 import { handleCompact } from "./responses-compact.js";
 import { beginCallRecord } from "../call-records/capture.js";
 import type { ProxyRequest } from "./shared/proxy-handler-types.js";
+import { handleCodexAuxiliaryJson } from "./codex-auxiliary.js";
+import { supportsCodexAuxiliaryJson, type CodexAuxiliaryJsonPath } from "../proxy/upstream-adapter.js";
 
 // Re-export for downstream consumers
 export { extractResponseUsage, extractImageGenUsage, streamPassthrough, collectPassthrough } from "./responses-passthrough.js";
@@ -112,6 +114,22 @@ export function createResponsesRoutes(
 
     const rawModel = typeof body.model === "string" ? body.model : "codex";
     const routeMatch = upstreamRouter?.resolveMatch(rawModel);
+    if (
+      routeMatch?.kind !== "api-key"
+      && routeMatch?.kind !== "adapter"
+      && !isRequestableModel(rawModel)
+    ) {
+      c.status(404);
+      return c.json({
+        type: "error",
+        error: {
+          type: "invalid_request_error",
+          code: "model_not_found",
+          message: `Model '${rawModel}' not found`,
+          param: "model",
+        },
+      });
+    }
     const allowUnauthenticated = routeMatch?.kind === "api-key" || routeMatch?.kind === "adapter";
     const authErr = checkAuth(c, accountPool, allowUnauthenticated);
     if (authErr) return authErr;
@@ -287,6 +305,22 @@ export function createResponsesRoutes(
 
     const rawModel = typeof body.model === "string" ? body.model : "codex";
     const routeMatch = upstreamRouter?.resolveMatch(rawModel);
+    if (
+      routeMatch?.kind !== "api-key"
+      && routeMatch?.kind !== "adapter"
+      && !isRequestableModel(rawModel)
+    ) {
+      c.status(404);
+      return c.json({
+        type: "error",
+        error: {
+          type: "invalid_request_error",
+          code: "model_not_found",
+          message: `Model '${rawModel}' not found`,
+          param: "model",
+        },
+      });
+    }
     const allowUnauthenticated = routeMatch?.kind === "api-key" || routeMatch?.kind === "adapter";
     const authErr = checkAuth(c, accountPool, allowUnauthenticated);
     if (authErr) return authErr;
@@ -308,11 +342,28 @@ export function createResponsesRoutes(
     return handleCompact(c, accountPool, cookieJar, proxyPool, body, upstreamRouter);
   };
 
+  const auxiliary = (path: CodexAuxiliaryJsonPath) => async (c: Context) => {
+    const body = parseBody(c, await c.req.json());
+    if (body instanceof Response) return body;
+    const model = typeof body.model === "string" && body.model.trim() ? body.model.trim() : null;
+    if (!model) { c.status(400); return c.json({ error: { type: "invalid_request_error", code: "missing_model", message: "A non-empty model is required" } }); }
+    const match = upstreamRouter?.resolveMatch(model);
+    if (!match || (match.kind !== "api-key" && match.kind !== "adapter") || !supportsCodexAuxiliaryJson(match.adapter)) {
+      c.status(400); return c.json({ error: { type: "invalid_request_error", code: "unsupported_codex_auxiliary_route", message: `Model ${model} is not routed through a Codex Responses API-key provider` } });
+    }
+    const directModel = match.resolvedModel ?? model;
+    return handleCodexAuxiliaryJson({ c, upstream: match.adapter, path, body: directModel === model ? body : { ...body, model: directModel }, model: directModel });
+  };
+
   app.post("/v1/responses", apiKeyAuth(accountPool), responsesHandler);
   app.post("/v1/responses/review", apiKeyAuth(accountPool), responsesHandler);
   app.post("/responses", apiKeyAuth(accountPool), responsesHandler);
   app.post("/responses/review", apiKeyAuth(accountPool), responsesHandler);
   app.post("/v1/responses/compact", apiKeyAuth(accountPool), compactHandler);
+  app.post("/v1/alpha/search", apiKeyAuth(accountPool), auxiliary("alpha/search"));
+  app.post("/alpha/search", apiKeyAuth(accountPool), auxiliary("alpha/search"));
+  app.post("/v1/images/edits", apiKeyAuth(accountPool), auxiliary("images/edits"));
+  app.post("/images/edits", apiKeyAuth(accountPool), auxiliary("images/edits"));
 
   return app;
 }

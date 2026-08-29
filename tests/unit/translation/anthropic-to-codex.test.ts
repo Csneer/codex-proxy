@@ -28,6 +28,13 @@ vi.mock("@src/translation/shared-utils.js", () => ({
     if (budget < 20000) return "high";
     return "xhigh";
   }),
+  isRecord: vi.fn((value: unknown) => Boolean(value && typeof value === "object" && !Array.isArray(value))),
+  isRecognizedReasoningEffort: vi.fn((effort: string) =>
+    ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"].includes(effort)),
+  clampReasoningEffortToModel: vi.fn((effort: string, modelInfo?: { supportedReasoningEfforts?: Array<{ reasoningEffort: string }> }) => {
+    const supported = (modelInfo?.supportedReasoningEfforts ?? []).map((item) => item.reasoningEffort);
+    return { effort, clamped: false, supported };
+  }),
 }));
 
 vi.mock("@src/translation/tool-format.js", () => ({
@@ -43,7 +50,11 @@ vi.mock("@src/models/model-store.js", () => ({
     return { modelId: input, serviceTier: null, reasoningEffort: null };
   }),
   getModelInfo: vi.fn((id: string) => {
-    if (id === "gpt-5.4") return { defaultReasoningEffort: "medium" };
+    if (id === "gpt-5.4") return {
+      defaultReasoningEffort: "medium",
+      supportedReasoningEfforts: ["low", "medium", "high", "xhigh", "max", "ultra"]
+        .map((reasoningEffort) => ({ reasoningEffort })),
+    };
     return undefined;
   }),
 }));
@@ -417,20 +428,20 @@ describe("translateAnthropicToCodexRequest", () => {
       },
     );
 
-    it.each(["ultra", "ultracode"])("maps %s to Codex xhigh", (effort) => {
+    it("forwards ultra unchanged when the model advertises it", () => {
+      const result = translateAnthropicToCodexRequest(
+        makeRequest({ output_config: { effort: "ultra" } }),
+      );
+
+      expect(result.reasoning).toEqual({ effort: "ultra", summary: "auto" });
+    });
+
+    it.each(["ultracode", "future-level"])("ignores unrecognized effort %s", (effort) => {
       const result = translateAnthropicToCodexRequest(
         makeRequest({ output_config: { effort } }),
       );
 
-      expect(result.reasoning).toEqual({ effort: "xhigh", summary: "auto" });
-    });
-
-    it("forwards future non-empty effort values unchanged", () => {
-      const result = translateAnthropicToCodexRequest(
-        makeRequest({ output_config: { effort: "future-level" } }),
-      );
-
-      expect(result.reasoning).toEqual({ effort: "future-level", summary: "auto" });
+      expect(result.reasoning).toBeUndefined();
     });
 
     it("takes priority over thinking budget, model suffix, and configured default", () => {
@@ -448,7 +459,7 @@ describe("translateAnthropicToCodexRequest", () => {
         },
       );
 
-      expect(result.reasoning?.effort).toBe("xhigh");
+      expect(result.reasoning?.effort).toBe("ultra");
     });
 
     it("does not infer an effort alias from user content", () => {

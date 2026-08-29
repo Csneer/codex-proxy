@@ -48,6 +48,21 @@ export function summarizeRequestForLog(route: string, body: unknown, meta: Recor
     return withBodyOrSummary(summary, body);
   }
 
+  if (route === "images") {
+    if (isRecord(body)) {
+      summary.body_type = "images.generations";
+      summary.model = typeof body.model === "string" ? body.model : undefined;
+      summary.prompt_chars = typeof body.prompt === "string" ? body.prompt.length : undefined;
+      summary.size = typeof body.size === "string" ? body.size : undefined;
+      summary.output_format = typeof body.output_format === "string" ? body.output_format : undefined;
+      summary.background = typeof body.background === "string" ? body.background : undefined;
+      summary.moderation = typeof body.moderation === "string" ? body.moderation : undefined;
+      summary.partial_images = typeof body.partial_images === "number" ? body.partial_images : undefined;
+      summary.n = typeof body.n === "number" ? body.n : undefined;
+    }
+    return withBodyOrSummary(summary, body);
+  }
+
   if (route === "messages") {
     if (isRecord(body)) {
       summary.body_type = "anthropic.messages";

@@ -10,6 +10,7 @@ import { getConfig } from "../config.js";
 import type { AppConfig } from "../config.js";
 import { getConfigDir } from "../paths.js";
 import { hasTupleSchemas, convertTupleSchemas } from "./tuple-schema.js";
+import type { CodexModelInfo } from "../models/model-store.js";
 
 /** Subset of model config used by translation functions. */
 export type ModelConfigOverride = Pick<
@@ -73,6 +74,47 @@ export function budgetToEffort(budget: number | undefined): string | undefined {
   if (budget < 8000) return "medium";
   if (budget < 20000) return "high";
   return "xhigh";
+}
+
+const REASONING_EFFORT_RANK: Readonly<Record<string, number>> = {
+  none: 0,
+  minimal: 1,
+  low: 2,
+  medium: 3,
+  high: 4,
+  xhigh: 5,
+  max: 6,
+  ultra: 7,
+};
+
+export function isRecognizedReasoningEffort(effort: string): boolean {
+  return Object.hasOwn(REASONING_EFFORT_RANK, effort);
+}
+
+export interface ReasoningEffortClampResult {
+  effort: string;
+  clamped: boolean;
+  supported: string[];
+}
+
+/** Clamp a requested effort to the nearest level advertised by the model. */
+export function clampReasoningEffortToModel(
+  effort: string,
+  modelInfo: Pick<CodexModelInfo, "supportedReasoningEfforts"> | undefined,
+): ReasoningEffortClampResult {
+  const supported = (modelInfo?.supportedReasoningEfforts ?? []).map((item) => item.reasoningEffort);
+  if (supported.length === 0 || supported.includes(effort)) {
+    return { effort, clamped: false, supported };
+  }
+
+  const rankOf = (value: string): number => REASONING_EFFORT_RANK[value] ?? -1;
+  const requestedRank = rankOf(effort);
+  const nearest = [...supported].sort((a, b) => {
+    const distance = Math.abs(rankOf(a) - requestedRank) - Math.abs(rankOf(b) - requestedRank);
+    return distance !== 0 ? distance : rankOf(a) - rankOf(b);
+  })[0];
+
+  return { effort: nearest ?? effort, clamped: true, supported };
 }
 
 /**

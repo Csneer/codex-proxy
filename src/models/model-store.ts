@@ -118,7 +118,7 @@ interface NormalizedModelWithMeta extends CodexModelInfo {
 // ── Constants ────────────────────────────────────────────────────────
 
 const SERVICE_TIER_SUFFIXES = new Set(["fast", "flex"]);
-const EFFORT_SUFFIXES = new Set(["none", "minimal", "low", "medium", "high", "xhigh"]);
+const EFFORT_SUFFIXES = new Set(["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"]);
 /** ChatGPT UI selectors that are not valid Codex model IDs. */
 const CHATGPT_ONLY_MODEL_IDS = new Set(["auto"]);
 
@@ -649,6 +649,29 @@ export function isPlanFetched(planType: string): boolean {
 
 export function resolveModelId(input: string): string {
   return _instance.resolveModelId(input);
+}
+
+/**
+ * Whether a client-supplied model can use the default Codex/account path.
+ * Unknown models must not silently fall back to the configured default.
+ */
+export function isRequestableModel(input: string): boolean {
+  const trimmed = input.trim();
+  if (!trimmed) return false;
+  if (trimmed === "codex") return true;
+
+  const defaultModel = getConfig().model.default;
+  if (defaultModel && trimmed === defaultModel) return true;
+
+  const stripped = stripKnownModelSuffixes(trimmed);
+  if (
+    stripped.modelName !== trimmed
+    && (stripped.modelName === "codex" || (defaultModel && stripped.modelName === defaultModel))
+  ) {
+    return true;
+  }
+
+  return _instance.isRecognizedModelName(trimmed);
 }
 
 export function isRecognizedModelName(input: string): boolean {

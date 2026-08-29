@@ -269,6 +269,7 @@ function parseResponseData(data: unknown): CodexResponseData | undefined {
   if (!isRecord(resp)) return undefined;
   const result: CodexResponseData = {};
   if (typeof resp.id === "string") result.id = resp.id;
+  if (Array.isArray(resp.output)) result.output = resp.output;
   if (isRecord(resp.usage)) {
     result.usage = {
       input_tokens: typeof resp.usage.input_tokens === "number" ? resp.usage.input_tokens : 0,

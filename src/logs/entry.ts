@@ -1,5 +1,7 @@
 import { randomUUID } from "crypto";
-import { logStore, type LogDirection } from "./store.js";
+import { logStore, type LogDirection, type LogRecord } from "./store.js";
+import type { LogMetrics } from "./metrics.js";
+import type { UsageInfo } from "../translation/codex-event-extractor.js";
 
 export function enqueueLogEntry(entry: {
   requestId: string;
@@ -14,6 +16,7 @@ export function enqueueLogEntry(entry: {
   error?: string | null;
   request?: unknown;
   response?: unknown;
+  ttftMs?: number | null; durationMs?: number | null; costUsd?: number | null; tokensPerSecond?: number | null; usage?: UsageInfo | null; metrics?: LogMetrics | null;
 }): void {
   logStore.enqueue({
     id: randomUUID(),
@@ -21,3 +24,4 @@ export function enqueueLogEntry(entry: {
     ...entry,
   });
 }
+export function updateLogEntry(requestId: string, patch: Partial<LogRecord>): boolean { return logStore.updateByRequestId(requestId, patch); }

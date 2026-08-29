@@ -1,4 +1,6 @@
 import { redactJson } from "./redact.js";
+import type { LogMetrics } from "./metrics.js";
+import type { UsageInfo } from "../translation/codex-event-extractor.js";
 
 export type LogDirection = "ingress" | "egress";
 
@@ -20,6 +22,7 @@ export interface LogRecord {
   request?: unknown;
   response?: unknown;
   meta?: Record<string, unknown>;
+  ttftMs?: number | null; durationMs?: number | null; costUsd?: number | null; tokensPerSecond?: number | null; usage?: UsageInfo | null; metrics?: LogMetrics | null;
 }
 
 export interface LogState {
@@ -134,6 +137,17 @@ export class LogStore {
 
   get(id: string): LogRecord | null {
     return this.records.find((r) => r.id === id) ?? null;
+  }
+
+  updateByRequestId(requestId: string, patch: Partial<LogRecord>): boolean {
+    if (this.queue.length > 0) this.flush();
+    let updated = false;
+    for (const record of this.records) if (record.requestId === requestId) {
+      updated = true;
+      for (const key of ["status", "latencyMs", "model", "error", "ttftMs", "durationMs", "costUsd", "tokensPerSecond", "usage", "metrics"] as const) if (patch[key] !== undefined) record[key] = patch[key] as never;
+      if (patch.response !== undefined) record.response = redactJson(patch.response);
+    }
+    return updated;
   }
 
   private flush(): void {

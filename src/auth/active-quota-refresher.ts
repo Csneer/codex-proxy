@@ -11,9 +11,20 @@ import { jitter } from "../utils/jitter.js";
 import type { AccountPool } from "./account-pool.js";
 import type { ProxyPool } from "../proxy/proxy-pool.js";
 import type { CookieJar } from "../proxy/cookie-jar.js";
+import type { CodexQuota } from "./types.js";
 
 const DEFAULT_TICK_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
 const MIN_REFRESH_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes minimum gap per account
+
+export function resolveRefreshIntervals(
+  minutes: number | undefined | null,
+): { tickMs: number; minGapMs: number } {
+  const configuredMs = typeof minutes === "number" && minutes > 0 ? minutes * 60_000 : null;
+  return {
+    tickMs: configuredMs ?? DEFAULT_TICK_INTERVAL_MS,
+    minGapMs: configuredMs ?? MIN_REFRESH_INTERVAL_MS,
+  };
+}
 
 export class ActiveQuotaRefresher {
   private timer: ReturnType<typeof setTimeout> | null = null;
@@ -35,6 +46,10 @@ export class ActiveQuotaRefresher {
     this.proxyPool = options?.proxyPool;
   }
 
+  private resolveIntervals(): { tickMs: number; minGapMs: number } {
+    return resolveRefreshIntervals(getConfig().quota?.refresh_interval_minutes ?? null);
+  }
+
   start(): void {
     this.stopped = false;
     const config = getConfig();
@@ -43,7 +58,7 @@ export class ActiveQuotaRefresher {
       return;
     }
 
-    this.scheduleNext(DEFAULT_TICK_INTERVAL_MS);
+    this.scheduleNext(this.resolveIntervals().tickMs);
     console.log("[ActiveQuotaRefresher] Active Quota Refresher started");
   }
 
@@ -84,7 +99,7 @@ export class ActiveQuotaRefresher {
 
         // Anti-abuse: ensure minimum time gap between active refreshes per account.
         const lastRefresh = this.lastRefreshedAt.get(entry.id) ?? 0;
-        if (now - lastRefresh < MIN_REFRESH_INTERVAL_MS) continue;
+        if (now - lastRefresh < this.resolveIntervals().minGapMs) continue;
 
         console.log(`[ActiveQuotaRefresher] Actively refreshing quota for ${entry.id} (${entry.email ?? "?"}) (locked=${isLocked}, dirty=${isDirty})`);
         
@@ -102,7 +117,7 @@ export class ActiveQuotaRefresher {
           ).getUsage();
 
           const quota = toQuota(usage);
-          this.pool.updateCachedQuota(entry.id, quota);
+          this.pool.updateCachedQuota(entry.id, preserveLearnedLocks(entry.cachedQuota, quota));
         } catch (err) {
           console.warn(`[ActiveQuotaRefresher] Failed to fetch quota for account ${entry.id}:`, err instanceof Error ? err.message : err);
         }
@@ -113,7 +128,7 @@ export class ActiveQuotaRefresher {
     } catch (err) {
       console.warn("[ActiveQuotaRefresher] Error during tick:", err instanceof Error ? err.message : err);
     } finally {
-      this.scheduleNext(DEFAULT_TICK_INTERVAL_MS);
+      this.scheduleNext(this.resolveIntervals().tickMs);
     }
   }
 
@@ -124,4 +139,73 @@ export class ActiveQuotaRefresher {
       void this.tick();
     }, intervalMs);
   }
+}
+
+/** Preserve enforcement locks learned from real 429 responses until reset. */
+export function preserveLearnedLocks(
+  existing: CodexQuota | null | undefined,
+  fresh: CodexQuota,
+): CodexQuota {
+  const nowSec = Date.now() / 1000;
+  const isFutureLock = (
+    current: { limit_reached?: boolean; reset_at?: number | null } | null | undefined,
+  ): boolean => current?.limit_reached === true && current.reset_at != null && current.reset_at > nowSec;
+
+  const merged: CodexQuota = { ...fresh };
+  if (isFutureLock(existing?.rate_limit) && !fresh.rate_limit.limit_reached) {
+    merged.rate_limit = {
+      ...fresh.rate_limit,
+      allowed: false,
+      limit_reached: true,
+      used_percent: Math.max(fresh.rate_limit.used_percent ?? 0, 100),
+      reset_at: existing!.rate_limit.reset_at,
+    };
+  }
+
+  const secondary = existing?.secondary_rate_limit;
+  if (isFutureLock(secondary) && !merged.secondary_rate_limit?.limit_reached) {
+    const freshWindow = merged.secondary_rate_limit;
+    merged.secondary_rate_limit = {
+      used_percent: freshWindow?.used_percent ?? 100,
+      remaining_percent: freshWindow?.remaining_percent,
+      reset_at: secondary!.reset_at,
+      limit_window_seconds: freshWindow?.limit_window_seconds ?? secondary!.limit_window_seconds,
+      limit_reached: true,
+    };
+  }
+
+  const review = existing?.code_review_rate_limit;
+  if (isFutureLock(review) && !merged.code_review_rate_limit?.limit_reached) {
+    const freshWindow = merged.code_review_rate_limit;
+    merged.code_review_rate_limit = {
+      allowed: freshWindow?.allowed ?? false,
+      limit_reached: true,
+      used_percent: freshWindow?.used_percent ?? 100,
+      remaining_percent: freshWindow?.remaining_percent,
+      reset_at: review!.reset_at,
+      limit_window_seconds: freshWindow?.limit_window_seconds ?? review!.limit_window_seconds,
+    };
+  }
+
+  if (existing?.rate_limits_by_limit_id) {
+    const freshBuckets = merged.rate_limits_by_limit_id ?? {};
+    merged.rate_limits_by_limit_id = { ...freshBuckets };
+    for (const [limitId, current] of Object.entries(existing.rate_limits_by_limit_id)) {
+      if (!isFutureLock(current) || freshBuckets[limitId]?.limit_reached) continue;
+      const freshBucket = freshBuckets[limitId];
+      merged.rate_limits_by_limit_id[limitId] = {
+        limit_id: freshBucket?.limit_id ?? current.limit_id,
+        limit_name: freshBucket?.limit_name ?? current.limit_name,
+        allowed: freshBucket?.allowed ?? false,
+        limit_reached: true,
+        used_percent: freshBucket?.used_percent ?? 100,
+        remaining_percent: freshBucket?.remaining_percent,
+        reset_at: current.reset_at,
+        limit_window_seconds: freshBucket?.limit_window_seconds ?? current.limit_window_seconds,
+        secondary_rate_limit: freshBucket?.secondary_rate_limit ?? current.secondary_rate_limit,
+      };
+    }
+  }
+
+  return merged;
 }

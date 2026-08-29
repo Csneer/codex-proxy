@@ -10,7 +10,13 @@ import type {
 } from "../proxy/codex-api.js";
 import { parseModelName, getModelInfo } from "../models/model-store.js";
 import { getConfig } from "../config.js";
-import { buildInstructions, budgetToEffort, isRecord } from "./shared-utils.js";
+import {
+  buildInstructions,
+  budgetToEffort,
+  clampReasoningEffortToModel,
+  isRecognizedReasoningEffort,
+  isRecord,
+} from "./shared-utils.js";
 import type { ModelConfigOverride } from "./shared-utils.js";
 import {
   anthropicToolsToCodex,
@@ -42,11 +48,6 @@ function mapThinkingToEffort(
     return thinking.budget_tokens ? budgetToEffort(thinking.budget_tokens) : undefined;
   }
   return budgetToEffort(thinking.budget_tokens);
-}
-
-function normalizeCodexEffort(effort: string | null | undefined): string | undefined {
-  if (!effort) return undefined;
-  return effort === "ultra" || effort === "ultracode" ? "xhigh" : effort;
 }
 
 /**
@@ -201,7 +202,11 @@ function contentToInputItems(
 export function translateAnthropicToCodexRequest(
   req: AnthropicMessagesRequest,
   modelConfig?: ModelConfigOverride,
-  options?: { injectHostedWebSearch?: boolean; mapClaudeCodeWebSearch?: boolean },
+  options?: {
+    injectHostedWebSearch?: boolean;
+    mapClaudeCodeWebSearch?: boolean;
+    requestId?: string;
+  },
 ): CodexResponsesRequest {
   // Extract system instructions
   let userInstructions: string;
@@ -273,15 +278,26 @@ export function translateAnthropicToCodexRequest(
   }
 
   // Reasoning effort: explicit output config > thinking config > suffix > config default.
+  const explicitEffort = (() => {
+    if (typeof req.output_config?.effort !== "string") return undefined;
+    const trimmed = req.output_config.effort.trim();
+    return trimmed && isRecognizedReasoningEffort(trimmed) ? trimmed : undefined;
+  })();
   const thinkingEffort = mapThinkingToEffort(req.thinking);
-  const anthropicEffort =
-    req.output_config?.effort ??
+  const requestedEffort =
+    explicitEffort ??
     thinkingEffort ??
     parsed.reasoningEffort ??
     cfg.default_reasoning_effort;
-  const effort = normalizeCodexEffort(anthropicEffort);
-  if (effort) {
-    request.reasoning = { effort, summary: "auto" };
+  if (requestedEffort) {
+    const result = clampReasoningEffortToModel(requestedEffort, modelInfo);
+    if (result.clamped) {
+      console.warn(
+        `[AnthropicToCodex] rid=${options?.requestId ?? "-"} phase=effort_clamped model=${modelId} `
+          + `requested=${requestedEffort} clamped_to=${result.effort} supported=${result.supported.join(",")}`,
+      );
+    }
+    request.reasoning = { effort: result.effort, summary: "auto" };
   }
 
   // Service tier: suffix > config default

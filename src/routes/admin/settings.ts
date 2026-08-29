@@ -5,6 +5,7 @@ import { mutateYaml } from "../../utils/yaml-mutate.js";
 import { revokeAllSessions } from "../../auth/dashboard-session.js";
 import { updateCallRecordServiceConfig } from "../../call-records/service.js";
 import type { AccountPool } from "../../auth/account-pool.js";
+import { getRoutableCodexHostModelAllowedModels, isImageHostModelClientId, resolveRoutableCodexHostModel, IMAGE_HOST_MODEL_CLIENT_ID } from "../../models/routable-model-resolver.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -164,6 +165,8 @@ export function createSettingsRoutes(accountPool?: Pick<AccountPool, "setRotatio
       inject_desktop_context: config.model.inject_desktop_context,
       suppress_desktop_directives: config.model.suppress_desktop_directives,
       default_model: config.model.default,
+      image_host_model: config.model.image_host_model,
+      image_host_model_allowed_models: getRoutableCodexHostModelAllowedModels(),
       default_reasoning_effort: config.model.default_reasoning_effort,
       model_aliases: config.model.aliases,
       refresh_enabled: config.auth.refresh_enabled,
@@ -196,6 +199,7 @@ export function createSettingsRoutes(accountPool?: Pick<AccountPool, "setRotatio
       inject_desktop_context?: boolean;
       suppress_desktop_directives?: boolean;
       default_model?: string;
+      image_host_model?: string;
       default_reasoning_effort?: string | null;
       model_aliases?: unknown;
       refresh_enabled?: boolean;
@@ -254,6 +258,21 @@ export function createSettingsRoutes(accountPool?: Pick<AccountPool, "setRotatio
         return c.json({ error: result.error });
       }
       normalizedModelAliases = result.aliases;
+    }
+
+    let normalizedImageHostModel: string | null = null;
+    if (body.image_host_model !== undefined) {
+      if (typeof body.image_host_model !== "string" || !body.image_host_model.trim()) {
+        c.status(400); return c.json({ error: "image_host_model must be a non-empty string" });
+      }
+      const trimmed = body.image_host_model.trim();
+      if (isImageHostModelClientId(trimmed)) {
+        c.status(400); return c.json({ error: `image_host_model cannot be ${IMAGE_HOST_MODEL_CLIENT_ID}` });
+      }
+      normalizedImageHostModel = resolveRoutableCodexHostModel(trimmed);
+      if (!normalizedImageHostModel) {
+        c.status(400); return c.json({ error: `${trimmed} is not a routable Codex model` });
+      }
     }
 
     if (body.refresh_margin_seconds !== undefined) {
@@ -358,6 +377,10 @@ export function createSettingsRoutes(accountPool?: Pick<AccountPool, "setRotatio
         if (!data.model) data.model = {};
         (data.model as Record<string, unknown>).default = body.default_model;
       }
+      if (normalizedImageHostModel !== null) {
+        if (!data.model) data.model = {};
+        (data.model as Record<string, unknown>).image_host_model = normalizedImageHostModel;
+      }
       if (body.default_reasoning_effort !== undefined) {
         if (!data.model) data.model = {};
         (data.model as Record<string, unknown>).default_reasoning_effort = body.default_reasoning_effort;
@@ -458,6 +481,8 @@ export function createSettingsRoutes(accountPool?: Pick<AccountPool, "setRotatio
       inject_desktop_context: updated.model.inject_desktop_context,
       suppress_desktop_directives: updated.model.suppress_desktop_directives,
       default_model: updated.model.default,
+      image_host_model: updated.model.image_host_model,
+      image_host_model_allowed_models: getRoutableCodexHostModelAllowedModels(),
       default_reasoning_effort: updated.model.default_reasoning_effort,
       model_aliases: updated.model.aliases,
       refresh_enabled: updated.auth.refresh_enabled,

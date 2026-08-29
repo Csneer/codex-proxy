@@ -178,9 +178,11 @@ export function createMessagesRoutes(
       c.req.header("x-claude-code-session-id"),
     );
 
+    const requestId = c.get("requestId") ?? randomUUID().slice(0, 8);
     const codexRequest = translateAnthropicToCodexRequest(req, undefined, {
       injectHostedWebSearch: !allowUnauthenticated,
       mapClaudeCodeWebSearch: !allowUnauthenticated && clientConversationId !== null,
+      requestId,
     });
     if (!allowUnauthenticated) {
       codexRequest.useWebSocket = true;
@@ -195,7 +197,6 @@ export function createMessagesRoutes(
     };
     const fmt = makeAnthropicFormat(wantThinking);
 
-    const requestId = c.get("requestId") ?? randomUUID().slice(0, 8);
     proxyReq.callRecord = beginCallRecord({
       requestId, route: c.req.path, protocol: "anthropic", request: req,
       headers: c.req.raw.headers, model: req.model, stream: !!req.stream,

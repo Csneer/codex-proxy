@@ -8,6 +8,12 @@
 
 import type { CodexResponsesRequest, CodexSSEEvent } from "./codex-types.js";
 
+export type CodexAuxiliaryJsonPath = "alpha/search" | "responses/compact" | "images/edits";
+
+export type CodexAuxiliaryRequestContext = Partial<Pick<CodexResponsesRequest,
+  "turnState" | "turnMetadata" | "betaFeatures" | "version" | "includeTimingMetrics"
+  | "codexWindowId" | "parentThreadId" | "client_metadata">>;
+
 export interface UpstreamAdapter {
   /** Short identifier used in logs (e.g. "codex", "openai", "anthropic"). */
   readonly tag: string;
@@ -20,9 +26,21 @@ export interface UpstreamAdapter {
     req: CodexResponsesRequest,
     signal: AbortSignal,
   ): Promise<Response>;
+  forwardCodexJsonRequest?(
+    path: CodexAuxiliaryJsonPath,
+    body: Record<string, unknown>,
+    signal: AbortSignal,
+    context?: CodexAuxiliaryRequestContext,
+  ): Promise<Response>;
   /**
    * Parse the upstream SSE response into a stream of Codex-normalized events.
    * Each adapter normalizes its native event format to CodexSSEEvent.
    */
   parseStream(response: Response): AsyncGenerator<CodexSSEEvent>;
+}
+
+export function supportsCodexAuxiliaryJson(
+  adapter: UpstreamAdapter,
+): adapter is UpstreamAdapter & Required<Pick<UpstreamAdapter, "forwardCodexJsonRequest">> {
+  return typeof adapter.forwardCodexJsonRequest === "function";
 }

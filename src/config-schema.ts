@@ -81,6 +81,9 @@ export const ConfigSchema = z.object({
   }),
   model: z.object({
     default: z.string().default("gpt-5.6-sol"),
+    image_host_model: z.string().trim().min(1).refine((model) => model.toLowerCase() !== "gpt-image-2", {
+      message: "model.image_host_model must be a Codex chat model, not gpt-image-2",
+    }).default("gpt-5.5"),
     default_reasoning_effort: z.string().nullable().default(null),
     default_service_tier: z.string().nullable().default(null),
     aliases: z.record(z.string(), z.string()).default({}),

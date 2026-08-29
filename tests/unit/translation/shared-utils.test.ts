@@ -17,7 +17,12 @@ vi.mock("@src/config.js", () => ({
   })),
 }));
 
-import { budgetToEffort, buildInstructions } from "@src/translation/shared-utils.js";
+import {
+  budgetToEffort,
+  buildInstructions,
+  clampReasoningEffortToModel,
+  isRecognizedReasoningEffort,
+} from "@src/translation/shared-utils.js";
 import { getConfig } from "@src/config.js";
 
 describe("budgetToEffort", () => {
@@ -97,5 +102,37 @@ describe("budgetToEffort additional edge cases", () => {
 
   it("returns 'xhigh' for very large budget (100000)", () => {
     expect(budgetToEffort(100000)).toBe("xhigh");
+  });
+});
+
+describe("reasoning effort validation and clamp", () => {
+  const model = {
+    supportedReasoningEfforts: ["low", "medium", "high", "xhigh"]
+      .map((reasoningEffort) => ({ reasoningEffort, description: reasoningEffort })),
+  };
+
+  it("recognizes current Codex effort levels", () => {
+    expect(isRecognizedReasoningEffort("ultra")).toBe(true);
+    expect(isRecognizedReasoningEffort("future-level")).toBe(false);
+  });
+
+  it("passes through an advertised level", () => {
+    expect(clampReasoningEffortToModel("high", model)).toEqual({
+      effort: "high",
+      clamped: false,
+      supported: ["low", "medium", "high", "xhigh"],
+    });
+  });
+
+  it("clamps above the maximum to the highest supported level", () => {
+    expect(clampReasoningEffortToModel("ultra", model).effort).toBe("xhigh");
+  });
+
+  it("breaks equal-distance ties toward the lower-cost level", () => {
+    const sparse = {
+      supportedReasoningEfforts: ["medium", "xhigh"]
+        .map((reasoningEffort) => ({ reasoningEffort, description: reasoningEffort })),
+    };
+    expect(clampReasoningEffortToModel("high", sparse).effort).toBe("medium");
   });
 });

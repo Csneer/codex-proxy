@@ -328,6 +328,18 @@ describe("POST /v1/responses/compact", () => {
     expect(res.status).toBe(401);
   });
 
+  it("returns 404 for an unrecognized model instead of silently using the default", async () => {
+    const res = await app.request("/v1/responses/compact", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "totally-unknown", input: [] }),
+    });
+
+    expect(res.status).toBe(404);
+    const body = await res.json();
+    expect(body.error.code).toBe("model_not_found");
+  });
+
   it("returns 400 for malformed JSON", async () => {
     const res = await app.request("/v1/responses/compact", {
       method: "POST",

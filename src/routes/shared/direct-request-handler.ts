@@ -9,7 +9,8 @@ import type { StatusCode } from "hono/utils/http-status";
 import { stream } from "hono/streaming";
 import { CodexApiError } from "../../proxy/codex-api.js";
 import { randomUUID } from "crypto";
-import { enqueueLogEntry } from "../../logs/entry.js";
+import { enqueueLogEntry, updateLogEntry } from "../../logs/entry.js";
+import { calculateLogMetrics } from "../../logs/metrics.js";
 import { recordStreamCloseEvent } from "../../logs/stream-close-event.js";
 import { streamResponse } from "./response-processor.js";
 import { toErrorStatus } from "./proxy-error-handler.js";
@@ -97,6 +98,9 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
     c.header("X-Accel-Buffering", "no");
 
     return stream(c, async (s) => {
+      const streamStartMs = Date.now();
+      let firstTokenMs: number | null = null;
+      let usageInfo: UsageInfo | null = null;
       let usage: UsageInfo | undefined;
       let responseId: string | null = null;
       let responseCompleted = false;
@@ -119,7 +123,8 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
         response: rawResponse,
         model: req.model,
         adapter: fmt,
-        onUsage: (value) => { usage = value; },
+        onUsage: (value) => { usage = value; usageInfo = value; },
+        onFirstToken: (ts) => { firstTokenMs = ts; },
         tupleSchema: req.tupleSchema,
         onResponseId: (value) => { responseId = value; },
         onResponseCompleted: (value) => {
@@ -135,6 +140,9 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
           abortSignal: abortController.signal,
         },
       });
+      const metrics = calculateLogMetrics({ startMs: streamStartMs, firstTokenMs, endMs: Date.now(), model: req.model, usage: usageInfo, isStreaming: true });
+      c.set("metrics", metrics);
+      updateLogEntry(requestId, { status: rawResponse.status, latencyMs: metrics.durationMs, ttftMs: metrics.ttftMs, durationMs: metrics.durationMs, costUsd: metrics.costUsd, tokensPerSecond: metrics.tokensPerSecond, usage: usageInfo, metrics });
       if (result.completed && responseCompleted && usage) {
         completeCallRecord(req.callRecord, {
           response: responseCapture.finish(),
@@ -161,6 +169,9 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
       upstreamModel: req.codexRequest.model,
       responseId: result.responseId,
     });
+    const metrics = calculateLogMetrics({ startMs, endMs: Date.now(), model: req.model, usage: result.usage, isStreaming: false });
+    c.set("metrics", metrics);
+    updateLogEntry(requestId, { status: rawResponse.status, latencyMs: metrics.durationMs, ttftMs: metrics.ttftMs, durationMs: metrics.durationMs, costUsd: metrics.costUsd, tokensPerSecond: metrics.tokensPerSecond, usage: result.usage, metrics });
     return c.json(result.response);
   } catch (err) {
     abortController.abort();

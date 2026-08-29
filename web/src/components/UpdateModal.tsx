@@ -2,6 +2,7 @@ import { useEffect, useRef } from "preact/hooks";
 import { useI18n } from "../../../shared/i18n/context";
 import type { UpdateStep } from "../../../shared/hooks/use-update-status";
 import type { TranslationKey } from "../../../shared/i18n/translations";
+import { clipboardCopy } from "../../../shared/utils/clipboard";
 
 const STEP_LABELS: Record<string, TranslationKey> = {
   pull: "updatePulling",
@@ -189,7 +190,7 @@ export function UpdateModal({
             ) : mode === "docker" ? (
               <div class="flex flex-col items-end gap-1.5">
                 <button
-                  onClick={() => { navigator.clipboard.writeText("docker compose pull && docker compose up -d"); }}
+                  onClick={() => { void clipboardCopy("docker compose pull && docker compose up -d"); }}
                   class="px-4 py-2 text-xs font-semibold bg-primary-action text-white rounded-lg hover:bg-primary-action-hover transition-colors"
                 >
                   {t("copy")} docker compose pull && docker compose up -d

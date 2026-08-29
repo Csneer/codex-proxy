@@ -12,6 +12,7 @@ export function GeneralSettings() {
   const [draftInjectContext, setDraftInjectContext] = useState<boolean | null>(null);
   const [draftSuppressDirectives, setDraftSuppressDirectives] = useState<boolean | null>(null);
   const [draftDefaultModel, setDraftDefaultModel] = useState<string | null>(null);
+  const [draftImageHostModel, setDraftImageHostModel] = useState<string | null>(null);
   const [draftReasoningEffort, setDraftReasoningEffort] = useState<string | null>(null);
   const [draftRefreshEnabled, setDraftRefreshEnabled] = useState<boolean | null>(null);
   const [draftRefreshMargin, setDraftRefreshMargin] = useState<string | null>(null);
@@ -34,6 +35,8 @@ export function GeneralSettings() {
   const currentInjectContext = gs.data?.inject_desktop_context ?? false;
   const currentSuppressDirectives = gs.data?.suppress_desktop_directives ?? false;
   const currentDefaultModel = gs.data?.default_model ?? "";
+  const currentImageHostModel = gs.data?.image_host_model ?? "";
+  const currentImageHostModelAllowedModels = gs.data?.image_host_model_allowed_models ?? [];
   const currentReasoningEffort = gs.data?.default_reasoning_effort ?? "";
   const currentRefreshEnabled = gs.data?.refresh_enabled ?? true;
   const currentRefreshMargin = gs.data?.refresh_margin_seconds ?? 300;
@@ -55,6 +58,7 @@ export function GeneralSettings() {
   const displayInjectContext = draftInjectContext ?? currentInjectContext;
   const displaySuppressDirectives = draftSuppressDirectives ?? currentSuppressDirectives;
   const displayDefaultModel = draftDefaultModel ?? currentDefaultModel;
+  const displayImageHostModel = draftImageHostModel ?? currentImageHostModel;
   const displayReasoningEffort = draftReasoningEffort ?? currentReasoningEffort;
   const displayRefreshEnabled = draftRefreshEnabled ?? currentRefreshEnabled;
   const displayRefreshMargin = draftRefreshMargin ?? String(currentRefreshMargin);
@@ -77,6 +81,7 @@ export function GeneralSettings() {
     draftInjectContext !== null ||
     draftSuppressDirectives !== null ||
     draftDefaultModel !== null ||
+    draftImageHostModel !== null ||
     draftReasoningEffort !== null ||
     draftRefreshEnabled !== null ||
     draftRefreshMargin !== null ||
@@ -120,6 +125,7 @@ export function GeneralSettings() {
     if (draftDefaultModel !== null) {
       patch.default_model = draftDefaultModel.trim();
     }
+    if (draftImageHostModel !== null) patch.image_host_model = draftImageHostModel.trim();
 
     if (draftReasoningEffort !== null) {
       patch.default_reasoning_effort = draftReasoningEffort === "" ? null : draftReasoningEffort;
@@ -209,6 +215,7 @@ export function GeneralSettings() {
     setDraftInjectContext(null);
     setDraftSuppressDirectives(null);
     setDraftDefaultModel(null);
+    setDraftImageHostModel(null);
     setDraftReasoningEffort(null);
     setDraftRefreshEnabled(null);
     setDraftRefreshMargin(null);
@@ -223,7 +230,7 @@ export function GeneralSettings() {
     setDraftAutoUpdate(null);
     setDraftAutoDownload(null);
     setDraftShowUpdateDialog(null);
-  }, [draftPort, draftProxyUrl, draftForceHttp11, draftInjectContext, draftSuppressDirectives, draftDefaultModel, draftReasoningEffort, draftRefreshEnabled, draftRefreshMargin, draftRefreshConcurrency, draftMaxConcurrent, draftRequestInterval, draftUsageHistoryRetention, draftCallRecordsEnabled, draftCallRecordsRetention, draftCallRecordsMaxBytes, draftCallRecordsMaxRows, draftAutoUpdate, draftAutoDownload, draftShowUpdateDialog, gs]);
+  }, [draftPort, draftProxyUrl, draftForceHttp11, draftInjectContext, draftSuppressDirectives, draftDefaultModel, draftImageHostModel, draftReasoningEffort, draftRefreshEnabled, draftRefreshMargin, draftRefreshConcurrency, draftMaxConcurrent, draftRequestInterval, draftUsageHistoryRetention, draftCallRecordsEnabled, draftCallRecordsRetention, draftCallRecordsMaxBytes, draftCallRecordsMaxRows, draftAutoUpdate, draftAutoDownload, draftShowUpdateDialog, gs]);
 
   const inputCls =
     "w-full px-3 py-2 bg-white dark:bg-bg-dark border border-gray-200 dark:border-border-dark rounded-lg text-[0.78rem] font-mono text-slate-700 dark:text-text-main outline-none focus:ring-1 focus:ring-primary";
@@ -340,7 +347,15 @@ export function GeneralSettings() {
             />
           </div>
 
-          {/* Default Reasoning Effort */}
+            {/* Default Reasoning Effort */}
+            <div class="space-y-1.5">
+              <label for="image-host-model" class="text-xs font-semibold text-slate-700 dark:text-text-main">Images host model</label>
+              <p class="text-xs text-slate-400 dark:text-text-dim">Codex model used to host image generation requests</p>
+              <input id="image-host-model" type="text" class={inputCls} value={displayImageHostModel} list="image-host-model-allowed-models" onInput={(e) => setDraftImageHostModel((e.target as HTMLInputElement).value)} />
+              <datalist id="image-host-model-allowed-models">{currentImageHostModelAllowedModels.map((model: string) => <option key={model} value={model} />)}</datalist>
+            </div>
+
+            {/* Default Reasoning Effort */}
           <div class="space-y-1.5">
             <label class="text-xs font-semibold text-slate-700 dark:text-text-main">
               {t("generalSettingsReasoningEffort")}
