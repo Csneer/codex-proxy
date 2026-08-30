@@ -30,6 +30,7 @@ import { useUpdateStatus } from "../../shared/hooks/use-update-status";
 import { useI18n, useT } from "../../shared/i18n/context";
 import { useDashboardAuth } from "../../shared/hooks/use-dashboard-auth";
 import { useGeneralSettings } from "../../shared/hooks/use-general-settings";
+import { useQuotaSummary } from "../../shared/hooks/use-quota-summary";
 import type { TranslationKey } from "../../shared/i18n/translations";
 import { getShowUpdateDialogPreference, shouldAutoOpenUpdateModal } from "./update-modal-policy";
 
@@ -180,6 +181,7 @@ function Dashboard() {
   const proxies = useProxies();
   const status = useStatus(accounts.list.length);
   const generalSettings = useGeneralSettings();
+  const quotaSummary = useQuotaSummary();
   const update = useUpdateMessage();
   const { onLogout } = useDashboardAuthCtx();
   const [showModal, setShowModal] = useState(false);
@@ -292,6 +294,9 @@ function Dashboard() {
                   <PoolOverview
                     accounts={accounts.list}
                     creditsPerUsd={generalSettings.data?.credits_per_usd}
+                    quotaSummary={quotaSummary.data}
+                    quotaSummaryLoading={quotaSummary.loading}
+                    quotaSummaryError={quotaSummary.error}
                   />
                   <AccountList
                     accounts={accounts.list}

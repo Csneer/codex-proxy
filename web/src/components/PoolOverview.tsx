@@ -2,6 +2,7 @@ import { useMemo } from "preact/hooks";
 import { useT, useI18n } from "../../../shared/i18n/context";
 import { creditsToUsd, formatCredits, formatResetTime, formatUsd } from "../../../shared/utils/format";
 import type { Account } from "../../../shared/types";
+import type { QuotaSummaryData, QuotaSummaryWindow } from "../../../shared/hooks/use-quota-summary";
 import { derivedStatus } from "../lib/accountStatus";
 
 /** Default credit→USD rate matching the config schema default. */
@@ -10,6 +11,9 @@ const DEFAULT_CREDITS_PER_USD = 25;
 interface PoolOverviewProps {
   accounts: Account[];
   creditsPerUsd?: number;
+  quotaSummary?: QuotaSummaryData | null;
+  quotaSummaryLoading?: boolean;
+  quotaSummaryError?: string | null;
 }
 
 export interface PoolStats {
@@ -56,7 +60,13 @@ export function computePoolStats(accounts: Account[], creditsPerUsd = DEFAULT_CR
   return { active, exhausted, totalCredits, totalUsd, hasAnyCredits, topUsage };
 }
 
-export function PoolOverview({ accounts, creditsPerUsd = DEFAULT_CREDITS_PER_USD }: PoolOverviewProps) {
+function windowLabel(window: QuotaSummaryWindow, t: ReturnType<typeof useT>, key: "five_hour" | "seven_day" | "thirty_day"): string {
+  const labels = { five_hour: "quotaFiveHour", seven_day: "quotaSevenDay", thirty_day: "quotaThirtyDay" } as const;
+  const base = t(labels[key]);
+  return window.window_seconds == null ? base : `${base} · ${window.window_seconds.toLocaleString()}s`;
+}
+
+export function PoolOverview({ accounts, creditsPerUsd = DEFAULT_CREDITS_PER_USD, quotaSummary, quotaSummaryLoading, quotaSummaryError }: PoolOverviewProps) {
   const t = useT();
   const { lang } = useI18n();
   const stats = useMemo(() => computePoolStats(accounts, creditsPerUsd), [accounts, creditsPerUsd]);
@@ -110,6 +120,46 @@ export function PoolOverview({ accounts, creditsPerUsd = DEFAULT_CREDITS_PER_USD
             </div>
           </div>
         )}
+      </div>
+
+      <div class="mt-4 border-t border-slate-200/70 dark:border-border-dark/70 pt-3" data-testid="quota-availability">
+        <div class="flex items-baseline justify-between gap-3 mb-2">
+          <div>
+            <div class="text-xs font-semibold text-primary">{t("quotaAvailability")}</div>
+            <div class="text-[11px] text-slate-400 dark:text-text-dim">{t("quotaAvailabilityHint")}</div>
+          </div>
+          {quotaSummary && (
+            <span class="text-[11px] text-slate-400 dark:text-text-dim tabular-nums">
+              {quotaSummary.accounts_with_cached_quota}/{quotaSummary.active_accounts} {t("quotaAccountsReported")}
+            </span>
+          )}
+        </div>
+        {quotaSummaryLoading && !quotaSummary ? (
+          <div class="text-xs text-slate-400 dark:text-text-dim animate-pulse">{t("quotaAvailabilityLoading")}</div>
+        ) : quotaSummaryError && !quotaSummary ? (
+          <div class="text-xs text-amber-600 dark:text-amber-400">{t("quotaAvailabilityUnavailable")}</div>
+        ) : quotaSummary ? (
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            {([
+              ["five_hour", quotaSummary.windows.five_hour],
+              ["seven_day", quotaSummary.windows.seven_day],
+              ["thirty_day", quotaSummary.windows.thirty_day],
+            ] as const).map(([key, window]) => (
+              <div key={key} class="inset-surface rounded-lg px-3 py-2">
+                <div class="text-[11px] text-slate-500 dark:text-text-dim">{windowLabel(window, t, key)}</div>
+                <div class="mt-1 flex items-baseline gap-2">
+                  <span class="text-lg font-semibold tabular-nums text-primary">
+                    {window.remaining_percent_average == null ? "—" : `${window.remaining_percent_average}%`}
+                  </span>
+                  <span class="text-[11px] text-slate-400 dark:text-text-dim">{t("quotaRemainingAverage")}</span>
+                </div>
+                <div class="text-[11px] text-slate-400 dark:text-text-dim tabular-nums">
+                  {window.reported_accounts > 0 ? `${window.remaining_percent_total} ${t("quotaRemainingTotal")}` : t("quotaNoData")}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : null}
       </div>
     </div>
   );
