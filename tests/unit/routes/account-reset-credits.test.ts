@@ -97,7 +97,14 @@ describe("Account reset credits routes", () => {
       expect(json.error).toContain("disabled");
     });
 
-    it("returns reset credits snapshot on success", async () => {
+    it("returns reset credits snapshot on success and syncs to cachedQuota", async () => {
+      pool.updateCachedQuota(accountId, {
+        plan_type: "plus",
+        rate_limit: { allowed: true, limit_reached: false, used_percent: 10, reset_at: 1789000000, limit_window_seconds: 18000 },
+        secondary_rate_limit: null,
+        code_review_rate_limit: null,
+      });
+
       mockGetResetCredits.mockResolvedValueOnce({
         available_count: 2,
         credits: [{ id: "c1", status: "available" }],
@@ -109,6 +116,9 @@ describe("Account reset credits routes", () => {
       const json = await res.json();
       expect(json.available_count).toBe(2);
       expect(json.credits).toHaveLength(1);
+
+      const entry = pool.getEntry(accountId);
+      expect(entry?.cachedQuota?.reset_credits_available).toBe(2);
     });
 
     it("returns 502 when upstream call fails", async () => {
@@ -234,6 +244,28 @@ describe("Account reset credits routes", () => {
       expect(res.status).toBe(200);
       const json = await res.json();
       expect(json.success).toBe(true);
+    });
+
+    it("decrements cached reset credits when quota refresh fails after successful consume", async () => {
+      pool.updateCachedQuota(accountId, {
+        plan_type: "plus",
+        rate_limit: { allowed: true, limit_reached: false, used_percent: 10, reset_at: 1789000000, limit_window_seconds: 18000 },
+        secondary_rate_limit: null,
+        code_review_rate_limit: null,
+        reset_credits_available: 2,
+      });
+      mockConsumeResetCredit.mockResolvedValueOnce(undefined);
+      mockGetUsage.mockRejectedValueOnce(new Error("Usage fetch timeout"));
+
+      const res = await app.request(`/auth/accounts/${accountId}/reset-credits/consume`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ redeem_request_id: "550e8400-e29b-41d4-a716-446655440004" }),
+      });
+
+      expect(res.status).toBe(200);
+      expect((await res.json()).quota.reset_credits_available).toBe(1);
+      expect(pool.getEntry(accountId)?.cachedQuota?.reset_credits_available).toBe(1);
     });
 
     it("returns 502 when consume call fails", async () => {
