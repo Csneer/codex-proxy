@@ -14,6 +14,7 @@
 
 ### Changed
 
+- 官方模型识别改为按名称形态前缀放行（`gpt*` / `codex*` / `oN*`），不再要求模型已收录于本地 catalog：当后端/账号尚未下发的新官方模型（如 `gpt-6-astra`）被客户端请求时，不再返回 `404 model_not_found` 或静默回退默认模型，而是按原名透传交由上游裁决；`resolveModelId` 对官方形态模型原样解析、不回退默认。边界保持不变：非官方形态的未知模型仍 `404`，裸 `codex` 哨兵仍解析为默认模型（`src/models/model-store.ts`）。
 - 接入 ChatGPT/Codex 官方 rate-limit reset credits（重置卡）：账号额度查询会显示可用重置卡数量，Dashboard 可确认并手动消耗重置卡立即刷新 5 小时速率窗口；新增 reset credits 查询/消费 API，并加入 UUID 校验、30 秒冷却、消费成功后的配额刷新容错，以及 `reset_at=null` / 模型专属额度锁的恢复处理。
 - WebSocket 连接池在请求进行中也持续发送 keepalive ping，避免长时间推理阶段被 NAT/LB 以 1006 静默断开；同时把上游 `server_is_overloaded`（503）和首帧 `server_error`（500）识别为可控的早期瞬时错误并按策略重试，减少客户端收到 `stream disconnected before completion`。
 - 备用资源账号新增手工维护的 `plus` / `free` / `unregistered` / `pro` 状态：状态随账号保存并在桌面表格、移动卡片与详情中显示，编辑表单可直接修改；已有 `backup-resources.sqlite` 自动增加受约束的 `account_status` 列，旧记录默认 `unregistered`。详情页同时补齐每个已填写值的显式复制操作并修复长文本横向溢出。
