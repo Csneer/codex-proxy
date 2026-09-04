@@ -153,9 +153,13 @@ export function AccountList({ accounts, loading, onDelete, onRefresh, refreshing
     statusCounts[key] = (statusCounts[key] ?? 0) + 1;
   }
 
-  const displayAccounts = statusFilter === "all"
+  const displayAccounts = [...(statusFilter === "all"
     ? accounts
-    : accounts.filter((a) => derivedStatus(a) === statusFilter);
+    : accounts.filter((a) => derivedStatus(a) === statusFilter))]
+    // Keep enabled accounts visible on the first page. Preserve the API
+    // order within each group so the existing entry-time ordering remains
+    // the tie-breaker.
+    .sort((left, right) => Number(right.status === "active") - Number(left.status === "active"));
 
   useEffect(() => {
     if (statusFilter !== "all" && !statusCounts[statusFilter]) {

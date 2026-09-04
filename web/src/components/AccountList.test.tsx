@@ -14,7 +14,7 @@ vi.mock("../../../shared/i18n/context", () => ({
 }));
 
 vi.mock("./AccountCard", () => ({
-  AccountCard: ({ account }: { account: Account }) => <div>{account.email}</div>,
+  AccountCard: ({ account }: { account: Account }) => <div data-testid="account-card">{account.email}</div>,
 }));
 
 vi.mock("./AccountImportExport", () => ({
@@ -141,5 +141,21 @@ describe("AccountList", () => {
     await screen.findByText("12 / 12");
     expect(getStorage().getItem(EXPAND_ALL_STORAGE_KEY)).toBe("true");
     expect(screen.getByText("collapse")).toBeTruthy();
+  });
+
+  it("shows enabled accounts before older non-enabled accounts on the first page", () => {
+    const olderDisabled = Array.from({ length: 10 }, (_, index) => makeAccount(`disabled-${index + 1}`, "disabled"));
+    renderAccountList([
+      ...olderDisabled,
+      makeAccount("active-new", "active"),
+      makeAccount("active-latest", "active"),
+    ]);
+
+    expect(screen.getAllByTestId("account-card").map((card) => card.textContent)).toEqual([
+      "active-new@example.com",
+      "active-latest@example.com",
+      ...olderDisabled.slice(0, 8).map((account) => account.email),
+    ]);
+    expect(screen.getByText("10 / 12")).toBeTruthy();
   });
 });

@@ -816,12 +816,13 @@ curl -N http://localhost:8080/official-agent/threads/{threadId}/turns \
 |------|------|------|
 | `/admin/backup-resources/accounts` | GET/POST | 列出 / 新增备用账号 |
 | `/admin/backup-resources/accounts/:id` | GET/PATCH/DELETE | 查看详情 / 更新 / 删除备用账号 |
+| `/admin/backup-resources/accounts/:id/totp` | GET | 按需生成当前 TOTP 验证码 |
 | `/admin/backup-resources/accounts/:id/promote` | POST | 将已注册备用账号显式提升到核心账号池 |
 | `/admin/backup-resources/phones` | GET/POST | 列出 / 新增接码手机号 |
 | `/admin/backup-resources/phones/:id` | GET/PATCH/DELETE | 查看 / 更新 / 删除接码手机号 |
 | `/admin/backup-resources/phones/:id/use` | POST | 记录使用一次 |
 
-备用账号页面支持邮箱/备注搜索、账号状态与生命周期筛选、录入时间排序。列表保持精简，密码、TOTP、接码 URL、Session、Access Token 和 Refresh Token 统一在“查看”详情中显示/复制，在“编辑”中新增、修改或清空。
+备用账号页面支持邮箱/备注搜索、账号状态与生命周期筛选、录入时间排序。列表保持精简，密码、TOTP、接码 URL、Session、Access Token 和 Refresh Token 统一在“查看”详情中显示/复制，在“编辑”中新增、修改或清空；已存储 TOTP 的账号可在详情中打开高层弹窗查看当前验证码及剩余有效时间。
 
 **Account Factory（独立集成令牌）**
 

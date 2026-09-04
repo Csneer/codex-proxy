@@ -6,6 +6,7 @@ import { BackupResourcesPage } from "./BackupResourcesPage";
 
 const mocks = vi.hoisted(() => ({
   loadAccountDetail: vi.fn(),
+  loadTotpCode: vi.fn(),
   updateAccount: vi.fn(),
   createPhone: vi.fn(),
   clearAccountDetail: vi.fn(),
@@ -23,7 +24,7 @@ const mocks = vi.hoisted(() => ({
     note: "short-lived",
     hasEmailPassword: true,
     hasChatgptPassword: true,
-    hasTotpSecret: false,
+    hasTotpSecret: true,
     hasEmailCodeUrl: false,
     hasSession: true,
     hasAccessToken: true,
@@ -54,7 +55,7 @@ const mocks = vi.hoisted(() => ({
     note: "short-lived",
     hasEmailPassword: true,
     hasChatgptPassword: true,
-    hasTotpSecret: false,
+    hasTotpSecret: true,
     hasEmailCodeUrl: false,
     hasSession: true,
     hasAccessToken: true,
@@ -90,6 +91,7 @@ vi.mock("../../../shared/hooks/use-backup-resources", () => ({
     deleteAccount: vi.fn(),
     promoteAccount: mocks.promoteAccount,
     loadAccountDetail: mocks.loadAccountDetail,
+    loadTotpCode: mocks.loadTotpCode,
     clearAccountDetail: mocks.clearAccountDetail,
     createPhone: mocks.createPhone,
     updatePhone: vi.fn(),
@@ -105,6 +107,12 @@ function renderPage() {
 beforeEach(() => {
   localStorage.setItem("codex-proxy-lang", "en");
   mocks.loadAccountDetail.mockReset();
+  mocks.loadTotpCode.mockReset().mockResolvedValue({
+    code: "123456",
+    expiresAt: Date.now() + 30_000,
+    period: 30,
+    digits: 6,
+  });
   mocks.updateAccount.mockReset().mockResolvedValue(undefined);
   mocks.createPhone.mockReset().mockResolvedValue(undefined);
   mocks.clearAccountDetail.mockReset();
@@ -137,6 +145,22 @@ describe("BackupResourcesPage", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "View" })[0]!);
 
     expect(screen.getAllByRole("button", { name: "Copy" })).toHaveLength(9);
+  });
+
+  it("opens a higher-layer TOTP code dialog without closing account details", async () => {
+    renderPage();
+    fireEvent.click(screen.getAllByRole("button", { name: "View" })[0]!);
+    fireEvent.click(screen.getByRole("button", { name: "View TOTP code" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Current TOTP code" });
+    await waitFor(() => expect(mocks.loadTotpCode).toHaveBeenCalledWith("backup-1"));
+    expect(within(dialog).getByTestId("backup-totp-code").textContent).toBe("123456");
+    expect(within(dialog).getByText("Expires in 30s")).toBeTruthy();
+
+    expect(within(dialog).getAllByRole("button", { name: "Close" })).toContain(document.activeElement);
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Current TOTP code" })).toBeNull();
+    expect(screen.getByRole("dialog", { name: "Account details" })).toBeTruthy();
   });
 
   it("omits untouched secret fields from an account edit", async () => {

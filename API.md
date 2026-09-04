@@ -292,6 +292,7 @@ mutation/CSRF proof.
 | GET | `/admin/backup-resources/accounts` | List secret-free account summaries |
 | POST | `/admin/backup-resources/accounts` | Create an account record |
 | GET | `/admin/backup-resources/accounts/:id` | Load one account with decrypted secrets (`Cache-Control: no-store`) |
+| GET | `/admin/backup-resources/accounts/:id/totp` | Generate the current TOTP code (`Cache-Control: no-store`) |
 | PATCH | `/admin/backup-resources/accounts/:id` | Partially update metadata or secrets |
 | DELETE | `/admin/backup-resources/accounts/:id` | Delete one account record |
 
@@ -300,6 +301,8 @@ or `pro`. Existing database rows and create requests that omit it default to
 `unregistered`. List responses expose only email, status, note, timestamps, and
 `has*` presence flags. Email password, ChatGPT password, TOTP secret, and the
 email-code URL are returned only by the single-record detail endpoint.
+The TOTP endpoint computes a current code on demand from the stored secret and
+never persists or returns the secret itself.
 
 ### SMS Numbers
 

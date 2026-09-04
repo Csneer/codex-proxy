@@ -678,12 +678,13 @@ Migration is strict: an old `server.proxy_api_key` is never copied or used as an
 |----------|--------|-------------|
 | `/admin/backup-resources/accounts` | GET/POST | List / create backup accounts |
 | `/admin/backup-resources/accounts/:id` | GET/PATCH/DELETE | Load details / update / delete a backup account |
+| `/admin/backup-resources/accounts/:id/totp` | GET | Generate the current TOTP code on demand |
 | `/admin/backup-resources/accounts/:id/promote` | POST | Explicitly promote a registered backup account into the core pool |
 | `/admin/backup-resources/phones` | GET/POST | List / create SMS numbers |
 | `/admin/backup-resources/phones/:id` | GET/PATCH/DELETE | Get / update / delete an SMS number |
 | `/admin/backup-resources/phones/:id/use` | POST | Record one use |
 
-The backup-account page supports search, account/lifecycle filters, and entry-time sorting. The compact list keeps credentials out of the table; passwords, TOTP, email-code URL, Session, Access Token, and Refresh Token are shown/copied from details and can be added, changed, or cleared from the edit form.
+The backup-account page supports search, account/lifecycle filters, and entry-time sorting. The compact list keeps credentials out of the table; passwords, TOTP, email-code URL, Session, Access Token, and Refresh Token are shown/copied from details and can be added, changed, or cleared from the edit form. Accounts with a stored TOTP can also open a higher-layer detail dialog to view the current code and remaining validity time.
 
 **Account Factory (independent integration token)**
 

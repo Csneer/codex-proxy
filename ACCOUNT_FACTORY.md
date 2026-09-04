@@ -85,6 +85,8 @@ http://127.0.0.1:8080/#/backup-resources
 - 按录入时间排序。
 - 列表压缩为：邮箱、账号状态、来源、操作，避免横向滚动。
 - 详情按需读取凭据，并提供显示/隐藏/复制。
+- 已存储 TOTP 的账号可在详情中打开高层弹窗，按 RFC 6238 查看当前 6 位验证码、倒计时和进度条，并可复制；验证码按需生成，不会持久化。
+- 首页“已连接账号”列表默认将 `active`（启用）账号置于第一页前面；同一组内继续保持接口原有录入顺序，状态筛选和展开/收起行为不变。
 - 新增或编辑时可填写、修改、保留或清空：
   - 邮箱密码
   - ChatGPT 密码
@@ -95,7 +97,7 @@ http://127.0.0.1:8080/#/backup-resources
   - Refresh Token
 - Session 支持较长 JSON 或原始文本。
 
-列表 API 只返回 `hasSession/hasAccessToken/hasRefreshToken` 等布尔值，不暴露实际 secret。实际值只在带 `Cache-Control: no-store` 的详情接口返回。
+列表 API 只返回 `hasSession/hasAccessToken/hasRefreshToken` 等布尔值，不暴露实际 secret。实际值只在带 `Cache-Control: no-store` 的详情接口返回；TOTP 验证码接口同样使用 `no-store`，只返回短时有效的验证码快照，不返回密钥。
 
 ### 本地加密与备份
 
@@ -221,7 +223,7 @@ mail_dashboard retired         14
 
 `available` 的统计和 claim 使用同一严格条件：账号必须 active、unregistered、lifecycle=available，且不存在任何 GPT 凭据。health 的 `inventory.available` 只统计真正可 claim 的严格库存，因此会小于数据库里单纯按 lifecycle 汇总的 available 数。
 
-因此当前页面显示大量“未注册/未设置”是库存尚未消费的结果，不是同步或存储错误。当前链路已经可以稳定领取、注册、保存本地账号并同步回 Proxy；详情页中已有注册完成账号可直接查看和复制凭据。
+因此当前页面显示大量“未注册/未设置”是库存尚未消费的结果，不是同步或存储错误。当前链路已经可以稳定领取、注册、保存本地账号并同步回 Proxy；详情页中已有注册完成账号可直接查看和复制凭据，也可以直接获取已存储 TOTP 的当前验证码。
 
 ## 7. 关键接口
 
@@ -250,6 +252,7 @@ mail_dashboard retired         14
 | --- | --- | --- |
 | GET/POST | `/admin/backup-resources/accounts` | 列出或新增 |
 | GET/PATCH/DELETE | `/admin/backup-resources/accounts/:id` | 详情、编辑、删除 |
+| GET | `/admin/backup-resources/accounts/:id/totp` | 按需生成当前 TOTP 验证码（`Cache-Control: no-store`） |
 | POST | `/admin/backup-resources/accounts/:id/promote` | 提升或重试 |
 | GET/POST | `/admin/backup-resources/phones` | 接码手机号列表/新增 |
 
@@ -262,6 +265,8 @@ Account Factory 使用 `X-Account-Factory-Token`；Dashboard API 使用 Dashboar
 - Account Factory 路由测试：12/12 通过，覆盖 `claims/recovery`。
 - 插件账号工厂定向测试：24/24 通过，覆盖 checkpoint 保留、租约恢复和消息恢复。
 - 插件 `npm run check` 通过；Proxy `npm run build`、`npx tsc --noEmit` 通过。
+- TOTP RFC 6238 生成器测试 10/10、TOTP 管理路由测试 2/2 通过，覆盖标准向量、URI 参数、无密钥/坏密钥、404 和 `no-store`。
+- Web 备用账号交互测试 16 个文件 / 75 个测试通过，覆盖高层 TOTP 弹窗、倒计时、复制入口和 Esc 关闭行为。
 - 实际同步日志输出 `accounts / eligible / blocked / deactivated` 摘要，当前 timer 按 5 分钟稳定运行。
 - `codex-proxy-source.service`、`mail-code-dashboard.service`、`account-factory-mailbox-sync.timer` 当前均为 active。
 

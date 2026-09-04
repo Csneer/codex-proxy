@@ -56,6 +56,13 @@ export interface BackupAccountDetail extends BackupAccount {
   refreshToken: string | null;
 }
 
+export interface BackupTotpCode {
+  code: string;
+  expiresAt: number;
+  period: number;
+  digits: number;
+}
+
 export interface BackupAccountInput {
   email: string;
   accountStatus: BackupAccountStatus;
@@ -210,6 +217,13 @@ export function useBackupResources() {
     }
   }, []);
 
+  const loadTotpCode = useCallback(async (id: string): Promise<BackupTotpCode> => {
+    const response = await requireOk(await adminFetch(`${BASE_URL}/accounts/${encodeURIComponent(id)}/totp`, {
+      cache: "no-store",
+    }));
+    return await response.json() as BackupTotpCode;
+  }, []);
+
   const clearAccountDetail = useCallback(() => {
     detailRequest.current += 1;
     setDetail(null);
@@ -255,6 +269,7 @@ export function useBackupResources() {
     promoteAccount,
     checkEligibility,
     loadAccountDetail,
+    loadTotpCode,
     clearAccountDetail,
     createPhone,
     updatePhone,

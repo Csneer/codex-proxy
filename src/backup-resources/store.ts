@@ -374,6 +374,13 @@ export class BackupResourceStore {
     };
   }
 
+  /** Read only the encrypted TOTP field for on-demand code generation. */
+  getTotpSecret(id: string): string | null | undefined {
+    const row = this.db.prepare("SELECT totp_secret FROM backup_accounts WHERE id = ?").get(id) as Pick<AccountRow, "totp_secret"> | undefined;
+    if (!row) return undefined;
+    return row.totp_secret === null ? null : this.cipher.decrypt(row.totp_secret);
+  }
+
   createAccount(input: BackupAccountInput): BackupAccountSummary {
     const id = randomUUID();
     const timestamp = now();

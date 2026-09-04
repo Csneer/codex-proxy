@@ -242,6 +242,7 @@ Dashboard 管理认证；写操作还必须通过现有管理 mutation/CSRF 校�
 | GET | `/admin/backup-resources/accounts` | 列出不含秘密值的账号摘要 |
 | POST | `/admin/backup-resources/accounts` | 新增备用账号 |
 | GET | `/admin/backup-resources/accounts/:id` | 获取单个账号及解密后的秘密字段（`Cache-Control: no-store`） |
+| GET | `/admin/backup-resources/accounts/:id/totp` | 按需生成当前 TOTP 验证码（`Cache-Control: no-store`） |
 | PATCH | `/admin/backup-resources/accounts/:id` | 部分更新元数据或秘密字段 |
 | DELETE | `/admin/backup-resources/accounts/:id` | 删除单个备用账号 |
 
@@ -249,6 +250,7 @@ Dashboard 管理认证；写操作还必须通过现有管理 mutation/CSRF 校�
 已有数据库记录以及未传状态的新增请求默认使用 `unregistered`。列表只返回邮箱、
 状态、备注、时间戳和 `has*` 存在标记；邮箱密码、ChatGPT 密码、TOTP 密钥和
 邮箱接码 URL 只由单条详情接口返回。
+TOTP 端点使用已存储的密钥按需计算当前验证码，不会持久化或返回密钥本身。
 
 ### 接码手机号
 

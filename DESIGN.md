@@ -3,7 +3,7 @@
 ## Source of truth
 
 - Status: Active
-- Last refreshed: 2026-08-01
+- Last refreshed: 2026-09-04
 - Primary product surfaces: authenticated Web dashboard, call observability dashboard, context timeline, call detail, account and proxy administration, backup-resource administration, settings, logs, usage, and errors.
 - Evidence reviewed:
   - `web/src/App.tsx`
@@ -11,6 +11,8 @@
   - `web/src/pages/CallRecordsPage.tsx`
   - `web/src/pages/UsageStats.tsx`
   - `web/src/pages/BackupResourcesPage.tsx`
+  - `src/routes/admin/backup-resources.ts`
+  - `src/backup-resources/totp.ts`
   - `web/src/components/Header.tsx`
   - `shared/theme/context.tsx`
   - `src/call-records/types.ts`
@@ -138,6 +140,7 @@
   - `MetricCard`, `StatusBadge`, `DataPanel`, `DataTable`, `EmptyState`, `InlineAlert`, and `Skeleton`;
   - `CallOverview`, `ContextTable`, `ContextTimeline`, `SemanticCallDetail`, `RawEvidenceDisclosure`, and `CallSearchDialog`;
   - `AppearanceDrawer`, `BackgroundUploader`, and `GlassSurface` primitives.
+  - `BackupTotpCodeModal` for short-lived, on-demand verification-code display from an account detail surface.
 - Variants and states:
   - surfaces: workbench, chrome, card, inset, modal/drawer;
   - status: healthy, warning, failed, inactive, unknown;
@@ -177,7 +180,7 @@
 
 - Loading: preserve panel geometry with skeletons; refresh should keep stale data visible and mark it as refreshing.
 - Empty: explain whether no calls exist, collection is disabled, or the selected range/filter has no results; provide the relevant action.
-- Error: keep other panels usable, identify the failed data source, and provide retry. A raw-evidence error must not hide semantic content.
+- Error: keep other panels usable, identify the failed data source, and provide retry. A raw-evidence error must not hide semantic content. TOTP generation errors must not expose the stored secret.
 - Success: show saved/updated confirmation without blocking navigation. Collection health is derived from timestamps and counts, not a decorative animation.
 - Disabled: explain why collection, background upload, or an action is unavailable.
 - Offline/slow network: keep the last successfully loaded dashboard visible, mark its age, and retry only safe idempotent reads automatically.
@@ -225,11 +228,11 @@
 - Intended use: centralized management of manually maintained spare OAI-related accounts and reusable SMS numbers. This is an operational convenience surface, not a production secrets-management product.
 - Backup account fields: email, manually maintained account status, email password, ChatGPT password, TOTP secret, email-code URL, note, created time, and updated time. Account status is exactly `plus`, `free`, `unregistered`, or `pro`; it is descriptive metadata and never drives routing or automatic account checks.
 - SMS fields: phone number, non-negative use count, note, created time, and updated time. A dedicated “use once” action increments the count atomically; manual edits may correct the count.
-- Default disclosure: account lists expose email, manually maintained account status, notes, timestamps, and factual `has*` flags only. Passwords, TOTP secrets, and full email-code URLs remain hidden until a single-record detail request. SMS numbers may be shown in full inside this authenticated personal dashboard and masked in compact list presentation.
+- Default disclosure: account lists expose email, manually maintained account status, notes, timestamps, and factual `has*` flags only. Passwords, TOTP secrets, and full email-code URLs remain hidden until a single-record detail request. From that detail surface, an account with a stored TOTP may open a higher-layer modal that shows the current code, countdown, and explicit copy action. The code is generated on demand, is not persisted, and is not placed in a URL or log. SMS numbers may be shown in full inside this authenticated personal dashboard and masked in compact list presentation.
 - Edit behavior: existing secrets are never preloaded merely to render an edit form. Omitted secret fields remain unchanged; explicit replacement updates them and explicit removal clears them.
 - Storage: backup resources use a dedicated SQLite database and are excluded from existing account import/export. Email, account status, phone number, notes, counts, and timestamps may remain plaintext for simple lookup. Email password, ChatGPT password, TOTP secret, and email-code URL use versioned AES-256-GCM application-layer encryption. Existing databases add `account_status` automatically; legacy rows and create requests that omit status default to `unregistered`.
 - Key handling: `CODEX_PROXY_BACKUP_KEY` supplies a base64-encoded 32-byte key when configured. Otherwise the server creates a local base64 key file with owner-only permissions. Missing or invalid keys and authentication failures fail closed and never overwrite ciphertext.
 - Security boundary: management authentication and the existing mutation/CSRF guard remain mandatory. Sensitive responses use `Cache-Control: no-store`; secrets never enter URLs, browser persistence, logs, error copy, or existing account exports.
-- Explicit non-goals: external KMS/HSM integration, per-record envelope keys, key-rotation UI, step-up authentication, detailed access auditing, automatic inbox access, credential validity probing, bulk reveal/copy, and plaintext export.
+- Explicit non-goals: external KMS/HSM integration, per-record envelope keys, key-rotation UI, step-up authentication, detailed access auditing, automatic inbox access, credential validity probing, bulk reveal/copy, plaintext export, and exposing a TOTP code in the account list.
 - Responsive behavior: desktop uses compact tables with visible account-status badges; phone uses stacked cards and 40px actions. Loading, empty, error, save, copy, and delete states follow the shared workbench language. Detail values expose explicit per-value copy actions without introducing bulk secret disclosure.
-- Verification: tests cover ciphertext round trips and tamper failure, legacy status migration, status validation and manual updates, absence of credential plaintext in SQLite/list responses, CRUD and atomic use-count increments, CSRF-compatible mutations, secret-preserving partial updates, Web interaction states, typecheck, and production build.
+- Verification: tests cover ciphertext round trips and tamper failure, RFC 6238 TOTP vectors, TOTP route errors and `no-store` responses, legacy status migration, status validation and manual updates, absence of credential plaintext in SQLite/list responses, CRUD and atomic use-count increments, CSRF-compatible mutations, secret-preserving partial updates, Web interaction states, typecheck, and production build.

@@ -8,6 +8,7 @@ import {
 } from "../../backup-resources/store.js";
 import type { AccountFactoryPromotionService } from "../../backup-resources/promotion.js";
 import { BACKUP_ACCOUNT_STATUSES } from "../../backup-resources/types.js";
+import { generateTotpCode, InvalidTotpSecretError } from "../../backup-resources/totp.js";
 
 const NullableText = z.string().max(10_000).nullable();
 const NullableLargeSecret = z.string().max(1024 * 1024).nullable();
@@ -159,6 +160,24 @@ export function createBackupResourceRoutes(
       }
     }
     return c.json({ checked: results.length, limit: 10, results });
+  });
+  app.get("/admin/backup-resources/accounts/:id/totp", (c) => {
+    c.header("Cache-Control", "no-store");
+    const totpSecret = resolveStore().getTotpSecret(c.req.param("id"));
+    if (totpSecret === undefined) return notFound(c);
+    if (!totpSecret?.trim()) {
+      c.status(404);
+      return c.json({ error: "totp_not_set" });
+    }
+    try {
+      return c.json(generateTotpCode(totpSecret));
+    } catch (error) {
+      if (error instanceof InvalidTotpSecretError) {
+        c.status(422);
+        return c.json({ error: "invalid_totp_secret" });
+      }
+      throw error;
+    }
   });
   app.get("/admin/backup-resources/accounts/:id", (c) => {
     const account = resolveStore().getAccount(c.req.param("id"));

@@ -1,13 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
+import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { ComponentChildren } from "preact";
 import { useI18n, useT } from "../../../shared/i18n/context";
 import {
   useBackupResources,
   type BackupAccount,
+  type BackupAccountDetail,
   type BackupAccountInput,
   type BackupAccountLifecycleStatus,
   type BackupAccountSourceSystem,
   type BackupAccountStatus,
+  type BackupTotpCode,
   type SmsNumber,
   type SmsNumberInput,
 } from "../../../shared/hooks/use-backup-resources";
@@ -43,22 +45,50 @@ function formatDate(value: string, lang: string): string {
   }).format(date);
 }
 
-function Modal({ title, children, onClose }: { title: string; children: ComponentChildren; onClose: () => void }) {
+function Modal({
+  title,
+  children,
+  onClose,
+  layerClass = "z-[80]",
+}: {
+  title: string;
+  children: ComponentChildren;
+  onClose: () => void;
+  layerClass?: string;
+}) {
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+
   useEffect(() => {
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    closeButtonRef.current?.focus();
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
     };
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      previousFocus?.focus();
+    };
   }, [onClose]);
 
   return (
-    <div class="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/35 p-3 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label={title}>
-      <button class="absolute inset-0 cursor-default" aria-label="Close" onClick={onClose} />
+    <div
+      class={`fixed inset-0 ${layerClass} flex items-center justify-center bg-slate-950/35 p-3 backdrop-blur-sm`}
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.stopPropagation();
+          onClose();
+        }
+      }}
+    >
+      <button type="button" class="absolute inset-0 cursor-default" aria-label="Close" onClick={onClose} />
       <div class="glass-surface relative max-h-[calc(100dvh-24px)] w-full max-w-2xl overflow-x-hidden overflow-y-auto rounded-2xl p-5 shadow-2xl md:p-6">
         <div class="mb-5 flex items-center justify-between gap-3">
           <h2 class="text-section font-semibold text-main">{title}</h2>
-          <button class={secondaryButton} onClick={onClose} aria-label="Close">×</button>
+          <button ref={closeButtonRef} type="button" class={secondaryButton} onClick={onClose} aria-label="Close">×</button>
         </div>
         {children}
       </div>
@@ -342,7 +372,7 @@ function Presence({ present }: { present: boolean }) {
   );
 }
 
-function SecretDetail({ label, value }: { label: string; value: string | null }) {
+function SecretDetail({ label, value, extraAction }: { label: string; value: string | null; extraAction?: ComponentChildren }) {
   const t = useT();
   const [revealed, setRevealed] = useState(false);
   return (
@@ -351,6 +381,7 @@ function SecretDetail({ label, value }: { label: string; value: string | null })
         <span class="text-muted min-w-0 text-xs font-medium">{label}</span>
         {value && (
           <div class="flex max-w-full flex-wrap items-center justify-end gap-1">
+            {extraAction}
             <button class="min-h-10 px-2 text-xs font-medium text-primary" onClick={() => setRevealed((current) => !current)}>
               {revealed ? t("backupHideSecret") : t("backupRevealSecret")}
             </button>
@@ -363,41 +394,173 @@ function SecretDetail({ label, value }: { label: string; value: string | null })
   );
 }
 
+function TotpCodeModal({
+  account,
+  loadTotpCode,
+  onClose,
+}: {
+  account: BackupAccountDetail;
+  loadTotpCode: (id: string) => Promise<BackupTotpCode>;
+  onClose: () => void;
+}) {
+  const t = useT();
+  const [snapshot, setSnapshot] = useState<BackupTotpCode | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const next = await loadTotpCode(account.id);
+      setSnapshot(next);
+      setNow(Date.now());
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setLoading(false);
+    }
+  }, [account.id, loadTotpCode]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!snapshot) return;
+    const timer = window.setTimeout(() => void refresh(), Math.max(0, snapshot.expiresAt - Date.now()));
+    return () => window.clearTimeout(timer);
+  }, [refresh, snapshot]);
+
+  useEffect(() => {
+    if (!error) return;
+    const timer = window.setTimeout(() => void refresh(), 5000);
+    return () => window.clearTimeout(timer);
+  }, [error, refresh]);
+
+  const remainingSeconds = snapshot
+    ? Math.max(0, Math.ceil((snapshot.expiresAt - now) / 1000))
+    : 0;
+  const codeCurrent = Boolean(snapshot && remainingSeconds > 0);
+  const progress = snapshot
+    ? Math.min(100, Math.max(0, (remainingSeconds / snapshot.period) * 100))
+    : 0;
+
+  return (
+    <Modal title={t("backupTotpCodeTitle")} onClose={onClose} layerClass="z-[100]">
+      <div class="grid gap-5">
+        <div>
+          <p class="text-muted text-xs">{t("backupEmail")}</p>
+          <p class="mt-1 break-all text-sm font-semibold text-main">{account.email}</p>
+        </div>
+
+        <div class="inset-surface rounded-xl p-5 text-center" aria-busy={loading}>
+          <p class="text-muted text-xs">{t("backupTotpCodeLabel")}</p>
+          <p
+            data-testid="backup-totp-code"
+            class="mt-3 font-mono text-5xl font-semibold tracking-[.18em] text-main tabular-nums sm:text-6xl"
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+          >
+            {codeCurrent ? snapshot!.code : "------"}
+          </p>
+          <p class="mt-3 text-xs text-muted">
+            {loading && !snapshot
+              ? t("backupTotpLoading")
+              : codeCurrent
+                ? t("backupTotpExpiresIn", { count: remainingSeconds })
+                : t("backupTotpExpired")}
+          </p>
+          <div
+            class="mt-4 h-1.5 overflow-hidden rounded-full bg-slate-200 dark:bg-border-dark"
+            role="progressbar"
+            aria-label={t("backupTotpProgress")}
+            aria-valuemin={0}
+            aria-valuemax={snapshot?.period ?? 30}
+            aria-valuenow={remainingSeconds}
+          >
+            <div class="h-full rounded-full bg-primary-action transition-[width] duration-1000" style={{ width: `${progress}%` }} />
+          </div>
+        </div>
+
+        {error && (
+          <div role="alert" class="rounded-lg bg-red-50 p-3 text-sm text-red-600 dark:bg-red-900/20 dark:text-red-400">
+            <p>{error}</p>
+            <button type="button" class="mt-2 min-h-10 font-medium underline" onClick={() => void refresh()}>
+              {t("backupRetry")}
+            </button>
+          </div>
+        )}
+
+        <div class="flex flex-wrap justify-end gap-2">
+          {codeCurrent && <CopyButton getText={() => snapshot!.code} variant="label" />}
+          <button type="button" class={secondaryButton} disabled={loading} onClick={() => void refresh()}>
+            {loading ? t("backupTotpRefreshing") : t("refresh")}
+          </button>
+        </div>
+        <p class="text-xs leading-5 text-muted">{t("backupTotpCodeHint")}</p>
+      </div>
+    </Modal>
+  );
+}
+
 function AccountDetail({ resources, onClose }: { resources: ReturnType<typeof useBackupResources>; onClose: () => void }) {
   const t = useT();
+  const [totpOpen, setTotpOpen] = useState(false);
+  const detail = resources.detail;
   return (
-    <Modal title={t("backupAccountDetail")} onClose={onClose}>
+    <>
+      <Modal title={t("backupAccountDetail")} onClose={() => { setTotpOpen(false); onClose(); }}>
       {resources.detailLoading && <div class="py-12 text-center text-sm text-slate-400">{t("backupLoadingDetail")}</div>}
       {resources.detailError && <div role="alert" class="rounded-lg bg-red-50 p-3 text-sm text-red-600 dark:bg-red-900/20 dark:text-red-400">{resources.detailError}</div>}
-      {resources.detail && (
+      {detail && (
         <div class="grid min-w-0 gap-3">
           <div class="flex flex-wrap items-start justify-between gap-2">
             <div class="min-w-0 flex-1">
               <p class="text-muted text-xs">{t("backupEmail")}</p>
-              <p class="mt-1 break-all text-sm font-semibold text-main">{resources.detail.email}</p>
-              <div class="mt-2"><AccountStatusBadge status={resources.detail.accountStatus} /></div>
+              <p class="mt-1 break-all text-sm font-semibold text-main">{detail.email}</p>
+              <div class="mt-2"><AccountStatusBadge status={detail.accountStatus} /></div>
             </div>
-            <CopyButton getText={() => resources.detail!.email} variant="label" class="shrink-0" />
+            <CopyButton getText={() => detail.email} variant="label" class="shrink-0" />
           </div>
-          <SecretDetail label={t("backupEmailPassword")} value={resources.detail.emailPassword} />
-          <SecretDetail label={t("backupChatgptPassword")} value={resources.detail.chatgptPassword} />
-          <SecretDetail label={t("backupTotpSecret")} value={resources.detail.totpSecret} />
-          <SecretDetail label={t("backupEmailCodeUrl")} value={resources.detail.emailCodeUrl} />
-          <SecretDetail label={t("backupSession")} value={resources.detail.session} />
-          <SecretDetail label={t("backupAccessToken")} value={resources.detail.accessToken} />
-          <SecretDetail label={t("backupRefreshToken")} value={resources.detail.refreshToken} />
+          <SecretDetail label={t("backupEmailPassword")} value={detail.emailPassword} />
+          <SecretDetail label={t("backupChatgptPassword")} value={detail.chatgptPassword} />
+          <SecretDetail
+            label={t("backupTotpSecret")}
+            value={detail.totpSecret}
+            extraAction={
+              <button type="button" class="min-h-10 px-2 text-xs font-medium text-primary" onClick={() => setTotpOpen(true)}>
+                {t("backupViewTotpCode")}
+              </button>
+            }
+          />
+          <SecretDetail label={t("backupEmailCodeUrl")} value={detail.emailCodeUrl} />
+          <SecretDetail label={t("backupSession")} value={detail.session} />
+          <SecretDetail label={t("backupAccessToken")} value={detail.accessToken} />
+          <SecretDetail label={t("backupRefreshToken")} value={detail.refreshToken} />
           <div class="inset-surface min-w-0 rounded-xl p-3">
             <div class="flex flex-wrap items-start justify-between gap-2">
               <div class="min-w-0 flex-1">
                 <p class="text-muted text-xs">{t("backupNote")}</p>
-                <p class="mt-1 break-all whitespace-pre-wrap text-sm text-main">{resources.detail.note || t("backupNoNote")}</p>
+                <p class="mt-1 break-all whitespace-pre-wrap text-sm text-main">{detail.note || t("backupNoNote")}</p>
               </div>
-              {resources.detail.note && <CopyButton getText={() => resources.detail!.note} variant="label" class="shrink-0" />}
+              {detail.note && <CopyButton getText={() => detail.note} variant="label" class="shrink-0" />}
             </div>
           </div>
         </div>
       )}
-    </Modal>
+      </Modal>
+      {totpOpen && detail?.totpSecret && (
+        <TotpCodeModal account={detail} loadTotpCode={resources.loadTotpCode} onClose={() => setTotpOpen(false)} />
+      )}
+    </>
   );
 }
 
