@@ -8,6 +8,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- 支持 OpenAI GPT-6 Astra 系列（`gpt-6-astra`、`gpt-6-astra-aeon` 及别名 `gpt-6`）与 GPT-Reserve（`gpt-reserve`）：内置静态模型元数据与推理级别定义（`/v1/models/catalog` 可见），`gpt-6` 别名解析到 `gpt-6-astra`，可路由性已由 #776 的名称形态放行覆盖；同步适配 1,050,000 上下文窗口、Ollama 桥接架构系列识别与官方定价估算（`src/models/model-store.ts`、`src/ollama/bridge.ts`、`config/model-pricing.yaml`、`README.md`）。
+
 ### Changed
 
 - 接入 ChatGPT/Codex 官方 rate-limit reset credits（重置卡）：账号额度查询会显示可用重置卡数量，Dashboard 可确认并手动消耗重置卡立即刷新 5 小时速率窗口；新增 reset credits 查询/消费 API，并加入 UUID 校验、30 秒冷却、消费成功后的配额刷新容错，以及 `reset_at=null` / 模型专属额度锁的恢复处理。
