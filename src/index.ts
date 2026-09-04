@@ -2,6 +2,7 @@ import "./utils/install-dev-logger.js";
 
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
+import type { Server as HttpServer } from "node:http";
 import { loadConfig, loadFingerprint, getConfig, hasLocalOverride } from "./config.js";
 import { initContext } from "./context.js";
 import { AccountPool } from "./auth/account-pool.js";
@@ -32,6 +33,7 @@ import { ProxyPool } from "./proxy/proxy-pool.js";
 import { setWsPoolConfig, getWsPool } from "./proxy/ws-pool.js";
 import { createProxyRoutes } from "./routes/proxies.js";
 import { createResponsesRoutes } from "./routes/responses.js";
+import { ResponsesWebSocketServer } from "./routes/responses-websocket.js";
 import { createImagesRoutes } from "./routes/images.js";
 import { startUpdateChecker, stopUpdateChecker } from "./update-checker.js";
 import { startProxyUpdateChecker, stopProxyUpdateChecker, setCloseHandler, getDeployMode } from "./self-update.js";
@@ -316,6 +318,16 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
     port,
   });
 
+  // Accept client WebSocket upgrades on /v1/responses. Each response.create
+  // frame is re-dispatched through the existing POST handler; HTTP POST + SSE
+  // remains the compatibility fallback. The listener must be removed before
+  // server.close() so connected clients are drained deterministically.
+  const responsesWebSocket = new ResponsesWebSocketServer({
+    server: server as HttpServer,
+    app,
+    accountPool,
+  });
+
   // `serve()` returns synchronously before `listen()` actually binds.
   // Wait for the listening event (or surface bind errors as a real
   // rejection of startServer) so callers' try/catch can react —
@@ -331,6 +343,7 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
 
   const close = async (): Promise<void> => {
     await stopOllamaBridge();
+    await responsesWebSocket.close();
     return new Promise((resolve) => {
       server.close(() => {
         stopUpdateChecker();
