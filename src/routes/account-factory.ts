@@ -110,11 +110,29 @@ const Promote = z.object({
   expectedRevision: z.number().int().nonnegative(),
   allowEphemeral: z.boolean().optional().default(false),
 }).strict();
+const CredentialSync = z.object({
+  email: z.string().trim().email().max(320),
+  accessToken: NonBlankSecret,
+  refreshToken: Secret.nullable().optional(),
+  session: z.union([Secret, z.record(z.unknown())]).nullable().optional(),
+}).strict();
+
+export interface AccountFactoryCredentialSyncResult {
+  email: string;
+  coreAccountId: string | null;
+  backupAccountIds: string[];
+}
 
 export interface AccountFactoryRouteDependencies {
   resolveStore?: () => BackupResourceStore;
   resolveMailClient?: () => MailDashboardClient;
   resolvePromotionService?: () => Pick<AccountFactoryPromotionService, "promote">;
+  resolveCredentialSync?: (input: {
+    email: string;
+    accessToken: string;
+    refreshToken?: string | null;
+    session?: string | Record<string, unknown> | null;
+  }) => AccountFactoryCredentialSyncResult;
 }
 
 async function body<T>(c: Context, schema: z.ZodType<T>): Promise<T | null> {
@@ -182,7 +200,7 @@ export function createAccountFactoryRoutes(dependencies: AccountFactoryRouteDepe
     return c.json({
       enabled: true,
       schemaVersion: 1,
-      capabilities: ["claim", "claimRecovery", "candidateSelection", "submissionCommit", "poll", "progress", "syncState", "complete", "evidence", "fail", "promote"],
+      capabilities: ["claim", "claimRecovery", "candidateSelection", "submissionCommit", "poll", "progress", "syncState", "complete", "evidence", "fail", "promote", "credentialSync"],
       inventory: {
         total: accounts.length,
         available: claimable.length,
@@ -341,6 +359,21 @@ export function createAccountFactoryRoutes(dependencies: AccountFactoryRouteDepe
       allowEphemeral: input.allowEphemeral ?? false,
     });
     return c.json({ promotion });
+  });
+
+  app.post(`${BASE_PATH}/credentials/sync`, async (c) => {
+    const input = await body(c, CredentialSync);
+    if (!input) return responseError(c, 400, "invalid_request");
+    if (!dependencies.resolveCredentialSync) return responseError(c, 409, "credential_sync_unavailable");
+    c.header("Cache-Control", "no-store");
+    try {
+      return c.json({ ok: true, ...dependencies.resolveCredentialSync(input) });
+    } catch (error) {
+      if (error instanceof Error && error.message === "credential_sync_account_not_found") {
+        return responseError(c, 404, "account_not_found");
+      }
+      throw error;
+    }
   });
 
   app.post(`${BASE_PATH}/accounts/:id/fail`, async (c) => {

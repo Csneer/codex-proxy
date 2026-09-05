@@ -167,6 +167,19 @@ export class AccountPool {
     this.evictWsPool(entryId);
   }
 
+  /** Update a persisted core account by its verified profile email. */
+  updateTokenByEmail(email: string, newToken: string, refreshToken?: string): string | null {
+    const normalized = String(email || "").trim().toLowerCase();
+    if (!normalized || !String(newToken || "").trim()) return null;
+    const matches = this.getAllEntries().filter(
+      (entry) => String(entry.email || "").trim().toLowerCase() === normalized,
+    );
+    if (matches.length !== 1) return null;
+    const entryId = matches[0].id;
+    this.updateToken(entryId, newToken, refreshToken);
+    return entryId;
+  }
+
   /** Explicit destructive policy used only by approved ephemeral imports. */
   clearRefreshToken(entryId: string): boolean {
     return this.registry.clearRefreshToken(entryId);

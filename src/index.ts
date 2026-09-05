@@ -230,6 +230,39 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
     );
     return promotionService;
   };
+  const resolveCredentialSync = (input: {
+    email: string;
+    accessToken: string;
+    refreshToken?: string | null;
+    session?: string | Record<string, unknown> | null;
+  }) => {
+    const email = input.email.trim().toLowerCase();
+    const store = getBackupResourceStore();
+    const backupAccounts = store.listAccounts().filter(
+      (account) => account.email.trim().toLowerCase() === email,
+    );
+    for (const account of backupAccounts) {
+      store.updateAccount(account.id, {
+        accessToken: input.accessToken,
+        ...(input.refreshToken !== undefined ? { refreshToken: input.refreshToken } : {}),
+        ...(input.session !== undefined ? { session: typeof input.session === "string" ? input.session : JSON.stringify(input.session) } : {}),
+      });
+    }
+    const linkedCoreIds = backupAccounts
+      .map((account) => store.getPromotion(account.id)?.coreAccountId ?? null)
+      .filter((id): id is string => Boolean(id));
+    const linkedCoreId = linkedCoreIds.length === 1 ? linkedCoreIds[0] : null;
+    const coreAccountId = linkedCoreId && accountPool.getEntry(linkedCoreId)
+      ? linkedCoreId
+      : accountPool.updateTokenByEmail(email, input.accessToken, input.refreshToken ?? undefined);
+    if (linkedCoreId && coreAccountId) {
+      accountPool.updateToken(coreAccountId, input.accessToken, input.refreshToken ?? undefined);
+    }
+    if (!coreAccountId && backupAccounts.length === 0) {
+      throw new Error("credential_sync_account_not_found");
+    }
+    return { email, coreAccountId, backupAccountIds: backupAccounts.map((account) => account.id) };
+  };
   const chatRoutes = createChatRoutes(accountPool, cookieJar, proxyPool, upstreamRouter);
   const messagesRoutes = createMessagesRoutes(accountPool, cookieJar, proxyPool, upstreamRouter);
   const geminiRoutes = createGeminiRoutes(accountPool, cookieJar, proxyPool, upstreamRouter);
@@ -253,7 +286,7 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   app.route("/", responsesRoutes);
   app.route("/", imagesRoutes);
   app.route("/", createOfficialAgentRoutes());
-  app.route("/", createAccountFactoryRoutes({ resolvePromotionService }));
+  app.route("/", createAccountFactoryRoutes({ resolvePromotionService, resolveCredentialSync }));
   app.route("/", proxyRoutes);
   app.route("/", createModelRoutes(apiKeyPool, accountPool));
   app.route("/", webRoutes);

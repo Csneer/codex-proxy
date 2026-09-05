@@ -32,6 +32,12 @@ function createApp(
     expectedRevision: number;
     allowEphemeral: boolean;
   }) => Promise<AccountFactoryPromotion>,
+  syncCredentials?: (input: {
+    email: string;
+    accessToken: string;
+    refreshToken?: string | null;
+    session?: string | Record<string, unknown> | null;
+  }) => { email: string; coreAccountId: string | null; backupAccountIds: string[] },
 ) {
   return createAccountFactoryRoutes({
     resolveStore: () => store,
@@ -41,6 +47,7 @@ function createApp(
       ...mail,
     }),
     ...(promote ? { resolvePromotionService: () => ({ promote }) } : {}),
+    ...(syncCredentials ? { resolveCredentialSync: syncCredentials } : {}),
   });
 }
 
@@ -59,6 +66,40 @@ afterEach(() => {
 });
 
 describe("account-factory v1 routes", () => {
+  it("syncs credentials through the registered lifecycle endpoint", async () => {
+    const store = createStore();
+    let received: unknown;
+    const app = createApp(store, {}, undefined, (input) => {
+      received = input;
+      return { email: input.email, coreAccountId: "core-1", backupAccountIds: ["backup-1"] };
+    });
+
+    const response = await app.request("/integration/account-factory/v1/credentials/sync", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        email: "registered@example.com",
+        accessToken: "access-token",
+        refreshToken: "refresh-token",
+        session: "session-token",
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      ok: true,
+      email: "registered@example.com",
+      coreAccountId: "core-1",
+      backupAccountIds: ["backup-1"],
+    });
+    expect(received).toEqual({
+      email: "registered@example.com",
+      accessToken: "access-token",
+      refreshToken: "refresh-token",
+      session: "session-token",
+    });
+  });
+
   it("returns capability health and rejects malformed claims", async () => {
     const store = createStore();
     sync(store);
@@ -74,7 +115,7 @@ describe("account-factory v1 routes", () => {
     expect(await health.json()).toEqual({
       enabled: true,
       schemaVersion: 1,
-      capabilities: ["claim", "claimRecovery", "candidateSelection", "submissionCommit", "poll", "progress", "syncState", "complete", "evidence", "fail", "promote"],
+      capabilities: ["claim", "claimRecovery", "candidateSelection", "submissionCommit", "poll", "progress", "syncState", "complete", "evidence", "fail", "promote", "credentialSync"],
       inventory: { total: 1, available: 1, mailDashboardAvailable: 1 },
     });
     expect(invalid.status).toBe(400);
