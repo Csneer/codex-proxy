@@ -321,6 +321,36 @@ describe("account-factory v1 routes", () => {
     expect(pollCalls).toBe(1);
   });
 
+  it("passes the millisecond freshness watermark through for a received code", async () => {
+    const store = createStore();
+    const account = sync(store);
+    const claim = store.claimAccount({ consumerId: "consumer", taskId: "task-received" })!;
+    const after = "2026-08-09T07:00:02.001Z";
+    let pollInput: { email: string; after: string } | undefined;
+    const app = createApp(store, {
+      pollVerificationCode: async (email, actualAfter) => {
+        pollInput = { email, after: actualAfter };
+        return {
+          status: "received",
+          code: "123456",
+          receivedAt: "2026-08-09T07:00:00.000Z",
+        };
+      },
+    });
+
+    const response = await app.request(
+      `/integration/account-factory/v1/accounts/${account.id}/verification-code?after=${encodeURIComponent(after)}&taskId=task-received&leaseId=${encodeURIComponent(claim.lease.id)}`,
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      status: "received",
+      code: "123456",
+      receivedAt: "2026-08-09T07:00:00.000Z",
+    });
+    expect(pollInput).toEqual({ email: "mailbox@example.com", after });
+  });
+
   it("returns lease and sync DTOs without account credentials or mail body data", async () => {
     const store = createStore();
     const account = sync(store);

@@ -95,10 +95,26 @@ describe("MailDashboardClient", () => {
     );
   });
 
+  it("accepts an IMAP timestamp up to two seconds behind the watermark", async () => {
+    const request = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({
+        updates: [{ email: "user@example.com", code: "123456", receivedAt: "2026-08-09T07:00:00.000Z" }],
+      }))
+      .mockResolvedValueOnce(jsonResponse({
+        updates: [{ email: "user@example.com", code: "123456", receivedAt: "2026-08-09T07:00:00.000Z" }],
+      }));
+    const client = createMailDashboardClient("http://127.0.0.1:4173", request);
+
+    await expect(client.pollVerificationCode("user@example.com", "2026-08-09T07:00:02.000Z"))
+      .resolves.toEqual({ status: "received", code: "123456", receivedAt: "2026-08-09T07:00:00.000Z" });
+    await expect(client.pollVerificationCode("user@example.com", "2026-08-09T07:00:02.001Z"))
+      .resolves.toEqual({ status: "pending" });
+  });
+
   it("treats stale, malformed, or missing verification updates as pending", async () => {
     const request = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(jsonResponse({
-        updates: [{ email: "user@example.com", code: "123456", receivedAt: "2026-08-09T06:59:59.000Z" }],
+        updates: [{ email: "user@example.com", code: "123456", receivedAt: "2026-08-09T06:59:56.000Z" }],
       }))
       .mockResolvedValueOnce(jsonResponse({
         updates: [{ email: "user@example.com", code: "", receivedAt: "2026-08-09T07:01:00.000Z" }],

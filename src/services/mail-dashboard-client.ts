@@ -25,6 +25,12 @@ export class MailDashboardError extends Error {
 type FetchLike = typeof fetch;
 
 export const MAIL_DASHBOARD_REQUEST_TIMEOUT_MS = 30_000;
+// IMAP internalDate values have one-second precision.  The mail service can
+// therefore report a message timestamp just before the millisecond-precision
+// `after` watermark captured immediately before the OTP request.  Keep this
+// tolerance limited to a couple of seconds so an actually older challenge is
+// still rejected.
+export const MAIL_RECEIVED_AT_SKEW_MS = 2_000;
 
 function baseUrl(value: string): string {
   return value.endsWith("/") ? value.slice(0, -1) : value;
@@ -41,7 +47,9 @@ function text(value: unknown): string | null {
 function isAfterOrEqual(receivedAt: string, after: string): boolean {
   const receivedAtMs = Date.parse(receivedAt);
   const afterMs = Date.parse(after);
-  return Number.isFinite(receivedAtMs) && Number.isFinite(afterMs) && receivedAtMs >= afterMs;
+  return Number.isFinite(receivedAtMs)
+    && Number.isFinite(afterMs)
+    && receivedAtMs + MAIL_RECEIVED_AT_SKEW_MS >= afterMs;
 }
 
 export function createMailDashboardClient(
