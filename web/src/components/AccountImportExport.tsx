@@ -12,13 +12,18 @@ interface ImportResult {
 
 interface AccountImportExportProps {
   onExport: (selectedIds?: string[], format?: AccountExportFormat) => Promise<void>;
-  onImport: (file: File) => Promise<ImportResult>;
+  onImport: (file: File | string) => Promise<ImportResult>;
   selectedIds: Set<string>;
 }
 
 export function AccountImportExport({ onExport, onImport, selectedIds }: AccountImportExportProps) {
   const t = useT();
   const fileRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const textTriggerRef = useRef<HTMLButtonElement>(null);
+  const importLock = useRef(false);
+  const [text, setText] = useState("");
+  const [textResult, setTextResult] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const [exportFormat, setExportFormat] = useState<AccountExportFormat>("full");
@@ -34,8 +39,9 @@ export function AccountImportExport({ onExport, onImport, selectedIds }: Account
 
   const handleFileChange = useCallback(async () => {
     const files = fileRef.current?.files;
-    if (!files || files.length === 0) return;
+    if (!files || files.length === 0 || importLock.current) return;
 
+    importLock.current = true;
     setImporting(true);
     setResult(null);
     try {
@@ -60,10 +66,35 @@ export function AccountImportExport({ onExport, onImport, selectedIds }: Account
     } catch {
       setResult(t("accountImportError"));
     } finally {
+      importLock.current = false;
       setImporting(false);
       if (fileRef.current) fileRef.current.value = "";
     }
   }, [onImport, t]);
+
+  const handleTextImport = async () => {
+    if (!text.trim() || importLock.current) return;
+    importLock.current = true;
+    setImporting(true);
+    setTextResult(null);
+    try {
+      const res = await onImport(text);
+      let message = res.success
+        ? t("accountImportResult")
+          .replace("{added}", String(res.added))
+          .replace("{updated}", String(res.updated))
+          .replace("{failed}", String(res.failed))
+        : t("accountImportError");
+      if (res.errors.length) message += ` — ${res.errors.join("; ")}`;
+      setTextResult(message);
+      if (res.success && res.failed === 0 && res.errors.length === 0) setText("");
+    } catch {
+      setTextResult(t("accountImportError"));
+    } finally {
+      importLock.current = false;
+      setImporting(false);
+    }
+  };
 
   const triggerFileSelect = useCallback(() => {
     fileRef.current?.click();
@@ -112,6 +143,50 @@ export function AccountImportExport({ onExport, onImport, selectedIds }: Account
           <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12M12 16.5V3" />
         </svg>
       </button>
+      <button
+        ref={textTriggerRef}
+        type="button"
+        onClick={() => { setTextResult(null); dialogRef.current?.showModal(); }}
+        disabled={importing}
+        class="px-2 py-1.5 text-control text-primary rounded-md hover:bg-primary/10 disabled:opacity-40 whitespace-nowrap"
+      >
+        {t("accountImportText")}
+      </button>
+      <dialog
+        ref={dialogRef}
+        aria-label={t("accountImportText")}
+        onCancel={(event) => { if (importLock.current) event.preventDefault(); }}
+        onClose={() => { setText(""); setTextResult(null); textTriggerRef.current?.focus(); }}
+        class="m-auto w-[calc(100%-2rem)] max-w-2xl max-h-[90dvh] overflow-y-auto rounded-xl border border-[rgb(var(--border-soft))] bg-[rgb(var(--bg-surface))] text-[rgb(var(--text-main-rgb))] p-5 shadow-xl backdrop:bg-black/50"
+      >
+        <form onSubmit={(event) => { event.preventDefault(); void handleTextImport(); }} class="space-y-4">
+          <h2 class="text-base font-semibold">{t("accountImportText")}</h2>
+          <p class="text-[13px] text-slate-500 dark:text-text-dim">{t("accountImportTextHint")}</p>
+          <label class="block text-control">
+            <span class="block mb-2">{t("accountImportTextLabel")}</span>
+            <textarea
+              autoFocus
+              value={text}
+              onInput={(event) => setText(event.currentTarget.value)}
+              rows={12}
+              disabled={importing}
+              autoComplete="off"
+              spellcheck={false}
+              placeholder={t("accountImportTextPlaceholder")}
+              class="block w-full min-h-48 max-h-[55dvh] resize-y overflow-auto whitespace-pre-wrap break-all inset-surface rounded-lg p-3 font-mono text-[13px] focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-50"
+            />
+          </label>
+          {textResult && <p role="status" class="max-h-40 overflow-auto whitespace-pre-wrap break-all text-[13px]">{textResult}</p>}
+          <div class="flex justify-end gap-2">
+            <button type="button" disabled={importing} onClick={() => dialogRef.current?.close()} class="px-3 py-2 text-control rounded-lg border border-[rgb(var(--border-soft))] disabled:opacity-40">
+              {t("cancelBtn")}
+            </button>
+            <button type="submit" disabled={importing || !text.trim()} class="px-3 py-2 text-control rounded-lg bg-primary-action text-white disabled:opacity-40">
+              {importing ? t("accountImporting") : t("importBtn")}
+            </button>
+          </div>
+        </form>
+      </dialog>
       <button
         onClick={handleDownloadTemplate}
         title={t("downloadTemplate")}

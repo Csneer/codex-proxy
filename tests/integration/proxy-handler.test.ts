@@ -522,7 +522,7 @@ describe("proxy-handler integration", () => {
         used_percent: 100,
         limit_reached: true,
       }),
-    }));
+    }), { partial: true });
     expect(accountPool.syncRateLimitWindow).toHaveBeenCalledWith("e1", 2_000_000_300, 3_600);
     expect(accountPool.applyRateLimit429).toHaveBeenCalledWith("e1", { resetsAtSec: 2_000_000_300 });
     expect(accountPool.applyRateLimit429).toHaveBeenCalledWith("e1", {

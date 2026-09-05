@@ -7,6 +7,7 @@ import type { CodexApi } from "../../proxy/codex-api.js";
 import { recordStreamCloseEvent } from "../../logs/stream-close-event.js";
 import type { UsageInfo } from "../../translation/codex-event-extractor.js";
 import { releaseAccount } from "./account-acquisition.js";
+import type { ReleaseGuard } from "./account-acquisition.js";
 import type { FormatAdapter, ProxyRequest, UsageHint } from "./proxy-handler-types.js";
 import { annotateImageGenOutcome } from "./proxy-handler-utils.js";
 import { streamResponse } from "./response-processor.js";
@@ -28,7 +29,7 @@ export interface HandleStreamingOptions {
   response: Response;
   entryId: string;
   abortController: AbortController;
-  released: Set<string>;
+  released: ReleaseGuard;
   requestId: string;
   affinityMap: SessionAffinityMap;
   conversationId: string;

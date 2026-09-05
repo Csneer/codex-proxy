@@ -90,7 +90,7 @@ export class ModelFetcher {
             console.log(`[ModelFetcher] Plan "${pa.planType}": empty model list — keeping existing`);
           }
         } finally {
-          this.pool.release(pa.entryId);
+          this.pool.release(pa.entryId, undefined, pa.leaseId);
         }
       }),
     );

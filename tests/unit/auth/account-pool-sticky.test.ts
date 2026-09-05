@@ -153,7 +153,7 @@ class MemoryQuotaBatchStore implements QuotaBatchStateStore {
   clear(): void { this.state = null; }
 }
 
-function quota(usedPercent: number, options?: { secondary?: number; exhausted?: boolean }): CodexQuota {
+function quota(usedPercent: number, options?: { secondary?: number; exhausted?: boolean; windowSeconds?: number }): CodexQuota {
   const nowSec = Math.floor(Date.now() / 1000);
   return {
     plan_type: "plus",
@@ -161,8 +161,8 @@ function quota(usedPercent: number, options?: { secondary?: number; exhausted?: 
       allowed: options?.exhausted !== true,
       limit_reached: options?.exhausted === true,
       used_percent: usedPercent,
-      reset_at: nowSec + 18_000,
-      limit_window_seconds: 18_000,
+      reset_at: nowSec + (options?.windowSeconds ?? 18_000),
+      limit_window_seconds: options?.windowSeconds ?? 18_000,
     },
     secondary_rate_limit: options?.secondary === undefined ? null : {
       limit_reached: false,
@@ -191,48 +191,46 @@ describe("account-pool quota_batch strategy", () => {
     });
   }
 
-  it("keeps an account until cached weekly usage crosses the configured delta", () => {
+  it("keeps an account until its shortest actual window crosses the absolute bucket", () => {
+    setConfigForTesting(createMockConfig({
+      auth: { rotation_strategy: "quota_batch", quota_batch_percent: 10 },
+    }));
     const pool = createPool();
     const idA = pool.addAccount(createValidJwt({ accountId: "qb-a", planType: "plus" }));
     const idB = pool.addAccount(createValidJwt({ accountId: "qb-b", planType: "plus" }));
-    pool.updateCachedQuota(idA, quota(90, { secondary: 12 }));
+    pool.updateCachedQuota(idA, quota(37, { secondary: 12 }));
     pool.updateCachedQuota(idB, quota(0, { secondary: 5 }));
 
     const first = pool.acquire()!;
     pool.release(first.entryId);
     expect(first.entryId).toBe(idA);
-    pool.updateCachedQuota(idA, quota(99, { secondary: 41 }));
+    pool.updateCachedQuota(idA, quota(39, { secondary: 41 }));
     const below = pool.acquire()!;
     pool.release(below.entryId);
     expect(below.entryId).toBe(idA);
-    pool.updateCachedQuota(idA, quota(99, { secondary: 42 }));
+    pool.updateCachedQuota(idA, quota(40, { secondary: 42 }));
     const switched = pool.acquire()!;
     pool.release(switched.entryId);
     expect(switched.entryId).toBe(idB);
   });
 
-  it("uses 100-request fallback batches when cached quota does not move", () => {
+  it("does not rotate merely because request count grows when quota does not move", () => {
     setConfigForTesting(createMockConfig({
       auth: { rotation_strategy: "quota_batch", quota_batch_percent: 10 },
     }));
     const pool = createPool();
     const idA = pool.addAccount(createValidJwt({ accountId: "qb-even-a", planType: "plus" }));
     const idB = pool.addAccount(createValidJwt({ accountId: "qb-even-b", planType: "plus" }));
-    const idC = pool.addAccount(createValidJwt({ accountId: "qb-even-c", planType: "plus" }));
     pool.updateCachedQuota(idA, quota(10));
     pool.updateCachedQuota(idB, quota(10));
-    pool.updateCachedQuota(idC, quota(10));
 
-    const selected: string[] = [];
-    for (let request = 0; request < 202; request++) {
-      const acquired = pool.acquire()!;
-      selected.push(acquired.entryId);
-      pool.release(acquired.entryId);
-    }
-
-    expect(selected.slice(0, 100)).toEqual(Array(100).fill(idA));
-    expect(selected.slice(100, 200)).toEqual(Array(100).fill(idB));
-    expect(selected.slice(200)).toEqual([idC, idC]);
+    const first = pool.acquire()!;
+    pool.release(first.entryId);
+    pool.getEntry(idA)!.usage.request_count = 100;
+    const stillCurrent = pool.acquire()!;
+    pool.release(stillCurrent.entryId);
+    expect(first.entryId).toBe(idA);
+    expect(stillCurrent.entryId).toBe(idA);
   });
 
   it("overrides stale conversation affinity", () => {
@@ -304,5 +302,57 @@ describe("account-pool quota_batch strategy", () => {
     const next = pool.acquire()!;
     expect(next.entryId).toBe(idB);
     pool.release(next.entryId);
+  });
+
+  it("approximately balances consumed quota in batches across mixed real windows and request costs", () => {
+    setConfigForTesting(createMockConfig({ auth: { rotation_strategy: "quota_batch", quota_batch_percent: 10 } }));
+    const pool = createPool();
+    const windows = [18_000, 604_800, 2_592_000];
+    const initial = [7, 2, 3];
+    const costs = [1, 2, 3];
+    const ids = windows.map((_, i) => pool.addAccount(createValidJwt({ accountId: "mixed-window-" + i })));
+    const used = [...initial];
+    const requests = [0, 0, 0];
+    ids.forEach((id, i) => pool.updateCachedQuota(id, quota(used[i], { windowSeconds: windows[i] })));
+    for (let round = 0; round < 6; round++) {
+      ids.forEach((id, i) => {
+        const boundary = (Math.floor(used[i] / 10) + 1) * 10;
+        while (used[i] < boundary) {
+          const acquired = pool.acquire()!;
+          expect(acquired.entryId).toBe(id);
+          used[i] += costs[i];
+          requests[i]++;
+          pool.updateCachedQuota(id, quota(used[i], { windowSeconds: windows[i] }));
+          pool.release(id);
+        }
+      });
+    }
+    const consumed = used.map((value, i) => value - initial[i]);
+    expect(Math.max(...consumed) - Math.min(...consumed)).toBeLessThanOrEqual(10);
+    expect(requests[0]).toBeGreaterThan(requests[1]);
+    expect(requests[1]).toBeGreaterThan(requests[2]);
+  });
+
+  it("hands off new requests at a boundary while old requests retain their slots", async () => {
+    setConfigForTesting(createMockConfig({
+      auth: { rotation_strategy: "quota_batch", quota_batch_percent: 10, max_concurrent_per_account: 3 },
+    }));
+    const pool = createPool();
+    const a = pool.addAccount(createValidJwt({ accountId: "held-a" }));
+    const b = pool.addAccount(createValidJwt({ accountId: "held-b" }));
+    pool.updateCachedQuota(a, quota(37));
+    pool.updateCachedQuota(b, quota(7));
+    const held = await Promise.all([Promise.resolve().then(() => pool.acquire()), Promise.resolve().then(() => pool.acquire())]);
+    expect(held.map((item) => item!.entryId)).toEqual([a, a]);
+    pool.updateCachedQuota(a, quota(40));
+    expect(pool.acquire()!.entryId).toBe(b);
+    expect(pool.getCapacitySummary().used_slots).toBe(3);
+    pool.releaseWithoutCounting(a);
+    pool.updateCachedQuota(a, quota(46));
+    expect(pool.acquire()!.entryId).toBe(b);
+    pool.releaseWithoutCounting(a);
+    pool.releaseWithoutCounting(b);
+    pool.releaseWithoutCounting(b);
+    expect(pool.getCapacitySummary().used_slots).toBe(0);
   });
 });

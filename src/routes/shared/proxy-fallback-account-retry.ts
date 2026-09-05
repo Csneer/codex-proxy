@@ -3,6 +3,7 @@ import type { CodexApi } from "../../proxy/codex-api.js";
 import type { CookieJar } from "../../proxy/cookie-jar.js";
 import type { ProxyPool } from "../../proxy/proxy-pool.js";
 import { acquireAccount } from "./account-acquisition.js";
+import type { ReleaseGuard } from "./account-acquisition.js";
 import { buildProxyFallbackRetryPlan } from "./proxy-fallback-retry-plan.js";
 import type { ErrorAction } from "./proxy-error-handler.js";
 import { buildCodexApi } from "./proxy-handler-utils.js";
@@ -32,6 +33,7 @@ export interface PrepareProxyFallbackAccountRetryOptions {
   cookieJar?: CookieJar;
   proxyPool?: ProxyPool;
   log?: (message: string) => void;
+  released?: ReleaseGuard;
 }
 
 export function prepareProxyFallbackAccountRetry(
@@ -46,6 +48,7 @@ export function prepareProxyFallbackAccountRetry(
     cookieJar,
     proxyPool,
     log = console.log,
+    released,
   } = options;
   const excludeEntryIds = [...triedEntryIds];
 
@@ -61,7 +64,7 @@ export function prepareProxyFallbackAccountRetry(
     return fallbackPlan;
   }
 
-  const retry = acquireAccount(accountPool, model, excludeEntryIds, tag);
+  const retry = acquireAccount(accountPool, model, excludeEntryIds, tag, undefined, released);
   if (!retry) {
     return {
       action: "respond",

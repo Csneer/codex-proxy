@@ -25,8 +25,9 @@ export interface AccountCapacitySummary {
 }
 
 export class AccountLifecycle {
-  /** Per-account active slot timestamps. Each entry = one in-flight request. */
-  private acquireLocks: Map<string, number[]> = new Map();
+  /** Per-account active leases. Each entry = one in-flight request. */
+  private acquireLocks: Map<string, Array<{ leaseId: string; acquiredAt: number }>> = new Map();
+  private nextLeaseId = 0;
   private strategy: RotationStrategy;
   private strategyName: RotationStrategyName;
   private quotaBatchSelector: QuotaBatchSelector;
@@ -48,27 +49,36 @@ export class AccountLifecycle {
     return this.acquireLocks.get(entryId)?.length ?? 0;
   }
 
-  private pushSlot(entryId: string): void {
+  private pushSlot(entryId: string): string {
+    const leaseId = `${entryId}:${Date.now().toString(36)}:${(++this.nextLeaseId).toString(36)}`;
     const slots = this.acquireLocks.get(entryId);
     if (slots) {
-      slots.push(Date.now());
+      slots.push({ leaseId, acquiredAt: Date.now() });
     } else {
-      this.acquireLocks.set(entryId, [Date.now()]);
+      this.acquireLocks.set(entryId, [{ leaseId, acquiredAt: Date.now() }]);
     }
+    return leaseId;
   }
 
-  private popSlot(entryId: string): void {
+  private popSlot(entryId: string, leaseId?: string): boolean {
     const slots = this.acquireLocks.get(entryId);
-    if (!slots) return;
-    slots.shift();
+    if (!slots) return false;
+    if (leaseId === undefined) {
+      slots.shift();
+    } else {
+      const index = slots.findIndex((slot) => slot.leaseId === leaseId);
+      if (index < 0) return false;
+      slots.splice(index, 1);
+    }
     if (slots.length === 0) this.acquireLocks.delete(entryId);
+    return true;
   }
 
   private cleanupStaleSlots(nowMs: number): void {
     // Auto-release stale slots (slots are chronological — if oldest is fresh, all are)
     for (const [id, slots] of this.acquireLocks) {
-      if (nowMs - slots[0] <= ACQUIRE_LOCK_TTL_MS) continue;
-      const fresh = slots.filter((ts) => nowMs - ts <= ACQUIRE_LOCK_TTL_MS);
+      if (nowMs - slots[0].acquiredAt <= ACQUIRE_LOCK_TTL_MS) continue;
+      const fresh = slots.filter((slot) => nowMs - slot.acquiredAt <= ACQUIRE_LOCK_TTL_MS);
       const staleCount = slots.length - fresh.length;
       console.warn(
         `[AccountPool] Auto-releasing ${staleCount} stale slot(s) for ${id}`,
@@ -150,6 +160,11 @@ export class AccountLifecycle {
         candidates,
         config.auth.quota_batch_percent,
         entries.map((entry) => entry.id),
+        {
+          model: options?.model,
+          nowMs,
+          maxQuotaAgeMs: Math.max(60_000, (config.quota?.refresh_interval_minutes ?? 5) * 120_000),
+        },
       );
     } else if (options?.preferredEntryId) {
       const preferred = candidates.find((a) => a.id === options.preferredEntryId);
@@ -158,10 +173,11 @@ export class AccountLifecycle {
       selected = this.strategy.select(candidates, this.rotationState);
     }
     const prevSlots = this.acquireLocks.get(selected.id);
-    const prevSlotMs = prevSlots?.[prevSlots.length - 1] ?? null;
-    this.pushSlot(selected.id);
+    const prevSlotMs = prevSlots?.[prevSlots.length - 1]?.acquiredAt ?? null;
+    const leaseId = this.pushSlot(selected.id);
     return {
       entryId: selected.id,
+      leaseId,
       token: selected.token,
       accountId: selected.accountId,
       prevSlotMs,
@@ -179,13 +195,17 @@ export class AccountLifecycle {
       image_request_attempted?: boolean;
       image_request_succeeded?: boolean;
     },
+    leaseId?: string,
   ): void {
-    this.popSlot(entryId);
+    // Slot capacity is best-effort (TTL and status cleanup may already have
+    // removed it), while usage accounting must preserve the historical
+    // release semantics for the request that actually completed.
+    this.popSlot(entryId, leaseId);
     this.registry.recordUsage(entryId, usage);
   }
 
-  releaseWithoutCounting(entryId: string): void {
-    this.popSlot(entryId);
+  releaseWithoutCounting(entryId: string, leaseId?: string): void {
+    this.popSlot(entryId, leaseId);
   }
 
   /** Clear all slots for an entry (called by facade on status mutations). */
@@ -209,6 +229,7 @@ export class AccountLifecycle {
     entryId: string;
     token: string;
     accountId: string | null;
+    leaseId: string;
   }> {
     const now = new Date();
     const config = getConfig();
@@ -239,18 +260,19 @@ export class AccountLifecycle {
       group.push(a);
     }
 
-    const result: Array<{ planType: string; entryId: string; token: string; accountId: string | null }> = [];
+    const result: Array<{ planType: string; entryId: string; token: string; accountId: string | null; leaseId: string }> = [];
     for (const [plan, group] of byPlan) {
       // Model catalog refreshes must not advance the request-routing batch.
       const selected = this.strategyName === "quota_batch"
         ? getRotationStrategy("sticky").select(group, this.rotationState)
         : this.strategy.select(group, this.rotationState);
-      this.pushSlot(selected.id);
+      const leaseId = this.pushSlot(selected.id);
       result.push({
         planType: plan,
         entryId: selected.id,
         token: selected.token,
         accountId: selected.accountId,
+        leaseId,
       });
     }
 

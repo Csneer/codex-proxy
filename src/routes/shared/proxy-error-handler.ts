@@ -69,6 +69,7 @@ export function handleCodexApiError(
   modelRetried: boolean,
   cookieJar?: CookieJar,
   earlyServerErrorRetried = false,
+  leaseId?: string,
 ): ErrorAction {
   const email = pool.getEntry(entryId)?.email ?? "?";
 
@@ -114,9 +115,9 @@ export function handleCodexApiError(
     const retryAfterSec = extractRetryAfterSec(err.body);
     const limitId = getRateLimitIdForModel(model);
     if (limitId) {
-      pool.applyAdditionalRateLimit429(entryId, limitId, { retryAfterSec, countRequest: true });
+      pool.applyAdditionalRateLimit429(entryId, limitId, { retryAfterSec, countRequest: true, leaseId });
     } else {
-      pool.applyRateLimit429(entryId, { retryAfterSec, countRequest: true });
+      pool.applyRateLimit429(entryId, { retryAfterSec, countRequest: true, leaseId });
     }
     const backoffDisplay = retryAfterSec != null ? Math.round(retryAfterSec) : null;
     console.warn(

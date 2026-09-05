@@ -4,9 +4,9 @@
 
 本文替代此前仅描述“调用记录 MVP”的旧交接内容。调用记录仍是现有功能，但当前跨项目交接重点是：
 
-- `/home/devops/projects/hand-gpt/mail-code-dashboard`
-- `/home/devops/projects/hand-gpt/free-account-tool`
-- `/home/devops/projects/codex-proxy-src`
+- `/home/pokison/projects/hand-gpt/mail-code-dashboard`
+- `/home/pokison/projects/hand-gpt/free-account-tool`
+- `/home/pokison/projects/codex-proxy-src`
 
 ## 1. 当前架构
 
@@ -151,7 +151,7 @@ journalctl --user -u account-factory-mailbox-sync.service -n 20 --no-pager
 活动服务数据目录：
 
 ```text
-/home/devops/projects/codex-proxy-src/data-source
+/home/pokison/projects/codex-proxy-src/data-source
 ```
 
 `data-source/local.yaml` 已启用：

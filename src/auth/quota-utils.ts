@@ -3,7 +3,7 @@
  * Converts CodexUsageResponse (raw backend) → CodexQuota (normalized).
  */
 
-import type { CodexQuota, CodexQuotaCredits } from "./types.js";
+import type { CodexQuota, CodexQuotaCredits, CodexQuotaWindow } from "./types.js";
 import type { CodexUsageCredits, CodexUsageRateLimit, CodexUsageResponse } from "../proxy/codex-api.js";
 
 function normalizeCredits(raw: CodexUsageCredits | null | undefined): CodexQuotaCredits | null {
@@ -118,4 +118,69 @@ export function getRateLimitIdForModel(model?: string | null): string | null {
     return "codex_bengalfox";
   }
   return null;
+}
+
+/** Only windows whose percentage was actually observed can receive a fresh timestamp. */
+export function observedQuotaMeters(quota: CodexQuota | null): Array<[string, CodexQuotaWindow]> {
+  if (!quota) return [];
+  const windows: Array<[string, CodexQuotaWindow | null | undefined]> = [
+    ["primary", quota.rate_limit],
+    ["secondary", quota.secondary_rate_limit],
+    ["code_review", quota.code_review_rate_limit],
+  ];
+  for (const [id, window] of Object.entries(quota.rate_limits_by_limit_id ?? {})) {
+    windows.push([id + ":primary", window], [id + ":secondary", window.secondary_rate_limit]);
+  }
+  return windows.filter((item): item is [string, CodexQuotaWindow] =>
+    typeof item[1]?.used_percent === "number" && Number.isFinite(item[1].used_percent));
+}
+
+/** Response headers/events are partial observations, never a full /usage replacement. */
+export function mergePartialQuota(existing: CodexQuota | null, incoming: CodexQuota): CodexQuota {
+  if (!existing) return incoming;
+  const nowSec = Date.now() / 1000;
+  type LockedWindow = CodexQuotaWindow & { limit_reached: boolean };
+  const mergeWindow = <T extends LockedWindow>(
+    previous: T | null, next: T | null,
+  ): T | null => {
+    if (!next || next.used_percent == null) return previous ?? next;
+    if (!previous) return next;
+    // A late successful sibling response is not proof that a learned 429 lock
+    // was lifted. An authoritative snapshot or the reset time can clear it.
+    if (previous.limit_reached && previous.reset_at != null && previous.reset_at > nowSec &&
+        (!next.limit_reached || (next.reset_at ?? 0) < previous.reset_at)) return previous;
+    return {
+      ...next,
+      reset_at: next.reset_at ?? previous.reset_at,
+      limit_window_seconds: next.limit_window_seconds ?? previous.limit_window_seconds,
+    };
+  };
+  const existingBuckets = existing.rate_limits_by_limit_id ?? {};
+  const incomingBuckets = incoming.rate_limits_by_limit_id;
+  const mergedBuckets = incomingBuckets
+    ? Object.fromEntries(Object.entries(incomingBuckets).map(([limitId, next]) => {
+      const previous = existingBuckets[limitId];
+      if (!previous) return [limitId, next];
+      const mergedPrimary = mergeWindow(previous, next)!;
+      return [limitId, {
+        ...previous,
+        ...next,
+        ...mergedPrimary,
+        secondary_rate_limit: mergeWindow(
+          previous.secondary_rate_limit ?? null,
+          next.secondary_rate_limit ?? null,
+        ),
+      }];
+    }))
+    : existing.rate_limits_by_limit_id;
+  return {
+    ...existing,
+    ...incoming,
+    rate_limit: mergeWindow(existing.rate_limit, incoming.rate_limit)!,
+    secondary_rate_limit: mergeWindow(existing.secondary_rate_limit, incoming.secondary_rate_limit),
+    code_review_rate_limit: mergeWindow(existing.code_review_rate_limit, incoming.code_review_rate_limit),
+    rate_limits_by_limit_id: incomingBuckets
+      ? { ...existingBuckets, ...mergedBuckets }
+      : existing.rate_limits_by_limit_id,
+  };
 }

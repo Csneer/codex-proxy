@@ -60,7 +60,7 @@ describe("applyParsedRateLimits", () => {
         limit_reached: false,
       },
       code_review_rate_limit: null,
-    });
+    }, { partial: true });
     expect(syncRateLimitWindow).toHaveBeenCalledWith("entry-1", 1_700_000_000, 18_000);
     expect(applyRateLimit429).not.toHaveBeenCalled();
   });
@@ -117,7 +117,7 @@ describe("applyParsedRateLimits", () => {
 
     expect(updateCachedQuota).toHaveBeenCalledWith("missing-entry", expect.objectContaining({
       plan_type: "unknown",
-    }));
+    }), { partial: true });
   });
 
   it("parses response headers before applying rate-limit updates", () => {
@@ -144,7 +144,7 @@ describe("applyParsedRateLimits", () => {
         limit_window_seconds: 18_000,
         limit_reached: false,
       }),
-    }));
+    }), { partial: true });
     expect(syncRateLimitWindow).toHaveBeenCalledWith("entry-headers", 1_700_000_300, 18_000);
   });
 });

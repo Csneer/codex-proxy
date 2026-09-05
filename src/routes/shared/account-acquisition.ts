@@ -8,6 +8,8 @@ import type { AccountPool } from "../../auth/account-pool.js";
 import type { AcquiredAccount } from "../../auth/types.js";
 import type { UsageInfo } from "../../translation/codex-event-extractor.js";
 
+export type ReleaseGuard = Set<string> | Map<string, string | undefined>;
+
 /**
  * Acquire an account from the pool for the given model.
  * Returns null when no account is available.
@@ -18,8 +20,10 @@ export function acquireAccount(
   excludeIds?: string[],
   tag?: string,
   preferredEntryId?: string,
+  released?: ReleaseGuard,
 ): AcquiredAccount | null {
   const acquired = pool.acquire({ model, excludeIds, preferredEntryId });
+  if (acquired && released instanceof Map) released.set(acquired.entryId, acquired.leaseId);
   if (!acquired && tag) {
     console.warn(`[${tag}] No available account for model "${model}"`);
   }
@@ -29,18 +33,27 @@ export function acquireAccount(
 /**
  * Release an account back to the pool.
  *
- * When a `guard` Set is provided, the release is idempotent:
- * if the entryId has already been released (tracked in the set),
- * the call is silently skipped. This prevents the 7-release-point
- * problem in the old proxy handler.
+ * A request-scoped Map guard makes the release idempotent and selects the
+ * exact lease for this entry. A Set remains supported for legacy callers.
  */
 export function releaseAccount(
   pool: AccountPool,
   entryId: string,
   usage?: UsageInfo,
-  guard?: Set<string>,
+  guard?: ReleaseGuard,
 ): void {
   if (guard) {
+    if (guard instanceof Map) {
+      if (!guard.has(entryId)) return;
+      const leaseId = guard.get(entryId);
+      guard.delete(entryId);
+      if (leaseId === undefined) {
+        pool.release(entryId, usage);
+      } else {
+        pool.release(entryId, usage, leaseId);
+      }
+      return;
+    }
     if (guard.has(entryId)) return;
     guard.add(entryId);
   }

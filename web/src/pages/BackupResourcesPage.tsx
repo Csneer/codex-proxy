@@ -26,7 +26,7 @@ type SecretField =
   | "refreshToken";
 type AccountStatusFilter = "all" | BackupAccountStatus;
 type AccountLifecycleFilter = "all" | BackupAccountLifecycleStatus;
-type AccountCreatedSort = "newest" | "oldest";
+type AccountSort = "created-newest" | "created-oldest" | "updated-newest" | "updated-oldest";
 
 const inputClass = "w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-border-dark dark:bg-bg-dark dark:text-text-main";
 const buttonBase = "min-h-10 rounded-lg border px-3 py-2 text-xs font-medium transition";
@@ -582,7 +582,7 @@ export function BackupResourcesPage() {
   const [accountSearch, setAccountSearch] = useState("");
   const [accountStatusFilter, setAccountStatusFilter] = useState<AccountStatusFilter>("all");
   const [accountLifecycleFilter, setAccountLifecycleFilter] = useState<AccountLifecycleFilter>("all");
-  const [accountCreatedSort, setAccountCreatedSort] = useState<AccountCreatedSort>("newest");
+  const [accountSort, setAccountSort] = useState<AccountSort>("created-newest");
 
   const visibleAccounts = useMemo(() => {
     const query = accountSearch.trim().toLocaleLowerCase();
@@ -603,10 +603,13 @@ export function BackupResourcesPage() {
         ].some((value) => value.toLocaleLowerCase().includes(query));
       })
       .sort((left, right) => {
-        const comparison = new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime();
-        return accountCreatedSort === "oldest" ? comparison : -comparison;
+        const sortByUpdatedAt = accountSort === "updated-newest" || accountSort === "updated-oldest";
+        const comparison = new Date(sortByUpdatedAt ? left.updatedAt : left.createdAt).getTime()
+          - new Date(sortByUpdatedAt ? right.updatedAt : right.createdAt).getTime();
+        const oldestFirst = accountSort === "created-oldest" || accountSort === "updated-oldest";
+        return oldestFirst ? comparison : -comparison;
       });
-  }, [accountCreatedSort, accountLifecycleFilter, accountSearch, accountStatusFilter, resources.accounts, t]);
+  }, [accountLifecycleFilter, accountSearch, accountSort, accountStatusFilter, resources.accounts, t]);
 
   const notify = useCallback((text: string, error = false) => {
     setMessage({ text, error });
@@ -797,14 +800,16 @@ export function BackupResourcesPage() {
                     {lifecycleStatuses.map((status) => <option key={status} value={status}>{lifecycleLabel(status, t)}</option>)}
                   </select>
                 </Field>
-                <Field label={t("backupCreatedSort")}>
+                <Field label={t("backupAccountSort")}>
                   <select
                     class={inputClass}
-                    value={accountCreatedSort}
-                    onChange={(event) => setAccountCreatedSort((event.currentTarget as HTMLSelectElement).value as AccountCreatedSort)}
+                    value={accountSort}
+                    onChange={(event) => setAccountSort((event.currentTarget as HTMLSelectElement).value as AccountSort)}
                   >
-                    <option value="newest">{t("backupCreatedNewest")}</option>
-                    <option value="oldest">{t("backupCreatedOldest")}</option>
+                    <option value="created-newest">{t("backupCreatedNewest")}</option>
+                    <option value="created-oldest">{t("backupCreatedOldest")}</option>
+                    <option value="updated-newest">{t("backupUpdatedNewest")}</option>
+                    <option value="updated-oldest">{t("backupUpdatedOldest")}</option>
                   </select>
                 </Field>
                 <p class="pb-2 text-xs text-muted">{t("backupVisibleAccounts", { visible: visibleAccounts.length, total: resources.accounts.length })}</p>
@@ -829,6 +834,7 @@ export function BackupResourcesPage() {
                           <p class="break-all font-medium text-main">{account.email}</p>
                           <p class="mt-1 truncate text-muted" title={account.note}>{account.note || t("backupNoNote")}</p>
                           <p class="mt-1 text-[11px] text-slate-400">{t("backupCreatedAt")}: {formatDate(account.createdAt, lang)}</p>
+                          <p class="mt-1 text-[11px] text-slate-400">{t("backupUpdatedAt")}: {formatDate(account.updatedAt, lang)}</p>
                         </td>
                         <td class="px-3 py-3">
                           <AccountStatusBadge status={account.accountStatus} />
@@ -853,6 +859,7 @@ export function BackupResourcesPage() {
                     <AccountFactoryMetadata account={account} />
                     <p class="mt-3 line-clamp-2 text-xs text-slate-500 dark:text-text-dim">{account.note || t("backupNoNote")}</p>
                     <p class="mt-3 text-[11px] text-slate-400">{t("backupCreatedAt")}: {formatDate(account.createdAt, lang)}</p>
+                    <p class="mt-1 text-[11px] text-slate-400">{t("backupUpdatedAt")}: {formatDate(account.updatedAt, lang)}</p>
                     <div class="mt-3">{actionButtons(account)}</div>
                   </article>
                 ))}

@@ -84,11 +84,11 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
     promptCacheKey: sessionContext.promptCacheKey,
   });
 
-  const released = new Set<string>();
+  const released = new Map<string, string>();
   const verifiedExcludeIds: string[] = [];
 
   // Single acquire call — preferredEntryId is a hint, not a hard requirement
-  let acquired = acquireAccount(accountPool, req.codexRequest.model, undefined, fmt.tag, sessionContext.preferredEntryId ?? undefined);
+  let acquired = acquireAccount(accountPool, req.codexRequest.model, undefined, fmt.tag, sessionContext.preferredEntryId ?? undefined, released);
   if (!acquired) {
     return respondWithNoAccount({ c, req, fmt });
   }
@@ -127,7 +127,7 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
             return respondWithNoAccount({ c, req, fmt });
           }
 
-          acquired = acquireAccount(accountPool, req.codexRequest.model, verifiedExcludeIds, fmt.tag, sessionContext.preferredEntryId ?? undefined);
+          acquired = acquireAccount(accountPool, req.codexRequest.model, verifiedExcludeIds, fmt.tag, sessionContext.preferredEntryId ?? undefined, released);
           if (!acquired) {
             return respondWithNoAccount({ c, req, fmt });
           }
@@ -415,6 +415,7 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
             modelRetried,
             cookieJar,
             earlyServerErrorRetried,
+            released.get(entryId),
           );
 
           const errorRetryTransition = applyProxyErrorRetryTransition({

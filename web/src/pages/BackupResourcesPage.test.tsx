@@ -238,7 +238,7 @@ describe("BackupResourcesPage", () => {
     }
   });
 
-  it("filters, searches, and sorts accounts by entry time", () => {
+  it("filters, searches, and sorts accounts by entry or last-change time", () => {
     mocks.extraAccounts.push({
       ...mocks.account,
       id: "backup-2",
@@ -247,6 +247,7 @@ describe("BackupResourcesPage", () => {
       accountStatus: "free",
       lifecycleStatus: "available",
       createdAt: "2026-08-02T10:00:00.000Z",
+      updatedAt: "2026-08-01T09:00:00.000Z",
       promotion: null,
     });
     renderPage();
@@ -254,9 +255,17 @@ describe("BackupResourcesPage", () => {
     let rows = screen.getByRole("table").querySelectorAll("tbody tr");
     expect(rows[0]?.textContent).toContain("fresh@example.com");
 
-    fireEvent.change(screen.getByRole("combobox", { name: "Entry time sort" }), { target: { value: "oldest" } });
+    fireEvent.change(screen.getByRole("combobox", { name: "Account sort" }), { target: { value: "created-oldest" } });
     rows = screen.getByRole("table").querySelectorAll("tbody tr");
     expect(rows[0]?.textContent).toContain("spare@example.com");
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Account sort" }), { target: { value: "updated-newest" } });
+    rows = screen.getByRole("table").querySelectorAll("tbody tr");
+    expect(rows[0]?.textContent).toContain("spare@example.com");
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Account sort" }), { target: { value: "updated-oldest" } });
+    rows = screen.getByRole("table").querySelectorAll("tbody tr");
+    expect(rows[0]?.textContent).toContain("fresh@example.com");
 
     fireEvent.change(screen.getByRole("combobox", { name: "Lifecycle filter" }), { target: { value: "available" } });
     expect(screen.getByRole("table").textContent).toContain("fresh@example.com");
@@ -280,6 +289,7 @@ describe("BackupResourcesPage", () => {
     expect(screen.getAllByText("Revision").length).toBeGreaterThan(0);
     expect(screen.getAllByText("4").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Last mail sync").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Last changed:/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Aug 1, 2026/).length).toBeGreaterThan(0);
   });
 

@@ -3,7 +3,7 @@
 ## Source of truth
 
 - Status: Active
-- Last refreshed: 2026-09-04
+- Last refreshed: 2026-09-05
 - Primary product surfaces: authenticated Web dashboard, call observability dashboard, context timeline, call detail, account and proxy administration, backup-resource administration, settings, logs, usage, and errors.
 - Evidence reviewed:
   - `web/src/App.tsx`
@@ -221,6 +221,23 @@
 ## Open questions
 
 - None for the approved scope. New product or visual decisions must be recorded here before implementation diverges from this contract.
+
+## Account text import
+
+- Account management offers a visible “Paste text / 文本导入” action alongside file import. It opens a native modal dialog with a labelled, resizable, scrolling multiline credential input.
+- Text uses the existing authenticated account import path and format detection: account JSON, compatible export JSON, JSON lines, and token lines. Preserve the complete input without a frontend length limit; long credentials wrap within the input rather than expanding the dialog.
+- Empty input cannot submit; pending imports prevent repeated submissions and dismissal. Results remain visible inside the dialog, including partial failures. Keep input after errors for correction; clear it after complete success or dismissal, and restore focus to the trigger. Credential drafts are never stored in browser persistence.
+
+## Quota-batch account selection
+
+- Goal: use enabled, eligible accounts' actual quota windows in approximate batches, not equal requests and not indefinite account stickiness. This contract supersedes the secondary-first, relative-delta rotation in the 2026-07-21 quota-aware design.
+- Reuse the existing selection panel and integer `quota_batch_percent` setting (1–100, existing default 30). Label it as an absolute quota bucket size; a 10-point setting means 0–10%, 10–20%, etc. An account selected at 37% rotates on an observed 40% or higher, not at 47%. The last partial bucket ends at 100%.
+- Observe the actual published quota window for each account; do not hardcode window durations or infer them from plan names. When multiple applicable windows are published, use the shortest valid window as the account's batching meter; for a model-specific bucket, prefer that bucket for the matching request. A meter crossing its next bucket triggers one handoff. Unrelated model/review quotas must not drive rotation.
+- Keep consecutive requests on the current account within a bucket. Advance to the next eligible account in stable registry order on a boundary or loss of eligibility, preserving existing model, tier, exclusion, cooldown, quota, and concurrency filters. In-flight requests finish on their original accounts; cached/rounded usage can overshoot a boundary.
+- Reset/reduced usage, changed official window duration, new/missing meters, and setting changes rebuild the affected boundary without using request counts. No fixed 100-request fallback.
+- If no usable recent quota signal exists, temporarily rotate through eligible accounts so missing telemetry cannot cause indefinite stickiness. Recent means within twice the configured quota-refresh interval (minimum one minute). Return to quota batching automatically when data resumes. No extra upstream probe is sent by account selection.
+- Store only account IDs and window/bucket metadata in the checkpoint, atomically and owner-readable. Migrate v1/v2 checkpoints without jumping back to the first account. Rotation is process-local; a shared checkpoint is restart recovery, not distributed coordination.
+- Web copy must explain dynamic windows, one absolute-boundary example, approximate handoff, and the missing/stale-data fallback. Verify mixed window durations, partial updates, resets, overshoot, held concurrent slots, old checkpoint migration, and real file-backed restore.
 
 ## Backup resources feature contract
 

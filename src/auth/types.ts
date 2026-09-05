@@ -77,6 +77,8 @@ export interface AccountEntry {
   cachedQuota: CodexQuota | null;
   /** ISO timestamp of when cachedQuota was last updated. */
   quotaFetchedAt: string | null;
+  /** Per-window observation times; partial headers must not refresh other meters. */
+  quotaFetchedAtByMeter?: Record<string, string>;
   quotaVerifyRequired?: boolean;
 }
 
@@ -157,6 +159,9 @@ export interface CodexQuota {
 /** Returned by acquire() */
 export interface AcquiredAccount {
   entryId: string;
+  /** Unique lease for this specific in-flight slot. */
+  /** Present on real acquisitions; optional for legacy test/adaptor values. */
+  leaseId?: string;
   token: string;
   accountId: string | null;
   /** Timestamp of the previous slot on this account (null = first request). */

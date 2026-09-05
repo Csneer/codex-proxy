@@ -40,7 +40,7 @@ function createMockAccountPool(authenticated: boolean): AccountPool {
     isAuthenticated: vi.fn(() => authenticated),
     getDistinctPlanAccounts: vi.fn(() =>
       authenticated
-        ? [{ planType: "team", entryId: "e1", token: "t1", accountId: "a1" }]
+        ? [{ planType: "team", entryId: "e1", token: "t1", accountId: "a1", leaseId: "lease-1" }]
         : [],
     ),
     release: vi.fn(),
@@ -83,7 +83,7 @@ describe("model-fetcher retry logic", () => {
       isAuthenticated: vi.fn(() => authenticated),
       getDistinctPlanAccounts: vi.fn(() =>
         authenticated
-          ? [{ planType: "free", entryId: "e1", token: "t1", accountId: "a1" }]
+          ? [{ planType: "free", entryId: "e1", token: "t1", accountId: "a1", leaseId: "lease-1" }]
           : [],
       ),
       release: vi.fn(),
@@ -129,6 +129,6 @@ describe("model-fetcher retry logic", () => {
     await vi.advanceTimersByTimeAsync(1_000);
 
     expect(hasFetchedModels()).toBe(true);
-    expect(pool.release).toHaveBeenCalledWith("e1");
+    expect(pool.release).toHaveBeenCalledWith("e1", undefined, "lease-1");
   });
 });

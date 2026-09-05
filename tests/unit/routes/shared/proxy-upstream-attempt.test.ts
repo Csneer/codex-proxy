@@ -145,7 +145,7 @@ describe("sendProxyUpstreamAttempt", () => {
 
     expect(pool.updateCachedQuota).toHaveBeenCalledWith("entry-rate", expect.objectContaining({
       rate_limit: expect.objectContaining({ used_percent: 100, limit_reached: true }),
-    }));
+    }), { partial: true });
     expect(pool.syncRateLimitWindow).toHaveBeenCalledWith("entry-rate", 2_000_000_300, 3_600);
     expect(pool.applyRateLimit429).toHaveBeenCalledWith("entry-rate", { resetsAtSec: 2_000_000_300 });
   });
@@ -182,7 +182,7 @@ describe("sendProxyUpstreamAttempt", () => {
 
     expect(pool.updateCachedQuota).toHaveBeenCalledWith("entry-ws", expect.objectContaining({
       rate_limit: expect.objectContaining({ used_percent: 42 }),
-    }));
+    }), { partial: true });
   });
 
   it("retries retryable upstream errors before recording successful egress once", async () => {

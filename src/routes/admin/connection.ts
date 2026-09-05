@@ -111,7 +111,7 @@ export function createConnectionRoutes(accountPool: AccountPool): Hono {
           });
           overallFailed = true;
         } finally {
-          accountPool.releaseWithoutCounting(acquired.entryId);
+          accountPool.releaseWithoutCounting(acquired.entryId, acquired.leaseId);
         }
       }
     }

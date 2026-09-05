@@ -15,7 +15,7 @@ import type {
   ResponseMetadata,
   UsageHint,
 } from "./proxy-handler-types.js";
-import { releaseAccount, acquireAccount } from "./account-acquisition.js";
+import { releaseAccount, acquireAccount, type ReleaseGuard } from "./account-acquisition.js";
 import { toErrorStatus } from "./proxy-error-handler.js";
 import { annotateImageGenOutcome, buildCodexApi, stripCodexErrorPrefix } from "./proxy-handler-utils.js";
 import { createResponseMetadataCollector } from "./response-metadata-collector.js";
@@ -113,7 +113,7 @@ export interface HandleNonStreamingCollectFailureOptions {
   entryId: string;
   req: ProxyRequest;
   collectErr: unknown;
-  released: Set<string>;
+  released: ReleaseGuard;
 }
 
 export function handleNonStreamingCollectFailure(
@@ -193,7 +193,7 @@ export interface HandleNonStreamingEmptyResponseExhaustedOptions {
   tag: string;
   attempt: number;
   maxRetries: number;
-  released: Set<string>;
+  released: ReleaseGuard;
   logWarn?: (message: string) => void;
 }
 
@@ -249,7 +249,7 @@ export interface RetryNonStreamingEmptyResponseOptions {
   cookieJar?: CookieJar;
   proxyPool?: ProxyPool;
   abortSignal: AbortSignal;
-  released: Set<string>;
+  released: ReleaseGuard;
   requestId: string;
   restoreImplicitResumeRequest?: () => void;
   buildPoolCtx?: (forEntryId: string) => WsPoolContext | undefined;
@@ -289,7 +289,7 @@ export async function retryNonStreamingEmptyResponse(
   releaseAccount(accountPool, currentEntryId, annotateImageGenOutcome(collectErr.usage, req.expectsImageGen), released);
   restoreImplicitResumeRequest?.();
 
-  const acquired = acquireAccount(accountPool, req.codexRequest.model, undefined, tag);
+  const acquired = acquireAccount(accountPool, req.codexRequest.model, undefined, tag, undefined, released);
   if (!acquired) {
     return {
       action: "respond",
@@ -354,7 +354,7 @@ export interface HandleNonStreamingPrematureCloseOptions {
   req: ProxyRequest;
   tag: string;
   requestId: string;
-  released: Set<string>;
+  released: ReleaseGuard;
   variantHash?: string;
   logWarn?: (message: string) => void;
 }
@@ -404,7 +404,7 @@ export interface ReleaseNonStreamingSuccessAccountOptions {
   entryId: string;
   usage: UsageInfo;
   expectsImageGen?: boolean;
-  released: Set<string>;
+  released: ReleaseGuard;
 }
 
 export function releaseNonStreamingSuccessAccount(options: ReleaseNonStreamingSuccessAccountOptions): void {

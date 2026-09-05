@@ -7,7 +7,7 @@ import {
 
 export interface RateLimitAccountPool {
   getEntry(entryId: string): { planType?: string | null } | null | undefined;
-  updateCachedQuota(entryId: string, quota: CodexQuota): void;
+  updateCachedQuota(entryId: string, quota: CodexQuota, options?: { partial?: boolean }): void;
   syncRateLimitWindow(entryId: string, newResetAt: number | null, limitWindowSeconds: number | null): void;
   applyRateLimit429(entryId: string, options?: { retryAfterSec?: number; resetsAtSec?: number; countRequest?: boolean }): void;
 }
@@ -30,7 +30,7 @@ export function applyParsedRateLimits(options: ApplyParsedRateLimitsOptions): vo
   const { accountPool, entryId, rateLimits, nowSec = Math.floor(Date.now() / 1000) } = options;
   const entry = accountPool.getEntry(entryId);
   const quota = rateLimitToQuota(rateLimits, entry?.planType ?? null);
-  accountPool.updateCachedQuota(entryId, quota);
+  accountPool.updateCachedQuota(entryId, quota, { partial: true });
 
   if (rateLimits.primary?.reset_at != null) {
     const windowSec = rateLimits.primary.window_minutes != null ? rateLimits.primary.window_minutes * 60 : null;
@@ -39,7 +39,7 @@ export function applyParsedRateLimits(options: ApplyParsedRateLimitsOptions): vo
 
   // Proactively mark exhausted accounts so they do not get re-selected.
   // updateCachedQuota above already records the truth; this call exists for
-  // side effects: lifecycle.clearLock + WS pool eviction.
+  // side effects: WS pool eviction. A passive signal preserves in-flight slots.
   if (quota.rate_limit.limit_reached && rateLimits.primary?.reset_at != null) {
     const backoffSec = rateLimits.primary.reset_at - nowSec;
     if (backoffSec > 0) {

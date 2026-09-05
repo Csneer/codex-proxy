@@ -49,17 +49,18 @@ export function accountExportDownloadName(
 }
 
 export async function prepareAccountImportRequest(
-  file: AccountImportFile,
+  file: AccountImportFile | string,
 ): Promise<PreparedAccountImportRequest> {
-  const body = await file.text();
+  const body = typeof file === "string" ? file : await file.text();
+  const jsonFile = typeof file !== "string" && isLikelyJsonFile(file);
   if (!body.trim()) return { ok: false, error: "No importable content" };
 
-  if (isLikelyJsonFile(file) || isJsonText(body)) {
+  if (jsonFile || isJsonText(body)) {
     try {
       JSON.parse(body) as unknown;
       return { ok: true, contentType: "application/json", body };
     } catch {
-      if (isLikelyJsonFile(file)) return { ok: false, error: "Invalid JSON file" };
+      if (jsonFile) return { ok: false, error: "Invalid JSON file" };
     }
   }
 

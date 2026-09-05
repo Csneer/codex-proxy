@@ -14,6 +14,18 @@ function makeFile(name: string, text: string, type = "") {
 }
 
 describe("account transfer browser client helpers", () => {
+  it("preserves long pasted credential JSON byte for byte", async () => {
+    const text = JSON.stringify({ credentials: { access_token: "x".repeat(120_000), refresh_token: "rt_test" } });
+    expect(await prepareAccountImportRequest(text)).toEqual({ ok: true, contentType: "application/json", body: text });
+  });
+
+  it.each(["plain.access.token\nrt_test\n", '{"token":"first"}\n{"token":"second"}\n'])("preserves pasted token/JSON lines: %s", async (text) => {
+    expect(await prepareAccountImportRequest(text)).toEqual({ ok: true, contentType: "text/plain", body: text });
+  });
+
+  it("rejects blank pasted input", async () => {
+    expect(await prepareAccountImportRequest(" \n\t")).toEqual({ ok: false, error: "No importable content" });
+  });
   it("builds export URLs and download names for compatibility formats", () => {
     expect(buildAccountExportUrl(["acct-1", "acct-2"], "sub2api"))
       .toBe("/auth/accounts/export?ids=acct-1%2Cacct-2&format=sub2api");

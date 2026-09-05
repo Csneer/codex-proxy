@@ -121,10 +121,21 @@ export function RotationSettings() {
                   </div>
                 </label>
                 {displaySub === "quota_batch" && (
-                  <div class="pl-6 flex items-center gap-2">
-                    <label class="text-xs text-slate-500 dark:text-text-dim" for="quota-batch-percent">{t("rotationQuotaBatchPercent")}</label>
-                    <input id="quota-batch-percent" type="number" min="1" max="100" step="1" value={displayPercent} onInput={(event) => setDraftPercent(Number((event.currentTarget as HTMLInputElement).value))} class="w-20 rounded-md border border-gray-200 dark:border-border-dark bg-white/80 dark:bg-bg-dark px-2 py-1 text-sm" />
-                    {!validPercent && <span class="text-xs text-red-500">1–100</span>}
+                  <div class="pl-6 space-y-2">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <label class="text-xs text-slate-500 dark:text-text-dim" for="quota-batch-percent">{t("rotationQuotaBatchPercent")}</label>
+                      <input
+                        id="quota-batch-percent" type="number" min="1" max="100" step="1"
+                        value={displayPercent}
+                        aria-invalid={!validPercent}
+                        aria-describedby="quota-batch-example quota-batch-fallback"
+                        onInput={(event) => setDraftPercent(Number((event.currentTarget as HTMLInputElement).value))}
+                        class="w-20 rounded-md border border-gray-200 dark:border-border-dark bg-white/80 dark:bg-bg-dark px-2 py-1 text-sm"
+                      />
+                      {!validPercent && <span class="text-xs text-red-500">1–100</span>}
+                    </div>
+                    <p id="quota-batch-example" class="text-xs text-slate-500 dark:text-text-dim">{t("rotationQuotaBatchExample")}</p>
+                    <p id="quota-batch-fallback" class="text-xs text-slate-500 dark:text-text-dim">{t("rotationQuotaBatchFallback")}</p>
                   </div>
                 )}
                 <label class="flex items-center gap-2 cursor-pointer">

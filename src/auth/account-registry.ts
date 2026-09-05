@@ -23,6 +23,7 @@ import type {
 } from "./types.js";
 import { hasReachedCachedQuota } from "./quota-skip.js";
 import { isCfChallengeCooldownActive } from "./cf-challenge-cooldown.js";
+import { mergePartialQuota, observedQuotaMeters } from "./quota-utils.js";
 
 function safeEqual(a: string, b: string): boolean {
   const bufA = Buffer.from(a);
@@ -568,14 +569,23 @@ export class AccountRegistry {
     this.schedulePersist();
   }
 
-  updateCachedQuota(entryId: string, quota: CodexQuota): void {
+  updateCachedQuota(entryId: string, quota: CodexQuota, options?: { partial?: boolean }): void {
     const entry = this.accounts.get(entryId);
     if (!entry) return;
+    const now = new Date().toISOString();
+    const fetchedByMeter: Record<string, string> = options?.partial
+      ? { ...(entry.quotaFetchedAtByMeter ?? Object.fromEntries(
+        observedQuotaMeters(entry.cachedQuota).map(([key]) => [key, entry.quotaFetchedAt ?? ""]),
+      )) }
+      : {};
+    for (const [key] of observedQuotaMeters(quota)) fetchedByMeter[key] = now;
     // Preserve previously known credits and reset credits when the incoming quota lacks them.
     // The passive header-driven path (rateLimitToQuota in proxy-rate-limit.ts)
     // does not carry credit balance or rate limit reset credits — only /codex/usage body (toQuota) does.
     // Without this merge, every /codex/responses call would wipe credits and reset credits.
-    const mergedQuota: CodexQuota = { ...quota };
+    const mergedQuota: CodexQuota = options?.partial
+      ? mergePartialQuota(entry.cachedQuota, quota)
+      : { ...quota };
     if (quota.credits == null && entry.cachedQuota?.credits != null) {
       mergedQuota.credits = entry.cachedQuota.credits;
     }
@@ -583,7 +593,8 @@ export class AccountRegistry {
       mergedQuota.reset_credits_available = entry.cachedQuota.reset_credits_available;
     }
     entry.cachedQuota = mergedQuota;
-    entry.quotaFetchedAt = new Date().toISOString();
+    entry.quotaFetchedAt = now;
+    entry.quotaFetchedAtByMeter = fetchedByMeter;
     entry.quotaVerifyRequired = false; // Reset the dirty flag on fresh update
     this.schedulePersist();
   }

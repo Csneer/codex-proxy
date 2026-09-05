@@ -304,5 +304,33 @@ describe("per-account concurrent request slots", () => {
 
       vi.useRealTimers();
     });
+
+    it("late release after TTL cleanup does not release a newer sibling lease", () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      const { pool } = createPool(1);
+      const oldLease = pool.acquire({})!;
+      vi.advanceTimersByTime(6 * 60 * 1000);
+      const freshLease = pool.acquire({})!;
+
+      pool.release(oldLease.entryId, { input_tokens: 11 }, oldLease.leaseId);
+      expect(pool.getCapacitySummary()).toMatchObject({ used_slots: 1, available_slots: 2 });
+      expect(pool.getEntry(oldLease.entryId)!.usage.request_count).toBe(1);
+      pool.release(freshLease.entryId, undefined, freshLease.leaseId);
+      expect(pool.getCapacitySummary()).toMatchObject({ used_slots: 0, available_slots: 3 });
+      vi.useRealTimers();
+    });
+
+    it("releases leases exactly once even when completions arrive out of order", () => {
+      const { pool } = createPool(1);
+      const first = pool.acquire({})!;
+      const second = pool.acquire({})!;
+      const third = pool.acquire({})!;
+      pool.release(second.entryId, undefined, second.leaseId);
+      pool.releaseWithoutCounting(second.entryId, second.leaseId);
+      expect(pool.getCapacitySummary()).toMatchObject({ used_slots: 2, available_slots: 1 });
+      pool.release(first.entryId, undefined, first.leaseId);
+      pool.release(third.entryId, undefined, third.leaseId);
+      expect(pool.getCapacitySummary()).toMatchObject({ used_slots: 0, available_slots: 3 });
+    });
   });
 });

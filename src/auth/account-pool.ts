@@ -105,12 +105,13 @@ export class AccountPool {
       image_request_attempted?: boolean;
       image_request_succeeded?: boolean;
     },
+    leaseId?: string,
   ): void {
-    this.lifecycle.release(entryId, usage);
+    this.lifecycle.release(entryId, usage, leaseId);
   }
 
-  releaseWithoutCounting(entryId: string): void {
-    this.lifecycle.releaseWithoutCounting(entryId);
+  releaseWithoutCounting(entryId: string, leaseId?: string): void {
+    this.lifecycle.releaseWithoutCounting(entryId, leaseId);
   }
 
   /** Fast check: is there at least one active account not in the exclude list? */
@@ -127,6 +128,7 @@ export class AccountPool {
     entryId: string;
     token: string;
     accountId: string | null;
+    leaseId: string;
   }> {
     return this.lifecycle.getDistinctPlanAccounts();
   }
@@ -210,16 +212,19 @@ export class AccountPool {
   /**
    * Single source of truth for "this account just got 429'd". Writes the
    * retry-after hint into cachedQuota.rate_limit (primary bucket); pool
-   * exclusion flows through {@link hasReachedCachedQuota}. See
+   * exclusion flows through {@link hasReachedCachedQuota}. A counted failed
+   * request has already been recorded by the registry, so it releases only
+   * the slot belonging to that attempt; passive/background headers preserve
+   * all held slots for their normal request releases. See
    * AccountRegistry.applyRateLimit429 for full semantics including
    * never-shrink-existing-reset_at and bucket-inference fallback.
    */
   applyRateLimit429(
     entryId: string,
-    options?: { retryAfterSec?: number; resetsAtSec?: number; countRequest?: boolean },
+    options?: { retryAfterSec?: number; resetsAtSec?: number; countRequest?: boolean; leaseId?: string },
   ): void {
     if (this.registry.applyRateLimit429(entryId, this.rateLimitBackoffSeconds, options)) {
-      this.lifecycle.clearLock(entryId);
+      if (options?.countRequest) this.lifecycle.releaseWithoutCounting(entryId, options.leaseId);
       this.evictWsPool(entryId);
     }
   }
@@ -227,10 +232,10 @@ export class AccountPool {
   applyAdditionalRateLimit429(
     entryId: string,
     limitId: string,
-    options?: { retryAfterSec?: number; resetsAtSec?: number; countRequest?: boolean },
+    options?: { retryAfterSec?: number; resetsAtSec?: number; countRequest?: boolean; leaseId?: string },
   ): void {
     if (this.registry.applyAdditionalRateLimit429(entryId, limitId, this.rateLimitBackoffSeconds, options)) {
-      this.lifecycle.clearLock(entryId);
+      if (options?.countRequest) this.lifecycle.releaseWithoutCounting(entryId, options.leaseId);
       this.evictWsPool(entryId);
     }
   }
@@ -241,8 +246,8 @@ export class AccountPool {
     this.registry.recordEmptyResponse(entryId);
   }
 
-  updateCachedQuota(entryId: string, quota: CodexQuota): void {
-    this.registry.updateCachedQuota(entryId, quota);
+  updateCachedQuota(entryId: string, quota: CodexQuota, options?: { partial?: boolean }): void {
+    this.registry.updateCachedQuota(entryId, quota, options);
   }
 
   syncRateLimitWindow(

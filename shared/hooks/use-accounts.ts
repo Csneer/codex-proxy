@@ -228,7 +228,7 @@ export function useAccounts() {
     URL.revokeObjectURL(url);
   }, []);
 
-  const importAccounts = useCallback(async (file: File): Promise<{
+  const importAccounts = useCallback(async (file: File | string): Promise<{
     success: boolean;
     added: number;
     updated: number;
@@ -247,7 +247,10 @@ export function useAccounts() {
     if (resp.ok) {
       await loadAccounts();
     }
-    return { added: 0, updated: 0, failed: 0, errors: [], ...result };
+    return { added: 0, updated: 0, failed: 0, errors: [], ...result,
+      success: resp.ok && result.success === true,
+      ...(!resp.ok ? { errors: [typeof result.error === "string" ? result.error : "Import failed"] } : {}),
+    };
   }, [loadAccounts]);
 
   const batchDelete = useCallback(async (ids: string[]): Promise<string | null> => {

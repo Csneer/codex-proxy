@@ -144,9 +144,9 @@ export async function handleCompact(
 
   const TAG = "Compact";
   const triedEntryIds: string[] = [];
-  const released = new Set<string>();
+  const released = new Map<string, string>();
 
-  const acquired = acquireAccount(accountPool, modelId, undefined, TAG);
+  const acquired = acquireAccount(accountPool, modelId, undefined, TAG, undefined, released);
   if (!acquired) {
     c.status(503);
     return c.json(formatResponsesError(503, "No available accounts. All accounts are expired or rate-limited."));
@@ -180,7 +180,7 @@ export async function handleCompact(
       }
 
       const decision = handleCodexApiError(
-        err, accountPool, entryId, modelId, TAG, false,
+        err, accountPool, entryId, modelId, TAG, false, undefined, false, released.get(entryId),
       );
 
       if (decision.action === "respond") {
@@ -193,7 +193,7 @@ export async function handleCompact(
         releaseAccount(accountPool, entryId, compactImageFailedUsage, released);
       }
 
-      const retry = acquireAccount(accountPool, modelId, triedEntryIds, TAG);
+      const retry = acquireAccount(accountPool, modelId, triedEntryIds, TAG, undefined, released);
       if (!retry) {
         const status = decision.status as StatusCode;
         c.status(status);

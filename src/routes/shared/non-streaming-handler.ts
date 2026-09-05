@@ -19,6 +19,7 @@ import {
   releaseNonStreamingSuccessAccount,
   collectNonStreamingResponse,
 } from "./non-streaming-helpers.js";
+import type { ReleaseGuard } from "./account-acquisition.js";
 import {
   containsInvalidEncryptedContentSignal,
   getReasoningReplayCache,
@@ -41,7 +42,7 @@ export interface HandleNonStreamingOptions {
   initialResponse: Response;
   initialEntryId: string;
   abortController: AbortController;
-  released: Set<string>;
+  released: ReleaseGuard;
   requestId: string;
   affinityMap?: SessionAffinityMap;
   conversationId?: string | null;

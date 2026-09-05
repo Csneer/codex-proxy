@@ -1,37 +1,30 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "fs";
 import { dirname, resolve } from "path";
 import { getDataDir } from "../paths.js";
-import type { AccountEntry } from "./types.js";
+import { getRateLimitIdForModel } from "./quota-utils.js";
+import type { AccountEntry, CodexQuotaWindow } from "./types.js";
 
-const REQUEST_BATCH_FALLBACK = 100;
-
-export type QuotaMeterKind = "secondary" | "primary";
-
-export interface EffectiveQuotaMeter {
-  kind: QuotaMeterKind;
+interface QuotaMeter {
+  key: string;
   usedPercent: number;
+  windowSeconds: number | null;
   resetAt: number | null;
 }
+
+interface QuotaBucket {
+  key: string;
+  windowSeconds: number | null;
+  bucket: number;
+}
+
+const MAX_TRACKED_METERS = 4;
 
 export interface QuotaBatchCheckpoint {
-  version: 2;
+  version: 3;
   strategy: "quota_batch";
   batchPercent: number;
   currentEntryId: string;
-  baselineUsedPercent: number | null;
-  baselineRequestCount: number;
-  meter: QuotaMeterKind | null;
-  resetAt: number | null;
-}
-
-interface LegacyQuotaBatchCheckpoint {
-  version: 1;
-  strategy: "quota_batch";
-  batchPercent: number;
-  currentEntryId: string;
-  baselineUsedPercent: number | null;
-  meter: QuotaMeterKind | null;
-  resetAt: number | null;
+  meters: QuotaBucket[];
 }
 
 export interface QuotaBatchStateStore {
@@ -40,93 +33,168 @@ export interface QuotaBatchStateStore {
   clear(): void;
 }
 
-export function effectiveQuotaMeter(entry: AccountEntry): EffectiveQuotaMeter | null {
-  const secondary = entry.cachedQuota?.secondary_rate_limit;
-  if (secondary && Number.isFinite(secondary.used_percent)) {
-    return {
-      kind: "secondary",
-      usedPercent: secondary.used_percent as number,
-      resetAt: finiteNumberOrNull(secondary.reset_at),
-    };
-  }
-
-  const primary = entry.cachedQuota?.rate_limit;
-  if (primary && Number.isFinite(primary.used_percent)) {
-    return {
-      kind: "primary",
-      usedPercent: primary.used_percent as number,
-      resetAt: finiteNumberOrNull(primary.reset_at),
-    };
-  }
-
-  return null;
+interface SelectionOptions {
+  model?: string;
+  nowMs?: number;
+  maxQuotaAgeMs?: number;
 }
 
-function finiteNumberOrNull(value: number | null | undefined): number | null {
-  return Number.isFinite(value) ? value as number : null;
+export type QuotaMeterKind = "secondary" | "primary";
+
+export interface EffectiveQuotaMeter {
+  kind: QuotaMeterKind;
+  usedPercent: number;
+  resetAt: number | null;
+  windowSeconds: number | null;
+}
+
+/**
+ * Return the actual quota window used for batching by this account.
+ *
+ * Window duration is the authority: a 5-hour, 7-day, or 30-day window is not
+ * assumed by code or plan name. When several windows are published, use the
+ * shortest applicable one because it is the earliest reliable consumption
+ * signal. Model-specific buckets take precedence when the request has one.
+ */
+export function effectiveQuotaMeter(entry: AccountEntry): EffectiveQuotaMeter | null {
+  const meter = quotaMeters(entry, {}, false)[0];
+  if (!meter) return null;
+  return {
+    kind: meter.key.endsWith(":secondary") || meter.key === "secondary" ? "secondary" : "primary",
+    usedPercent: meter.usedPercent,
+    resetAt: meter.resetAt,
+    windowSeconds: meter.windowSeconds,
+  };
+}
+
+/** Use one actual applicable window, without assuming a plan or duration. */
+function quotaMeters(entry: AccountEntry, options: SelectionOptions, requireFresh = true): QuotaMeter[] {
+  const quota = entry.cachedQuota;
+  if (!quota) return [];
+  const meters: QuotaMeter[] = [];
+  const add = (key: string, window: CodexQuotaWindow | null | undefined): void => {
+    if (!window || typeof window.used_percent !== "number" || !Number.isFinite(window.used_percent)) return;
+    meters.push({
+      key,
+      usedPercent: Math.max(0, Math.min(100, window.used_percent)),
+      windowSeconds: typeof window.limit_window_seconds === "number" &&
+        Number.isFinite(window.limit_window_seconds) && window.limit_window_seconds > 0
+        ? window.limit_window_seconds : null,
+      resetAt: typeof window.reset_at === "number" && Number.isFinite(window.reset_at)
+        ? window.reset_at : null,
+    });
+  };
+  const limitId = getRateLimitIdForModel(options.model);
+  const additional = limitId ? quota.rate_limits_by_limit_id?.[limitId] : null;
+  if (additional) {
+    add(limitId + ":primary", additional);
+    add(limitId + ":secondary", additional.secondary_rate_limit);
+  }
+  if (meters.length === 0) {
+    add("primary", quota.rate_limit);
+    add("secondary", quota.secondary_rate_limit);
+  }
+  meters.sort((left, right) => {
+    if (left.windowSeconds !== null && right.windowSeconds !== null) {
+      return left.windowSeconds - right.windowSeconds;
+    }
+    if (left.windowSeconds !== null) return -1;
+    if (right.windowSeconds !== null) return 1;
+    return left.key === "primary" ? -1 : right.key === "primary" ? 1 : 0;
+  });
+  const nowMs = options.nowMs ?? Date.now();
+  const maxQuotaAgeMs = options.maxQuotaAgeMs ?? 10 * 60_000;
+  const isFresh = (meter: QuotaMeter): boolean => {
+    const fetchedAt = entry.quotaFetchedAtByMeter
+      ? entry.quotaFetchedAtByMeter[meter.key] : entry.quotaFetchedAt;
+    const fetchedMs = Date.parse(fetchedAt ?? "");
+    const ageMs = nowMs - fetchedMs;
+    return Number.isFinite(fetchedMs) && Number.isFinite(nowMs) &&
+      Number.isFinite(maxQuotaAgeMs) && ageMs >= 0 && ageMs <= maxQuotaAgeMs;
+  };
+  const selected = (requireFresh ? meters.filter(isFresh) : meters)[0];
+  if (!selected) return [];
+  return [selected];
+}
+
+// 100% closes the final partial bucket, including sizes that don't divide 100.
+function bucketFor(usedPercent: number, batchPercent: number): number {
+  return usedPercent >= 100 ? Math.ceil(100 / batchPercent) : Math.floor(usedPercent / batchPercent);
+}
+
+function limitTrackedMeters(meters: QuotaBucket[], activeKey: string | undefined): QuotaBucket[] {
+  if (meters.length <= MAX_TRACKED_METERS) return meters;
+  const active = activeKey ? meters.find((meter) => meter.key === activeKey) : undefined;
+  if (!active) return meters.slice(-MAX_TRACKED_METERS);
+  const history = meters.filter((meter) => meter.key !== active.key).slice(-(MAX_TRACKED_METERS - 1));
+  return [...history, active];
+}
+
+function checkpointFor(entry: AccountEntry, batchPercent: number, options: SelectionOptions): QuotaBatchCheckpoint {
+  return {
+    version: 3,
+    strategy: "quota_batch",
+    batchPercent,
+    currentEntryId: entry.id,
+    meters: quotaMeters(entry, options).map((meter) => ({
+      key: meter.key,
+      windowSeconds: meter.windowSeconds,
+      bucket: bucketFor(meter.usedPercent, batchPercent),
+    })),
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function hasKeys(value: Record<string, unknown>, keys: string[]): boolean {
+  return Object.keys(value).length === keys.length && keys.every((key) => Object.hasOwn(value, key));
+}
+
+function validCommonState(state: Record<string, unknown>): boolean {
+  return state.strategy === "quota_batch" &&
+    Number.isInteger(state.batchPercent) && (state.batchPercent as number) >= 1 &&
+    (state.batchPercent as number) <= 100 &&
+    typeof state.currentEntryId === "string" && state.currentEntryId.length > 0;
 }
 
 function isCheckpoint(value: unknown): value is QuotaBatchCheckpoint {
-  if (!value || typeof value !== "object") return false;
-  const state = value as Record<string, unknown>;
-  const expectedKeys = [
-    "version", "strategy", "batchPercent", "currentEntryId",
-    "baselineUsedPercent", "baselineRequestCount", "meter", "resetAt",
-  ];
-  if (Object.keys(state).length !== expectedKeys.length ||
-      !Object.keys(state).every((key) => expectedKeys.includes(key))) return false;
-  const meterIsNull = state.meter === null;
-  const baselineIsValid = meterIsNull
-    ? state.baselineUsedPercent === null && state.resetAt === null
-    : typeof state.baselineUsedPercent === "number" &&
-      Number.isFinite(state.baselineUsedPercent) &&
-      state.baselineUsedPercent >= 0 && state.baselineUsedPercent <= 100 &&
-      (state.resetAt === null ||
-        (typeof state.resetAt === "number" && Number.isFinite(state.resetAt) && state.resetAt >= 0));
-  return state.version === 2 &&
-    state.strategy === "quota_batch" &&
-    Number.isInteger(state.batchPercent) &&
-    (state.batchPercent as number) >= 1 &&
-    (state.batchPercent as number) <= 100 &&
-    typeof state.currentEntryId === "string" &&
-    state.currentEntryId.length > 0 &&
-    Number.isInteger(state.baselineRequestCount) &&
-    (state.baselineRequestCount as number) >= 0 &&
-    (state.meter === null || state.meter === "secondary" || state.meter === "primary") &&
-    baselineIsValid;
+  if (!isRecord(value) || !hasKeys(value, ["version", "strategy", "batchPercent", "currentEntryId", "meters"]) ||
+      value.version !== 3 || !validCommonState(value) || !Array.isArray(value.meters)) return false;
+  const keys = new Set<string>();
+  return value.meters.length <= MAX_TRACKED_METERS && value.meters.every((meter: unknown) => {
+    if (!isRecord(meter) || !hasKeys(meter, ["key", "windowSeconds", "bucket"]) ||
+        typeof meter.key !== "string" ||
+        !/^[a-zA-Z0-9_.-]+(?::(?:primary|secondary))?$/.test(meter.key) ||
+        keys.has(meter.key)) return false;
+    keys.add(meter.key);
+    return Number.isInteger(meter.bucket) && (meter.bucket as number) >= 0 &&
+      (meter.bucket as number) <= Math.ceil(100 / (value.batchPercent as number)) &&
+      (meter.windowSeconds === null || (typeof meter.windowSeconds === "number" &&
+        Number.isFinite(meter.windowSeconds) && meter.windowSeconds > 0));
+  });
 }
 
-function isLegacyCheckpoint(value: unknown): value is LegacyQuotaBatchCheckpoint {
-  if (!value || typeof value !== "object") return false;
-  const state = value as Record<string, unknown>;
-  const expectedKeys = [
-    "version", "strategy", "batchPercent", "currentEntryId",
-    "baselineUsedPercent", "meter", "resetAt",
-  ];
-  if (Object.keys(state).length !== expectedKeys.length ||
-      !Object.keys(state).every((key) => expectedKeys.includes(key))) return false;
-  return state.version === 1 &&
-    state.strategy === "quota_batch" &&
-    Number.isInteger(state.batchPercent) &&
-    (state.batchPercent as number) >= 1 &&
-    (state.batchPercent as number) <= 100 &&
-    typeof state.currentEntryId === "string" &&
-    state.currentEntryId.length > 0 &&
-    (state.baselineUsedPercent === null ||
-      (typeof state.baselineUsedPercent === "number" &&
-        Number.isFinite(state.baselineUsedPercent) &&
-        state.baselineUsedPercent >= 0 && state.baselineUsedPercent <= 100)) &&
-    (state.meter === null || state.meter === "secondary" || state.meter === "primary") &&
-    (state.resetAt === null ||
-      (typeof state.resetAt === "number" && Number.isFinite(state.resetAt) && state.resetAt >= 0));
+/** Old relative-delta/request-count checkpoints retain only the routing cursor. */
+function legacyEntryId(value: unknown): string | null {
+  if (!isRecord(value) || (value.version !== 1 && value.version !== 2) || !validCommonState(value)) return null;
+  const keys = ["version", "strategy", "batchPercent", "currentEntryId", "baselineUsedPercent", "meter", "resetAt"];
+  if (value.version === 2) keys.push("baselineRequestCount");
+  if (!hasKeys(value, keys)) return null;
+  const validBaseline = value.meter === null
+    ? value.baselineUsedPercent === null && value.resetAt === null
+    : (value.meter === "primary" || value.meter === "secondary") &&
+      typeof value.baselineUsedPercent === "number" && Number.isFinite(value.baselineUsedPercent) &&
+      value.baselineUsedPercent >= 0 && value.baselineUsedPercent <= 100 &&
+      (value.resetAt === null || (typeof value.resetAt === "number" && Number.isFinite(value.resetAt) && value.resetAt >= 0));
+  if (!validBaseline || (value.version === 2 &&
+      (!Number.isInteger(value.baselineRequestCount) || (value.baselineRequestCount as number) < 0))) return null;
+  return value.currentEntryId as string;
 }
 
 export class FileQuotaBatchStateStore implements QuotaBatchStateStore {
-  private readonly path: string;
-
-  constructor(path = resolve(getDataDir(), "quota-rotation-state.json")) {
-    this.path = path;
-  }
+  constructor(private readonly path = resolve(getDataDir(), "quota-rotation-state.json")) {}
 
   load(): unknown {
     try {
@@ -139,54 +207,35 @@ export class FileQuotaBatchStateStore implements QuotaBatchStateStore {
   }
 
   save(state: QuotaBatchCheckpoint): void {
-    const tempPath = `${this.path}.tmp-${process.pid}`;
+    this.write(state);
+  }
+
+  clear(): void {
+    this.write(null);
+  }
+
+  private write(state: QuotaBatchCheckpoint | null): void {
+    const tempPath = this.path + ".tmp-" + process.pid;
     try {
       mkdirSync(dirname(this.path), { recursive: true });
-      writeFileSync(tempPath, `${JSON.stringify(state, null, 2)}\n`, {
-        encoding: "utf8",
-        mode: 0o600,
-      });
+      writeFileSync(tempPath, JSON.stringify(state, null, 2) + "\n", { encoding: "utf8", mode: 0o600 });
       renameSync(tempPath, this.path);
     } catch {
       console.warn("[QuotaBatch] Unable to persist rotation checkpoint");
     }
   }
-
-  clear(): void {
-    // An empty checkpoint is deliberately represented by a missing/invalid
-    // logical state. Avoid an unlink dependency so embedded/mock stores stay
-    // compatible; the next selection atomically replaces this file.
-    this.saveNullCheckpoint();
-  }
-
-  private saveNullCheckpoint(): void {
-    const tempPath = `${this.path}.tmp-${process.pid}`;
-    try {
-      mkdirSync(dirname(this.path), { recursive: true });
-      writeFileSync(tempPath, "null\n", { encoding: "utf8", mode: 0o600 });
-      renameSync(tempPath, this.path);
-    } catch {
-      console.warn("[QuotaBatch] Unable to clear rotation checkpoint");
-    }
-  }
 }
 
 export class QuotaBatchSelector {
-  private checkpoint: QuotaBatchCheckpoint | null;
-  private legacyCheckpoint: LegacyQuotaBatchCheckpoint | null = null;
+  private checkpoint: QuotaBatchCheckpoint | null = null;
+  private legacyCurrentEntryId: string | null = null;
 
   constructor(private readonly store: QuotaBatchStateStore = new FileQuotaBatchStateStore()) {
     const loaded = store.load();
-    if (loaded === null || loaded === undefined) {
-      this.checkpoint = null;
-    } else if (isCheckpoint(loaded)) {
-      this.checkpoint = loaded;
-    } else if (isLegacyCheckpoint(loaded)) {
-      this.checkpoint = null;
-      this.legacyCheckpoint = loaded;
-    } else {
+    if (isCheckpoint(loaded)) this.checkpoint = loaded;
+    else this.legacyCurrentEntryId = legacyEntryId(loaded);
+    if (loaded != null && !this.checkpoint && !this.legacyCurrentEntryId) {
       console.warn("[QuotaBatch] Ignoring invalid rotation checkpoint");
-      this.checkpoint = null;
     }
   }
 
@@ -194,75 +243,59 @@ export class QuotaBatchSelector {
     candidates: AccountEntry[],
     batchPercent: number,
     registryOrder: string[] = candidates.map((candidate) => candidate.id),
+    options: SelectionOptions = {},
   ): AccountEntry {
     if (candidates.length === 0) throw new Error("QuotaBatchSelector requires at least one candidate");
     if (!Number.isInteger(batchPercent) || batchPercent < 1 || batchPercent > 100) {
       throw new Error("quota batch percentage must be an integer from 1 to 100");
     }
-
     const prior = this.checkpoint;
-    if (!prior && this.legacyCheckpoint) {
-      const legacyEntryId = this.legacyCheckpoint.currentEntryId;
-      const legacyCurrent = candidates.find(
-        (candidate) => candidate.id === legacyEntryId,
-      );
-      this.legacyCheckpoint = null;
-      if (legacyCurrent) {
-        this.updateCheckpoint(checkpointFor(legacyCurrent, batchPercent));
-        return legacyCurrent;
-      }
-      const selected = nextEligibleCandidate(legacyEntryId, candidates, registryOrder);
-      this.updateCheckpoint(checkpointFor(selected, batchPercent));
-      return selected;
-    }
-    const current = prior
-      ? candidates.find((candidate) => candidate.id === prior.currentEntryId)
-      : undefined;
-
-    if (!prior || !current) {
-      const selected = prior
-        ? nextEligibleCandidate(prior.currentEntryId, candidates, registryOrder)
-        : candidates[0];
-      this.updateCheckpoint(checkpointFor(selected, batchPercent));
+    const currentId = prior?.currentEntryId ?? this.legacyCurrentEntryId;
+    const current = candidates.find((candidate) => candidate.id === currentId);
+    this.legacyCurrentEntryId = null;
+    if (!prior || !current || prior.batchPercent !== batchPercent) {
+      const selected = current ?? (currentId ? nextEligibleCandidate(currentId, candidates, registryOrder) : candidates[0]);
+      this.updateCheckpoint(checkpointFor(selected, batchPercent, options));
       return selected;
     }
 
-    const meter = effectiveQuotaMeter(current);
-    const rebaseline = rebaselineKind(prior, current, meter, batchPercent);
-    if (rebaseline !== null) {
-      if (rebaseline === "quota" &&
-          current.usage.request_count - prior.baselineRequestCount >= REQUEST_BATCH_FALLBACK) {
-        const selected = nextEligibleCandidate(current.id, candidates, registryOrder);
-        this.updateCheckpoint(checkpointFor(selected, batchPercent));
-        return selected;
+    const meters = quotaMeters(current, options);
+    // Missing/stale telemetry must not silently become sticky mode. Once an
+    // account publishes quota again, establish its buckets and stay within them.
+    let shouldRotate = meters.length === 0;
+    const nextMeters = prior.meters.map((meter) => ({ ...meter }));
+    for (const meter of meters) {
+      const bucket = bucketFor(meter.usedPercent, batchPercent);
+      const saved = nextMeters.find((item) => item.key === meter.key);
+      if (!saved) {
+        nextMeters.push({ key: meter.key, bucket, windowSeconds: meter.windowSeconds });
+        continue;
       }
-      this.updateCheckpoint(
-        rebaseline === "all"
-          ? checkpointFor(current, batchPercent)
-          : checkpointForQuota(current, prior, batchPercent),
-      );
-      return current;
+      // Missing duration metadata on a partial response is not a new window.
+      const windowChanged = saved.windowSeconds !== null && meter.windowSeconds !== null &&
+        saved.windowSeconds !== meter.windowSeconds;
+      if (!windowChanged && bucket > saved.bucket) shouldRotate = true;
+      if (windowChanged || bucket < saved.bucket) saved.bucket = bucket;
+      if (meter.windowSeconds !== null) saved.windowSeconds = meter.windowSeconds;
     }
-
-    // Quota signals remain the preferred batch boundary. Completed requests
-    // provide a deterministic upper bound when upstream quota is missing,
-    // stale, rounded, or backed by a slow-moving weekly window.
-    const quotaBatchComplete = meter !== null && prior.baselineUsedPercent !== null &&
-      meter.usedPercent - prior.baselineUsedPercent >= batchPercent;
-    const requestBatchComplete =
-      current.usage.request_count - prior.baselineRequestCount >= REQUEST_BATCH_FALLBACK;
-    if (!quotaBatchComplete && !requestBatchComplete) {
+    if (!shouldRotate) {
+      // Preserve temporarily missing meters across partial quota reports.
+      // reset_at drift alone is not a reset.
+      this.updateCheckpoint({
+        ...prior,
+        meters: limitTrackedMeters(nextMeters, meters[0]?.key),
+      });
       return current;
     }
 
     const selected = nextEligibleCandidate(current.id, candidates, registryOrder);
-    this.updateCheckpoint(checkpointFor(selected, batchPercent));
+    this.updateCheckpoint(checkpointFor(selected, batchPercent, options));
     return selected;
   }
 
   reset(): void {
     this.checkpoint = null;
-    this.legacyCheckpoint = null;
+    this.legacyCurrentEntryId = null;
     this.store.clear();
   }
 
@@ -273,62 +306,12 @@ export class QuotaBatchSelector {
   }
 }
 
-function checkpointFor(entry: AccountEntry, batchPercent: number): QuotaBatchCheckpoint {
-  const meter = effectiveQuotaMeter(entry);
-  return {
-    version: 2,
-    strategy: "quota_batch",
-    batchPercent,
-    currentEntryId: entry.id,
-    baselineUsedPercent: meter?.usedPercent ?? null,
-    baselineRequestCount: entry.usage.request_count,
-    meter: meter?.kind ?? null,
-    resetAt: meter?.resetAt ?? null,
-  };
-}
-
-function checkpointForQuota(
-  entry: AccountEntry,
-  checkpoint: QuotaBatchCheckpoint,
-  batchPercent: number,
-): QuotaBatchCheckpoint {
-  const meter = effectiveQuotaMeter(entry);
-  return {
-    ...checkpoint,
-    batchPercent,
-    baselineUsedPercent: meter?.usedPercent ?? null,
-    meter: meter?.kind ?? null,
-    resetAt: meter?.resetAt ?? null,
-  };
-}
-
-function rebaselineKind(
-  checkpoint: QuotaBatchCheckpoint,
-  entry: AccountEntry,
-  meter: EffectiveQuotaMeter | null,
-  batchPercent: number,
-): "all" | "quota" | null {
-  if (entry.usage.request_count < checkpoint.baselineRequestCount) return "all";
-  if (checkpoint.batchPercent !== batchPercent) return "quota";
-  if (checkpoint.meter !== (meter?.kind ?? null)) return "quota";
-  // A sliding window may move reset_at on every response. Re-baseline only
-  // when the observed usage actually decreases, which is the reliable reset
-  // signal and preserves accumulated progress across timestamp drift.
-  if (meter && checkpoint.baselineUsedPercent !== null && meter.usedPercent < checkpoint.baselineUsedPercent) return "quota";
-  return null;
-}
-
-function nextEligibleCandidate(
-  currentEntryId: string,
-  candidates: AccountEntry[],
-  registryOrder: string[],
-): AccountEntry {
+function nextEligibleCandidate(currentEntryId: string, candidates: AccountEntry[], registryOrder: string[]): AccountEntry {
   const byId = new Map(candidates.map((candidate) => [candidate.id, candidate]));
   const currentIndex = registryOrder.indexOf(currentEntryId);
   if (currentIndex >= 0) {
     for (let offset = 1; offset <= registryOrder.length; offset++) {
-      const id = registryOrder[(currentIndex + offset) % registryOrder.length];
-      const candidate = byId.get(id);
+      const candidate = byId.get(registryOrder[(currentIndex + offset) % registryOrder.length]);
       if (candidate) return candidate;
     }
   }

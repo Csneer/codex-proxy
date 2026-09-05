@@ -3,6 +3,7 @@ import type { CodexApi } from "../../proxy/codex-api.js";
 import type { CookieJar } from "../../proxy/cookie-jar.js";
 import type { ProxyPool } from "../../proxy/proxy-pool.js";
 import { releaseAccount } from "./account-acquisition.js";
+import type { ReleaseGuard } from "./account-acquisition.js";
 import { prepareProxyFallbackAccountRetry } from "./proxy-fallback-account-retry.js";
 import type { ErrorAction } from "./proxy-error-handler.js";
 import { annotateImageGenOutcome } from "./proxy-handler-utils.js";
@@ -30,7 +31,7 @@ export interface ApplyProxyErrorRetryTransitionOptions {
   triedEntryIds: string[];
   tag: string;
   decision: ErrorAction;
-  released: Set<string>;
+  released: ReleaseGuard;
   restoreImplicitResumeRequest: () => void;
   modelRetried: boolean;
   expectsImageGen?: boolean;
@@ -80,6 +81,7 @@ export function applyProxyErrorRetryTransition(
     decision,
     cookieJar,
     proxyPool,
+    released,
   });
 
   if (fallbackRetry.action === "respond") {

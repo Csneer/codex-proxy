@@ -36,16 +36,18 @@ afterEach(() => {
 describe("RotationSettings quota batch", () => {
   it("reveals the percentage input only after selecting quota batch", () => {
     renderSettings();
-    expect(screen.queryByLabelText("Quota points per batch")).toBeNull();
+    expect(screen.queryByLabelText("Quota bucket size (%)")).toBeNull();
     fireEvent.click(screen.getByText("Quota batch"));
-    expect(screen.getByText("Switch when quota grows by this many points; 100 completed requests is the fallback when quota is stale.")).toBeTruthy();
-    expect(screen.getByLabelText("Quota points per batch")).toBeTruthy();
+    expect(screen.getByText(/each account's actual window/)).toBeTruthy();
+    expect(screen.getByText(/37% rotates at 40% or above, not 47%/)).toBeTruthy();
+    expect(screen.getByText(/Missing or stale quota data/)).toBeTruthy();
+    expect(screen.getByLabelText("Quota bucket size (%)")).toBeTruthy();
   });
 
-  it.each([20, 30, 40])("saves %i with the quota_batch strategy", (percent) => {
+  it.each([1, 10, 20, 30, 40, 100])("saves %i with the quota_batch strategy", (percent) => {
     renderSettings();
     fireEvent.click(screen.getByText("Quota batch"));
-    fireEvent.input(screen.getByLabelText("Quota points per batch"), { target: { value: String(percent) } });
+    fireEvent.input(screen.getByLabelText("Quota bucket size (%)"), { target: { value: String(percent) } });
     fireEvent.click(screen.getByText("Submit"));
     expect(mock.save).toHaveBeenCalledWith({
       rotation_strategy: "quota_batch",
@@ -56,7 +58,7 @@ describe("RotationSettings quota batch", () => {
   it.each([0, 101, 30.5])("prevents invalid value %s from being saved", (percent) => {
     renderSettings();
     fireEvent.click(screen.getByText("Quota batch"));
-    fireEvent.input(screen.getByLabelText("Quota points per batch"), { target: { value: String(percent) } });
+    fireEvent.input(screen.getByLabelText("Quota bucket size (%)"), { target: { value: String(percent) } });
     const submit = screen.getByText("Submit") as HTMLButtonElement;
     expect(submit.disabled).toBe(true);
     fireEvent.click(submit);

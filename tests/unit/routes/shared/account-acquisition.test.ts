@@ -94,4 +94,33 @@ describe("releaseAccount", () => {
 
     expect(pool.release).toHaveBeenCalledTimes(2);
   });
+
+  it("uses the registered lease and remains compatible with legacy acquisitions", () => {
+    const guard = new Map<string, string | undefined>();
+    guard.set("e1", "lease-1");
+    releaseAccount(pool as never, "e1", undefined, guard);
+    expect(pool.release).toHaveBeenCalledWith("e1", undefined, "lease-1");
+
+    guard.set("e1", undefined);
+    releaseAccount(pool as never, "e1", undefined, guard);
+    expect(pool.release).toHaveBeenLastCalledWith("e1", undefined);
+
+    releaseAccount(pool as never, "e1", undefined, guard);
+    expect(pool.release).toHaveBeenCalledTimes(2);
+  });
+
+  it("updates the request lease when the same account is acquired again", () => {
+    pool.acquire
+      .mockReturnValueOnce({ entryId: "e1", token: "t1", accountId: null, leaseId: "lease-1" })
+      .mockReturnValueOnce({ entryId: "e1", token: "t1", accountId: null, leaseId: "lease-2" });
+    const guard = new Map<string, string | undefined>();
+
+    acquireAccount(pool as never, "gpt-5.4", undefined, undefined, undefined, guard);
+    releaseAccount(pool as never, "e1", undefined, guard);
+    acquireAccount(pool as never, "gpt-5.4", undefined, undefined, undefined, guard);
+    releaseAccount(pool as never, "e1", undefined, guard);
+
+    expect(pool.release).toHaveBeenNthCalledWith(1, "e1", undefined, "lease-1");
+    expect(pool.release).toHaveBeenNthCalledWith(2, "e1", undefined, "lease-2");
+  });
 });
