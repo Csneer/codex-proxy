@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import { adminFetch } from "../http/admin-fetch";
+import { createUuid } from "../utils/uuid";
 
 const BASE_URL = "/admin/backup-resources";
 
@@ -189,7 +190,7 @@ export function useBackupResources() {
   const promoteAccount = useCallback(async (account: BackupAccount) => {
     await mutate(`/accounts/${encodeURIComponent(account.id)}/promote`, "POST", {
       schemaVersion: 1,
-      idempotencyKey: account.promotion?.idempotencyKey ?? crypto.randomUUID(),
+      idempotencyKey: account.promotion?.idempotencyKey ?? createUuid(),
       expectedRevision: account.revision,
       allowEphemeral: false,
     });
