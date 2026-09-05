@@ -115,7 +115,7 @@ describe("account-factory v1 routes", () => {
     expect(await health.json()).toEqual({
       enabled: true,
       schemaVersion: 1,
-      capabilities: ["claim", "claimRecovery", "candidateSelection", "submissionCommit", "poll", "progress", "syncState", "complete", "evidence", "fail", "promote", "credentialSync"],
+      capabilities: ["claim", "claimRecovery", "candidateSelection", "submissionCommit", "poll", "registeredPoll", "progress", "syncState", "complete", "evidence", "fail", "promote", "credentialSync"],
       inventory: { total: 1, available: 1, mailDashboardAvailable: 1 },
     });
     expect(invalid.status).toBe(400);
@@ -349,6 +349,57 @@ describe("account-factory v1 routes", () => {
       receivedAt: "2026-08-09T07:00:00.000Z",
     });
     expect(pollInput).toEqual({ email: "mailbox@example.com", after });
+  });
+
+  it("polls a registered dashboard mailbox by email without an active lease", async () => {
+    const store = createStore();
+    const account = sync(store);
+    const claim = store.claimAccount({ consumerId: "consumer", taskId: "task-registered" })!;
+    store.commitSubmission({
+      schemaVersion: 1,
+      taskId: "task-registered",
+      leaseId: claim.lease.id,
+      operationId: "submission-registered",
+      idempotencyKey: "submission-registered",
+    });
+    store.completeLease({
+      schemaVersion: 1,
+      taskId: "task-registered",
+      leaseId: claim.lease.id,
+      operationId: "complete-registered",
+      idempotencyKey: "complete-registered",
+      sourceRevision: account.revision,
+      chatgptPassword: "password",
+    });
+    const after = "2026-08-09T07:00:02.001Z";
+    let pollInput: { email: string; after: string } | undefined;
+    const app = createApp(store, {
+      pollVerificationCode: async (email, actualAfter) => {
+        pollInput = { email, after: actualAfter };
+        return {
+          status: "received",
+          code: "654321",
+          receivedAt: "2026-08-09T07:00:03.000Z",
+        };
+      },
+    });
+
+    const response = await app.request(
+      `/integration/account-factory/v1/registered-accounts/${encodeURIComponent("MAILBOX@example.com")}/verification-code?after=${encodeURIComponent(after)}`,
+    );
+    const missing = await app.request(
+      `/integration/account-factory/v1/registered-accounts/${encodeURIComponent("missing@example.com")}/verification-code?after=${encodeURIComponent(after)}`,
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      status: "received",
+      code: "654321",
+      receivedAt: "2026-08-09T07:00:03.000Z",
+    });
+    expect(pollInput).toEqual({ email: "mailbox@example.com", after });
+    expect(missing.status).toBe(404);
+    expect(await missing.json()).toEqual({ error: "not_found" });
   });
 
   it("returns lease and sync DTOs without account credentials or mail body data", async () => {

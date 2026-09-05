@@ -446,6 +446,38 @@ export class BackupResourceStore {
     return update();
   }
 
+  syncRegisteredCredentials(id: string, input: {
+    accessToken: string;
+    refreshToken?: string | null;
+    session?: string | null;
+  }): BackupAccountSummary | null {
+    return this.db.transaction((): BackupAccountSummary | null => {
+      if (!this.getAccount(id)) return null;
+      const assignments = [
+        "access_token = ?",
+        "lifecycle_status = CASE WHEN lifecycle_status = 'promoted' THEN 'promoted' ELSE 'registered' END",
+        "account_status = CASE WHEN account_status = 'unregistered' THEN 'free' ELSE account_status END",
+        "last_error_code = NULL",
+        "revision = revision + 1",
+        "updated_at = ?",
+      ];
+      const timestamp = now();
+      const values: unknown[] = [this.encryptNullable(input.accessToken), timestamp];
+      if (input.refreshToken !== undefined) {
+        assignments.splice(1, 0, "refresh_token = ?");
+        values.splice(1, 0, this.encryptNullable(input.refreshToken));
+      }
+      if (input.session !== undefined) {
+        const lifecycleIndex = assignments.findIndex((assignment) => assignment.startsWith("lifecycle_status"));
+        assignments.splice(lifecycleIndex, 0, "session_json = ?");
+        values.splice(lifecycleIndex, 0, this.encryptNullable(input.session));
+      }
+      this.db.prepare(`UPDATE backup_accounts SET ${assignments.join(", ")} WHERE id = ?`)
+        .run(...values, id);
+      return this.getAccountSummary(id);
+    })();
+  }
+
   deleteAccount(id: string): boolean {
     return this.db.prepare("DELETE FROM backup_accounts WHERE id = ?").run(id).changes > 0;
   }

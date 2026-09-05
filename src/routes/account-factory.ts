@@ -103,6 +103,9 @@ const VerificationQuery = z.object({
   taskId: Text,
   leaseId: Text,
 }).strict();
+const RegisteredVerificationQuery = z.object({
+  after: z.string().datetime({ offset: true }),
+}).strict();
 const SyncQuery = z.object({ taskId: Text, leaseId: Text }).strict();
 const Promote = z.object({
   schemaVersion: z.literal(1),
@@ -132,7 +135,7 @@ export interface AccountFactoryRouteDependencies {
     accessToken: string;
     refreshToken?: string | null;
     session?: string | Record<string, unknown> | null;
-  }) => AccountFactoryCredentialSyncResult;
+  }) => AccountFactoryCredentialSyncResult | Promise<AccountFactoryCredentialSyncResult>;
 }
 
 async function body<T>(c: Context, schema: z.ZodType<T>): Promise<T | null> {
@@ -200,7 +203,7 @@ export function createAccountFactoryRoutes(dependencies: AccountFactoryRouteDepe
     return c.json({
       enabled: true,
       schemaVersion: 1,
-      capabilities: ["claim", "claimRecovery", "candidateSelection", "submissionCommit", "poll", "progress", "syncState", "complete", "evidence", "fail", "promote", "credentialSync"],
+      capabilities: ["claim", "claimRecovery", "candidateSelection", "submissionCommit", "poll", "registeredPoll", "progress", "syncState", "complete", "evidence", "fail", "promote", "credentialSync"],
       inventory: {
         total: accounts.length,
         available: claimable.length,
@@ -297,6 +300,21 @@ export function createAccountFactoryRoutes(dependencies: AccountFactoryRouteDepe
     return c.json(result);
   });
 
+  app.get(`${BASE_PATH}/registered-accounts/:email/verification-code`, async (c) => {
+    const query = RegisteredVerificationQuery.safeParse(c.req.query());
+    if (!query.success) return responseError(c, 400, "invalid_request");
+    const email = c.req.param("email").trim().toLowerCase();
+    const account = store().listAccounts().find((candidate) => (
+      candidate.email.trim().toLowerCase() === email
+      && candidate.sourceSystem === "mail_dashboard"
+      && candidate.sourceActive
+    ));
+    if (!account) return responseError(c, 404, "not_found");
+    const result = await mail().pollVerificationCode(account.email, query.data.after);
+    if (result.status === "pending") return c.json({ status: "pending" });
+    return c.json(result);
+  });
+
   app.patch(`${BASE_PATH}/accounts/:id/progress`, async (c) => {
     const input = await body(c, Progress);
     if (!input) return responseError(c, 400, "invalid_request");
@@ -367,7 +385,7 @@ export function createAccountFactoryRoutes(dependencies: AccountFactoryRouteDepe
     if (!dependencies.resolveCredentialSync) return responseError(c, 409, "credential_sync_unavailable");
     c.header("Cache-Control", "no-store");
     try {
-      return c.json({ ok: true, ...dependencies.resolveCredentialSync(input) });
+      return c.json({ ok: true, ...await dependencies.resolveCredentialSync(input) });
     } catch (error) {
       if (error instanceof Error && error.message === "credential_sync_account_not_found") {
         return responseError(c, 404, "account_not_found");
