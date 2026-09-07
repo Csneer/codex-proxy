@@ -913,6 +913,69 @@ export class BackupResourceStore {
     return row ? accountFactoryPromotion(row) : null;
   }
 
+  /**
+   * Re-open a linked promotion whose core entry was lost outside the backup
+   * lifecycle (for example after restoring only the core account store).
+   *
+   * The promotion row and idempotency key are retained. This keeps retries
+   * safe for callers that already persisted the original promotion operation;
+   * only the saga state and token-derived core identity are reset.
+   */
+  repairLinkedPromotion(
+    accountId: string,
+    input: AccountFactoryPromoteDto,
+  ): AccountFactoryPromotionPlan {
+    if (input.schemaVersion !== 1 || !Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) {
+      throw new AccountFactoryPromotionError("invalid_payload");
+    }
+    const idempotencyKey = assertRequiredText(input.idempotencyKey, "promotion idempotencyKey");
+
+    return this.db.transaction(() => {
+      const account = this.db.prepare("SELECT * FROM backup_accounts WHERE id = ?")
+        .get(accountId) as AccountFactoryAccountRow | undefined;
+      if (!account) throw new AccountFactoryPromotionError("not_found");
+
+      const row = this.db.prepare(
+        "SELECT * FROM account_factory_promotions WHERE account_id = ?",
+      ).get(accountId) as AccountFactoryPromotionRow | undefined;
+      if (!row) throw new AccountFactoryPromotionError("promotion_not_found");
+      if (row.state !== "linked") return this.promotionPlan(row, account);
+      if (row.idempotency_key !== idempotencyKey) {
+        throw new AccountFactoryPromotionError("idempotency_conflict");
+      }
+      if (account.revision !== input.expectedRevision) {
+        throw new AccountFactoryRevisionConflict(this.accountSyncState(account));
+      }
+
+      const accessToken = this.decryptPromotionSecret(account.access_token, "access_token_required");
+      const refreshToken = account.refresh_token === null ? null : this.cipher.decrypt(account.refresh_token);
+      if (refreshToken === null && !input.allowEphemeral) {
+        throw new AccountFactoryPromotionError("refresh_token_required");
+      }
+      const mode = refreshToken === null ? "ephemeral" : "refreshable";
+      const timestamp = now();
+      this.db.prepare(`
+        UPDATE account_factory_promotions
+        SET mode = ?, state = 'requested', core_account_id = NULL,
+            error_code = NULL, updated_at = ?
+        WHERE id = ?
+      `).run(mode, timestamp, row.id);
+      this.recordEvent(accountId, null, "promotion_repair_requested");
+      return {
+        promotion: accountFactoryPromotion({
+          ...row,
+          mode,
+          state: "requested",
+          core_account_id: null,
+          error_code: null,
+          updated_at: timestamp,
+        }),
+        accessToken,
+        refreshToken,
+      };
+    })();
+  }
+
   planPromotion(accountId: string, input: AccountFactoryPromoteDto): AccountFactoryPromotionPlan {
     if (input.schemaVersion !== 1 || !Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) {
       throw new AccountFactoryPromotionError("invalid_payload");
@@ -1032,7 +1095,7 @@ export class BackupResourceStore {
       }
       const account = this.db.prepare("SELECT lifecycle_status FROM backup_accounts WHERE id = ?")
         .get(accountId) as { lifecycle_status: AccountFactoryAccount["lifecycleStatus"] } | undefined;
-      if (!account || account.lifecycle_status !== "registered") {
+      if (!account || (account.lifecycle_status !== "registered" && account.lifecycle_status !== "promoted")) {
         throw new AccountFactoryPromotionError("account_not_registered");
       }
       const timestamp = now();
@@ -1064,7 +1127,7 @@ export class BackupResourceStore {
       `).run(code, timestamp, row.id);
       this.db.prepare(`
         UPDATE backup_accounts SET last_error_code = ?, updated_at = ?
-        WHERE id = ? AND lifecycle_status = 'registered'
+        WHERE id = ? AND lifecycle_status IN ('registered', 'promoted')
       `).run(code, timestamp, accountId);
       this.recordEvent(accountId, null, "promotion_failed", code);
       return accountFactoryPromotion({ ...row, state: "failed", error_code: code, updated_at: timestamp });

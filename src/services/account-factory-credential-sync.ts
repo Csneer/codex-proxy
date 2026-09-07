@@ -6,6 +6,8 @@ export interface AccountFactoryCredentialSyncInput {
   accessToken: string;
   refreshToken?: string | null;
   session?: string | Record<string, unknown> | null;
+  /** Explicitly run the post-sync promotion step when the caller needs a core entry. */
+  promote?: boolean;
 }
 
 export interface AccountFactoryCredentialSyncResult {
@@ -41,8 +43,12 @@ export async function syncAccountFactoryCredentials(
     })
   )).filter((account): account is NonNullable<typeof account> => account !== null);
 
-  const linkedCoreIds = syncedAccounts
-    .map((account) => store.getPromotion(account.id)?.coreAccountId ?? null)
+  const promotions = syncedAccounts.map((account) => ({
+    account,
+    promotion: store.getPromotion(account.id),
+  }));
+  const linkedCoreIds = promotions
+    .map(({ promotion }) => promotion?.coreAccountId ?? null)
     .filter((id): id is string => Boolean(id));
   const linkedCoreId = linkedCoreIds.length === 1 ? linkedCoreIds[0] : null;
   let coreAccountId = linkedCoreId && coreAccounts.getEntry(linkedCoreId)
@@ -52,7 +58,15 @@ export async function syncAccountFactoryCredentials(
     coreAccounts.updateToken(coreAccountId, input.accessToken, input.refreshToken ?? undefined);
   }
 
-  if (!coreAccountId && input.refreshToken && syncedAccounts.length > 0) {
+  const missingLinkedCore = promotions.some(({ promotion }) => (
+    promotion?.state === "linked"
+    && (!promotion.coreAccountId || !coreAccounts.getEntry(promotion.coreAccountId))
+  ));
+  const requestedPromotion = input.promote === true
+    || Boolean(input.refreshToken?.trim())
+    || (missingLinkedCore && syncedAccounts.some((account) => account.hasRefreshToken));
+
+  if (!coreAccountId && requestedPromotion && syncedAccounts.length > 0) {
     const account = syncedAccounts[0];
     const existingPromotion = store.getPromotion(account.id);
     const promotion = await promotionService.promote(account.id, {

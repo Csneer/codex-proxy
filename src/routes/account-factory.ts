@@ -118,6 +118,7 @@ const CredentialSync = z.object({
   accessToken: NonBlankSecret,
   refreshToken: Secret.nullable().optional(),
   session: z.union([Secret, z.record(z.unknown())]).nullable().optional(),
+  promote: z.boolean().optional(),
 }).strict();
 
 export interface AccountFactoryCredentialSyncResult {
@@ -135,6 +136,7 @@ export interface AccountFactoryRouteDependencies {
     accessToken: string;
     refreshToken?: string | null;
     session?: string | Record<string, unknown> | null;
+    promote?: boolean;
   }) => AccountFactoryCredentialSyncResult | Promise<AccountFactoryCredentialSyncResult>;
 }
 

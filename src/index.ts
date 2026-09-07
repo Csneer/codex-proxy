@@ -228,6 +228,7 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
     promotionService ??= new AccountFactoryPromotionService(
       getBackupResourceStore(),
       accountImportPromotionImporter(createPromotionImportService(accountPool, refreshScheduler, cookieJar)),
+      { coreAccountExists: (coreAccountId) => Boolean(accountPool.getEntry(coreAccountId)) },
     );
     return promotionService;
   };
@@ -236,6 +237,7 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
     accessToken: string;
     refreshToken?: string | null;
     session?: string | Record<string, unknown> | null;
+    promote?: boolean;
   }) => syncAccountFactoryCredentials(
     getBackupResourceStore(),
     accountPool,

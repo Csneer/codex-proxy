@@ -37,6 +37,7 @@ function createApp(
     accessToken: string;
     refreshToken?: string | null;
     session?: string | Record<string, unknown> | null;
+    promote?: boolean;
   }) => { email: string; coreAccountId: string | null; backupAccountIds: string[] },
 ) {
   return createAccountFactoryRoutes({
@@ -82,6 +83,7 @@ describe("account-factory v1 routes", () => {
         accessToken: "access-token",
         refreshToken: "refresh-token",
         session: "session-token",
+        promote: true,
       }),
     });
 
@@ -97,6 +99,7 @@ describe("account-factory v1 routes", () => {
       accessToken: "access-token",
       refreshToken: "refresh-token",
       session: "session-token",
+      promote: true,
     });
   });
 

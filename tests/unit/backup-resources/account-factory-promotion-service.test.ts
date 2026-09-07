@@ -168,4 +168,32 @@ describe("AccountFactoryPromotionService", () => {
       mode: "ephemeral",
     });
   });
+
+  it("repairs a linked promotion when its core entry was deleted", async () => {
+    const { store, accountId } = fixture();
+    const importer = {
+      importPromotion: vi.fn()
+        .mockResolvedValueOnce({ ok: true as const, entryId: "core-before-delete", account: {} as never })
+        .mockResolvedValueOnce({ ok: true as const, entryId: "core-after-repair", account: {} as never }),
+    };
+    const service = new AccountFactoryPromotionService(store, importer, {
+      coreAccountExists: () => false,
+    });
+
+    const first = await service.promote(accountId, input());
+    expect(first).toMatchObject({ state: "linked", coreAccountId: "core-before-delete" });
+
+    const repaired = await service.promote(accountId, {
+      ...input(),
+      expectedRevision: 5,
+    });
+
+    expect(repaired).toMatchObject({ state: "linked", coreAccountId: "core-after-repair" });
+    expect(importer.importPromotion).toHaveBeenCalledTimes(2);
+    expect(store.getPromotion(accountId)).toMatchObject({
+      state: "linked",
+      coreAccountId: "core-after-repair",
+      idempotencyKey: "promotion-operation",
+    });
+  });
 });

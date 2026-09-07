@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { BackupResourceStore } from "@src/backup-resources/store.js";
 import { AccountFactoryPromotionService } from "@src/backup-resources/promotion.js";
 import { syncAccountFactoryCredentials } from "@src/services/account-factory-credential-sync.js";
@@ -71,6 +71,77 @@ describe("account factory registered credential sync", () => {
       hasAccessToken: true,
       hasRefreshToken: true,
       hasSession: true,
+    });
+  });
+
+  it("uses the stored refresh token to repair a deleted core entry after relogin", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "account-factory-credential-repair-"));
+    tempDirs.push(dir);
+    const store = new BackupResourceStore(
+      join(dir, "backup-resources.sqlite"),
+      createTestCipher(),
+    );
+    stores.push(store);
+    const source = store.syncSourceAccount({
+      sourceSystem: "mail_dashboard",
+      externalId: "mailbox-repair",
+      email: "Repair@Example.com",
+      sourceRevision: "mail-revision-1",
+    });
+    const registered = store.syncRegisteredCredentials(source.id, {
+      accessToken: "old-access-token",
+      refreshToken: "stored-refresh-token",
+    });
+    expect(registered).not.toBeNull();
+
+    const imported = vi.fn()
+      .mockResolvedValueOnce({ ok: true as const, entryId: "core-deleted", account: {} as never })
+      .mockResolvedValueOnce({ ok: true as const, entryId: "core-repaired", account: {} as never });
+    const promotionService = new AccountFactoryPromotionService(store, {
+      importPromotion: imported,
+    }, {
+      coreAccountExists: () => false,
+    });
+    const coreAccounts = {
+      getEntry: () => undefined,
+      updateTokenByEmail: () => null,
+      updateToken: () => undefined,
+    };
+
+    const first = await promotionService.promote(source.id, {
+      schemaVersion: 1,
+      idempotencyKey: "repair-promotion",
+      expectedRevision: registered!.revision,
+      allowEphemeral: false,
+    });
+    expect(first.coreAccountId).toBe("core-deleted");
+
+    const result = await syncAccountFactoryCredentials(
+      store,
+      coreAccounts,
+      promotionService,
+      {
+        email: "repair@example.com",
+        accessToken: "new-access-token",
+        session: "new-session",
+        promote: true,
+      },
+    );
+
+    expect(result).toMatchObject({
+      email: "repair@example.com",
+      coreAccountId: "core-repaired",
+      backupAccountIds: [source.id],
+    });
+    expect(imported).toHaveBeenCalledTimes(2);
+    expect(imported.mock.calls[1][0]).toMatchObject({
+      accessToken: "new-access-token",
+      refreshToken: "stored-refresh-token",
+      mode: "refreshable",
+    });
+    expect(store.listAccounts().find((item) => item.id === source.id)).toMatchObject({
+      lifecycleStatus: "promoted",
+      hasRefreshToken: true,
     });
   });
 });
