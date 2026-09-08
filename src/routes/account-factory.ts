@@ -124,6 +124,7 @@ const CredentialSync = z.object({
 export interface AccountFactoryCredentialSyncResult {
   email: string;
   coreAccountId: string | null;
+  coreAccountStatus?: string | null;
   backupAccountIds: string[];
 }
 

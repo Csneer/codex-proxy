@@ -1,5 +1,15 @@
 import type { BackupResourceStore } from "../backup-resources/store.js";
 import type { AccountFactoryPromotionService } from "../backup-resources/promotion.js";
+import type { AccountStatus } from "../auth/types.js";
+
+const ACCOUNT_STATUSES: readonly AccountStatus[] = [
+  "active",
+  "expired",
+  "quota_exhausted",
+  "refreshing",
+  "disabled",
+  "banned",
+];
 
 export interface AccountFactoryCredentialSyncInput {
   email: string;
@@ -13,6 +23,7 @@ export interface AccountFactoryCredentialSyncInput {
 export interface AccountFactoryCredentialSyncResult {
   email: string;
   coreAccountId: string | null;
+  coreAccountStatus?: string | null;
   backupAccountIds: string[];
 }
 
@@ -81,9 +92,19 @@ export async function syncAccountFactoryCredentials(
   if (!coreAccountId && syncedAccounts.length === 0) {
     throw new Error("credential_sync_account_not_found");
   }
+  const coreEntry = coreAccountId ? coreAccounts.getEntry(coreAccountId) : undefined;
+  const coreAccountStatus = coreEntry && typeof coreEntry === "object" && "status" in coreEntry
+    && isAccountStatus(coreEntry.status)
+    ? coreEntry.status
+    : null;
   return {
     email,
     coreAccountId,
+    coreAccountStatus,
     backupAccountIds: syncedAccounts.map((account) => account.id),
   };
+}
+
+function isAccountStatus(value: unknown): value is AccountStatus {
+  return typeof value === "string" && ACCOUNT_STATUSES.includes(value as AccountStatus);
 }

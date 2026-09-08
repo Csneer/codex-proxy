@@ -58,6 +58,7 @@ describe("account factory registered credential sync", () => {
     expect(result).toEqual({
       email: "registered@example.com",
       coreAccountId: "core-1",
+      coreAccountStatus: null,
       backupAccountIds: [account.id],
     });
     expect(imported).toEqual([{
@@ -143,5 +144,46 @@ describe("account factory registered credential sync", () => {
       lifecycleStatus: "promoted",
       hasRefreshToken: true,
     });
+  });
+
+  it.each([
+    ["active", "active"],
+    ["disabled", "disabled"],
+    ["banned", "banned"],
+    ["missing", null],
+  ] as const)("reports the current core account status for %s without changing it", async (_label, status) => {
+    const dir = mkdtempSync(join(tmpdir(), "account-factory-credential-status-"));
+    tempDirs.push(dir);
+    const store = new BackupResourceStore(
+      join(dir, "backup-resources.sqlite"),
+      createTestCipher(),
+    );
+    stores.push(store);
+    const account = store.syncSourceAccount({
+      sourceSystem: "mail_dashboard",
+      externalId: `mailbox-status-${_label}`,
+      email: "Status@Example.com",
+      sourceRevision: "mail-revision-1",
+    });
+    store.syncRegisteredCredentials(account.id, { accessToken: "access-token" });
+    const coreEntry = status === null ? undefined : { status };
+    const coreAccounts = {
+      getEntry: () => coreEntry,
+      updateTokenByEmail: () => "core-status",
+      updateToken: () => undefined,
+    };
+
+    const result = await syncAccountFactoryCredentials(
+      store,
+      coreAccounts,
+      {} as AccountFactoryPromotionService,
+      { email: "status@example.com", accessToken: "new-access-token" },
+    );
+
+    expect(result).toMatchObject({
+      coreAccountId: "core-status",
+      coreAccountStatus: status,
+    });
+    expect(coreEntry?.status ?? null).toBe(status);
   });
 });
