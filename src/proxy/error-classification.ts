@@ -29,6 +29,18 @@ function headersToLowerHaystack(headers: unknown): string {
   return parts.join(" ").toLowerCase();
 }
 
+function extractStructuredError(body: string): Record<string, unknown> | undefined {
+  try {
+    const parsed = JSON.parse(body) as Record<string, unknown>;
+    if (parsed.error && typeof parsed.error === "object") return parsed.error as Record<string, unknown>;
+    if (parsed.response && typeof parsed.response === "object") {
+      const response = parsed.response as Record<string, unknown>;
+      if (response.error && typeof response.error === "object") return response.error as Record<string, unknown>;
+    }
+  } catch { /* fall through */ }
+  return undefined;
+}
+
 /** Extract the rate-limit reset duration from a 429 error body, if available. */
 export function extractRetryAfterSec(body: string): number | undefined {
   try {
@@ -55,27 +67,17 @@ export function isQuotaExhaustedError(err: unknown): boolean {
 /** Check if a 503 is the upstream capacity error that is safe to retry. */
 export function isServerOverloadedError(err: unknown): boolean {
   if (!isCodexLike(err) || err.status !== 503) return false;
-  try {
-    const parsed = JSON.parse(err.body) as Record<string, unknown>;
-    const error = parsed.error as Record<string, unknown> | undefined;
-    const code = (error?.code ?? error?.type) as string | undefined;
-    return code === "server_is_overloaded";
-  } catch {
-    return false;
-  }
+  const error = extractStructuredError(err.body);
+  const code = (error?.code ?? error?.type) as string | undefined;
+  return code === "server_is_overloaded";
 }
 
 /** Check if a 500 is a transient upstream server error emitted before output. */
 export function isEarlyServerError(err: unknown): boolean {
   if (!isCodexLike(err) || err.status !== 500) return false;
-  try {
-    const parsed = JSON.parse(err.body) as Record<string, unknown>;
-    const error = parsed.error as Record<string, unknown> | undefined;
-    const code = (error?.code ?? error?.type) as string | undefined;
-    return code === "server_error";
-  } catch {
-    return false;
-  }
+  const error = extractStructuredError(err.body);
+  const code = (error?.code ?? error?.type) as string | undefined;
+  return code === "server_error";
 }
 
 /** Check if a 403 body is a Cloudflare challenge rather than an account ban. */

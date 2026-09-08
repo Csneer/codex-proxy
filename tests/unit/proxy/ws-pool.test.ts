@@ -332,6 +332,23 @@ describe("PersistentWs", () => {
     expect(onDead).not.toHaveBeenCalled();
   });
 
+  it("classifies nested response.error overload before exposing the stream", async () => {
+    const { ws, persistent } = newPersistentWs();
+    persistent.tryAcquire();
+    const promise = persistent.send({
+      request: { type: "response.create", model: "m", instructions: "", input: [] },
+      signal: undefined,
+      onRateLimits: undefined,
+      reused: true,
+    });
+    await nextTick();
+    ws.pushMessage({
+      type: "response.failed",
+      response: { id: "resp_overloaded", error: { code: "server_is_overloaded", message: "busy" } },
+    });
+    await expect(promise).rejects.toMatchObject({ status: 503 });
+  });
+
   it("classifies an early server_error as a transient 500", async () => {
     const { ws, persistent, onDead } = newPersistentWs();
     persistent.tryAcquire();

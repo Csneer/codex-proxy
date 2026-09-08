@@ -131,9 +131,14 @@ const ROTATABLE_ERROR_CODES: Readonly<Record<string, number>> = {
 function classifyWsErrorEvent(msg: Record<string, unknown>): { status: number; code: string } | null {
   const type = typeof msg.type === "string" ? msg.type : "";
   if (type !== "error" && type !== "response.failed") return null;
+  const response = typeof msg.response === "object" && msg.response !== null
+    ? (msg.response as Record<string, unknown>)
+    : null;
   const errorObj = typeof msg.error === "object" && msg.error !== null
     ? (msg.error as Record<string, unknown>)
-    : null;
+    : response && typeof response.error === "object" && response.error !== null
+      ? (response.error as Record<string, unknown>)
+      : null;
   if (!errorObj) return null;
   const codeRaw =
     (typeof errorObj.code === "string" ? errorObj.code : null) ??

@@ -134,6 +134,22 @@ describe("createWebSocketResponse — early-stream error rejection", () => {
     await expect(promise).rejects.toMatchObject({ status: 503 });
   });
 
+  it("rejects with CodexApiError(503) when overload is nested in response.error", async () => {
+    const promise = createWebSocketResponse("wss://test/ws", {}, BASE_REQUEST);
+    promise.catch(() => { /* asserted below */ });
+    const ws = await waitForOpen();
+
+    ws.emit("message", JSON.stringify({
+      type: "response.failed",
+      response: {
+        id: "resp_overloaded",
+        error: { code: "server_is_overloaded", message: "Our servers are currently overloaded" },
+      },
+    }));
+
+    await expect(promise).rejects.toMatchObject({ status: 503 });
+  });
+
   it("rejects with CodexApiError(500) when first frame is server_error", async () => {
     const promise = createWebSocketResponse("wss://test/ws", {}, BASE_REQUEST);
     promise.catch(() => { /* asserted below */ });

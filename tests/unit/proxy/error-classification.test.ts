@@ -72,11 +72,19 @@ describe("transient upstream server errors", () => {
     expect(isServerOverloadedError(new CodexApiError(503, JSON.stringify({
       error: { type: "server_is_overloaded", message: "busy" },
     })))).toBe(true);
+    expect(isServerOverloadedError(new CodexApiError(503, JSON.stringify({
+      type: "response.failed",
+      response: { error: { code: "server_is_overloaded", message: "busy" } },
+    })))).toBe(true);
   });
 
   it("recognizes only the structured 500 early server error", () => {
     expect(isEarlyServerError(new CodexApiError(500, JSON.stringify({
       error: { code: "server_error", message: "temporary" },
+    })))).toBe(true);
+    expect(isEarlyServerError(new CodexApiError(500, JSON.stringify({
+      type: "response.failed",
+      response: { error: { code: "server_error", message: "temporary" } },
     })))).toBe(true);
     expect(isEarlyServerError(new CodexApiError(500, "temporary"))).toBe(false);
     expect(isEarlyServerError(new CodexApiError(503, JSON.stringify({
